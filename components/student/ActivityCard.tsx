@@ -24,7 +24,7 @@ interface Props {
   children: ReactNode;
   requiresProof?: boolean;
   proofUrl?: string;
-  onStatusChange: (status: "available" | "done" | "help", proofUrl?: string) => void;
+  onStatusChange: (status: "done" | "help", proofUrl?: string) => void;
 }
 
 const colorMap = {
@@ -73,7 +73,7 @@ const STATUS_STYLES: Record<
     icon: <CheckCircle2 className="w-3 h-3" />,
   },
   help: {
-    label: "Help Requested",
+    label: "Help!",
     classes:
       "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800",
     icon: <HelpCircle className="w-3 h-3" />,
@@ -94,7 +94,7 @@ function StatusDropdown({
   hasProof,
 }: {
   displayStatus: DisplayStatus;
-  onSelect: (status: "available" | "done" | "help") => void;
+  onSelect: (status: "done" | "help") => void;
   requiresProof?: boolean;
   hasProof?: boolean;
 }) {
@@ -125,24 +125,17 @@ function StatusDropdown({
     );
   }
 
-  const options: { value: "available" | "done" | "help"; label: string; disabled?: boolean }[] =
-    [];
+  const options: { value: "done" | "help"; label: string; disabled?: boolean }[] = [];
 
   if (displayStatus === "in-progress") {
     options.push(
       { value: "done", label: "Done", disabled: requiresProof && !hasProof },
-      { value: "help", label: "Help Requested" }
+      { value: "help", label: "Help!" }
     );
   } else if (displayStatus === "done") {
-    options.push(
-      { value: "available", label: "In Progress" },
-      { value: "help", label: "Help Requested" }
-    );
-  } else {
-    options.push(
-      { value: "done", label: "Done", disabled: requiresProof && !hasProof },
-      { value: "available", label: "In Progress" }
-    );
+    options.push({ value: "help", label: "Help!" });
+  } else if (displayStatus === "help") {
+    options.push({ value: "done", label: "Done", disabled: requiresProof && !hasProof });
   }
 
   return (
@@ -180,7 +173,7 @@ function StatusDropdown({
                   : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               )}
             >
-              {STATUS_STYLES[toDisplayStatus(opt.value === "available" ? "available" : opt.value)].icon}
+              {STATUS_STYLES[opt.value === "done" ? "done" : "help"].icon}
               {opt.label}
             </button>
           ))}
@@ -235,7 +228,7 @@ export function ActivityCard({
     if (file) handleFile(file);
   };
 
-  const handleStatusSelect = (next: "available" | "done" | "help") => {
+  const handleStatusSelect = (next: "done" | "help") => {
     if (next === "done" && requiresProof && !uploadedFile) return;
     onStatusChange(next, next === "done" ? uploadedFile ?? undefined : undefined);
   };
@@ -352,7 +345,7 @@ export function ActivityCard({
 
             {isHelp && (
               <p className="text-xs text-slate-400 dark:text-slate-600">
-                Help requested — your teacher will follow up. You can continue to the next step.
+                Help! — your teacher will follow up. You can continue to the next step.
               </p>
             )}
           </div>

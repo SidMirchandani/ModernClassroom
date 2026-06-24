@@ -18,6 +18,7 @@ import {
 import { DEMO_PROOF_PLACEHOLDER } from "@/lib/demo-proof";
 import { SectionSidebar, SectionSidebarContent } from "./SectionSidebar";
 import { SectionView } from "./SectionView";
+import { BottomAlert } from "./BottomAlert";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
@@ -50,6 +51,11 @@ export function StudentDashboard() {
   const [blockSectionId, setBlockSectionId] = useState(
     () => UNIT.sections[UNIT.sections.length - 1].id
   );
+  const [teacherLockAlert, setTeacherLockAlert] = useState(false);
+
+  const showTeacherLockAlert = useCallback(() => {
+    setTeacherLockAlert(true);
+  }, []);
 
   useEffect(() => {
     const loaded = loadProgress(DEMO_STUDENT.id);
@@ -100,19 +106,23 @@ export function StudentDashboard() {
 
   const handleSectionSelect = useCallback(
     (sectionId: string) => {
+      if (isBeyondProgressBlock(sectionId)) {
+        showTeacherLockAlert();
+        return;
+      }
       if (progress && canAccessSection(progress, sectionId)) {
         setActiveSectionId(sectionId);
         setSidebarOpen(false);
       }
     },
-    [progress]
+    [progress, showTeacherLockAlert]
   );
 
   const updateActivity = useCallback(
     (
       sectionId: string,
       activity: "learn" | "practice" | "extra",
-      status: "available" | "done" | "help",
+      status: "done" | "help",
       proofUrl?: string
     ) => {
       setProgress((prev) => {
@@ -127,10 +137,6 @@ export function StudentDashboard() {
           if (!updated.practiceProofUrl) {
             updated.practiceProofUrl = proofUrl ?? DEMO_PROOF_PLACEHOLDER;
           }
-        }
-
-        if (activity === "practice" && status === "available") {
-          updated.practiceApproved = undefined;
         }
 
         // Done or help unlocks the next step
@@ -300,6 +306,7 @@ export function StudentDashboard() {
                 progress={progress}
                 activeSectionId={activeSectionId}
                 onSelect={handleSectionSelect}
+                onTeacherBlocked={showTeacherLockAlert}
               />
             </div>
           </div>
@@ -312,6 +319,7 @@ export function StudentDashboard() {
           progress={progress}
           activeSectionId={activeSectionId}
           onSelect={handleSectionSelect}
+          onTeacherBlocked={showTeacherLockAlert}
           className="hidden md:block"
         />
 
@@ -348,6 +356,12 @@ export function StudentDashboard() {
           </div>
         </main>
       </div>
+
+      <BottomAlert
+        visible={teacherLockAlert}
+        message="This section is locked by your teacher."
+        onDismiss={() => setTeacherLockAlert(false)}
+      />
     </div>
   );
 }

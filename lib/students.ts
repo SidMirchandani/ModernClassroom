@@ -10,14 +10,3 @@ export const STUDENTS: Student[] = [
   { id: "s7", name: "Sofia", avatar: "S" },
   { id: "s8", name: "Liam", avatar: "L" },
 ];
-
-export {
-  UNIT,
-  DEMO_PROGRESS,
-  DEMO_UNITS,
-  DEMO_CLASS_NAME,
-  DEMO_UNIT_3_PROGRESS,
-  getDemoProgressForUnit,
-  demoUnitsToCurriculum,
-  DEMO_DEFAULT_UNIT_INDEX,
-} from "./demo-units";

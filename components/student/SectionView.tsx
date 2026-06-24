@@ -15,7 +15,7 @@ interface Props {
   onUpdateActivity: (
     sectionId: string,
     activity: "learn" | "practice" | "extra",
-    status: "available" | "done" | "help",
+    status: "done" | "help",
     proofUrl?: string
   ) => void;
 }

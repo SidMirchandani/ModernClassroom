@@ -1,7 +1,16 @@
 "use client";
 
-import type { Unit, StudentProgress } from "@/lib/types";
-import { canAccessSection, getStudentSectionStatus } from "@/lib/progress";
+import type { Unit, StudentProgress, Section } from "@/lib/types";
+import {
+  canAccessSection as demoCanAccess,
+  getStudentSectionStatus as demoGetStudentSectionStatus,
+} from "@/lib/progress";
+import { isBeyondProgressBlock } from "@/lib/progress-block-store";
+import {
+  canAccessSection as classCanAccess,
+  getStudentSectionStatus as classGetStudentSectionStatus,
+  isBeyondBlock,
+} from "@/lib/class-progress";
 import { CheckCircle2, Circle, HelpCircle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -10,7 +19,12 @@ interface Props {
   progress: StudentProgress;
   activeSectionId: string;
   onSelect: (id: string) => void;
+  onTeacherBlocked?: () => void;
   className?: string;
+  /** When set, uses class-aware progress instead of demo UNIT */
+  sectionIds?: string[];
+  blockSectionId?: string | null;
+  hideAssessments?: boolean;
 }
 
 export function SectionSidebarContent({
@@ -18,7 +32,34 @@ export function SectionSidebarContent({
   progress,
   activeSectionId,
   onSelect,
+  onTeacherBlocked,
+  sectionIds,
+  blockSectionId = null,
+  hideAssessments = false,
 }: Omit<Props, "className">) {
+  const ids = sectionIds ?? unit.sections.map((s) => s.id);
+
+  function canAccess(sectionId: string) {
+    if (sectionIds) {
+      return classCanAccess(progress, sectionId, ids, blockSectionId);
+    }
+    return demoCanAccess(progress, sectionId);
+  }
+
+  function getStatus(sectionId: string) {
+    if (sectionIds) {
+      return classGetStudentSectionStatus(progress, sectionId, ids);
+    }
+    return demoGetStudentSectionStatus(progress, sectionId);
+  }
+
+  function isBlocked(sectionId: string) {
+    if (sectionIds) {
+      return isBeyondBlock(ids, sectionId, blockSectionId);
+    }
+    return isBeyondProgressBlock(sectionId);
+  }
+
   return (
     <>
       <div className="px-2 mb-2">
@@ -29,19 +70,28 @@ export function SectionSidebarContent({
 
       <nav className="space-y-0.5">
         {unit.sections.map((section) => {
-          const status = getStudentSectionStatus(progress, section.id);
+          const status = getStatus(section.id);
           const isActive = section.id === activeSectionId;
-          const accessible = canAccessSection(progress, section.id);
+          const teacherBlocked = isBlocked(section.id);
+          const accessible = canAccess(section.id);
+          const progressionLocked = !accessible && !teacherBlocked;
 
           return (
             <button
               key={section.id}
               type="button"
-              disabled={!accessible}
-              onClick={() => onSelect(section.id)}
+              disabled={progressionLocked}
+              onClick={() => {
+                if (teacherBlocked) {
+                  onTeacherBlocked?.();
+                  return;
+                }
+                onSelect(section.id);
+              }}
               className={cn(
                 "w-full flex items-start gap-2 px-2.5 py-2 rounded-lg text-left transition-colors",
-                !accessible && "opacity-50 cursor-not-allowed",
+                progressionLocked && "opacity-50 cursor-not-allowed",
+                teacherBlocked && "opacity-50 cursor-pointer",
                 isActive
                   ? "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300"
                   : accessible
@@ -49,7 +99,12 @@ export function SectionSidebarContent({
                     : "text-slate-400 dark:text-slate-600"
               )}
             >
-              <StatusIcon status={status} locked={!accessible} active={isActive} />
+              <StatusIcon
+                status={status}
+                locked={!accessible}
+                teacherBlocked={teacherBlocked}
+                active={isActive}
+              />
               <div className="min-w-0 flex-1">
                 <div
                   className={cn(
@@ -72,6 +127,8 @@ export function SectionSidebarContent({
         })}
       </nav>
 
+      {!hideAssessments && (
+        <>
       <div className="px-2 mt-4 mb-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-600">
           Assessments
@@ -100,6 +157,8 @@ export function SectionSidebarContent({
           </div>
         </div>
       </div>
+        </>
+      )}
     </>
   );
 }
@@ -109,7 +168,11 @@ export function SectionSidebar({
   progress,
   activeSectionId,
   onSelect,
+  onTeacherBlocked,
   className,
+  sectionIds,
+  blockSectionId,
+  hideAssessments,
 }: Props) {
   return (
     <aside
@@ -123,6 +186,10 @@ export function SectionSidebar({
         progress={progress}
         activeSectionId={activeSectionId}
         onSelect={onSelect}
+        onTeacherBlocked={onTeacherBlocked}
+        sectionIds={sectionIds}
+        blockSectionId={blockSectionId}
+        hideAssessments={hideAssessments}
       />
     </aside>
   );
@@ -131,14 +198,23 @@ export function SectionSidebar({
 function StatusIcon({
   status,
   locked,
+  teacherBlocked,
   active,
 }: {
-  status: ReturnType<typeof getStudentSectionStatus>;
+  status: "not-started" | "in-progress" | "complete" | "help";
   locked: boolean;
+  teacherBlocked?: boolean;
   active: boolean;
 }) {
   if (locked) {
-    return <Lock className="w-3 h-3 shrink-0 text-slate-300 dark:text-slate-700 mt-0.5" />;
+    return (
+      <Lock
+        className={cn(
+          "w-3 h-3 shrink-0 mt-0.5",
+          teacherBlocked ? "text-red-400 dark:text-red-600" : "text-slate-300 dark:text-slate-700"
+        )}
+      />
+    );
   }
   if (status === "complete") {
     return <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-green-500 mt-0.5" />;

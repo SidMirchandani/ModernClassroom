@@ -1,8 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { UNIT, STUDENTS } from "@/lib/data";
-import { getTeacherSectionStatus } from "@/lib/progress";
+import {
+  DEMO_UNITS,
+  DEMO_CLASS_NAME,
+  DEMO_DEFAULT_UNIT_INDEX,
+  getDemoProgressForUnit,
+  STUDENTS,
+} from "@/lib/data";
+import { getTeacherSectionStatus, type TeacherSectionStatus } from "@/lib/progress";
 import {
   approvePracticeSubmission,
   loadClassProgress,
@@ -13,12 +19,15 @@ import {
   PROGRESS_BLOCK_CHANGE_EVENT,
 } from "@/lib/progress-block-store";
 import { TableProgressGate } from "./TableProgressGate";
+import { CurriculumTable } from "./CurriculumTable";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 import { Modal } from "@/components/Modal";
 import Link from "next/link";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   LayoutGrid,
   CheckCircle2,
   HelpCircle,
@@ -29,6 +38,12 @@ import {
   Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  loadDemoCurriculum,
+  saveDemoCurriculum,
+  getDefaultDemoCurriculum,
+} from "@/lib/demo-curriculum-store";
+import type { CurriculumUnit } from "@/lib/db/types";
 
 import type { StudentProgress } from "@/lib/types";
 
@@ -50,7 +65,7 @@ const STATUS_CONFIG: Record<OverallStatus, { label: string; classes: string; ico
     icon: <Eye className="w-3 h-3" />,
   },
   help: {
-    label: "Help",
+    label: "Help!",
     classes:
       "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800",
     icon: <HelpCircle className="w-3 h-3" />,
@@ -69,10 +84,10 @@ const STATUS_CONFIG: Record<OverallStatus, { label: string; classes: string; ico
   },
 };
 
-function getHelpDetails(classProgress: StudentProgress[]) {
+function getHelpDetails(classProgress: StudentProgress[], sections: typeof DEMO_UNITS[0]["sections"]) {
   return classProgress.flatMap((p) => {
     const student = STUDENTS.find((s) => s.id === p.studentId)!;
-    const items = UNIT.sections.flatMap((section) => {
+    const items = sections.flatMap((section) => {
       const sp = p.sections[section.id];
       if (!sp) return [];
       const entries: { sectionId: string; sectionTitle: string; activity: string }[] = [];
@@ -90,23 +105,54 @@ function getHelpDetails(classProgress: StudentProgress[]) {
 }
 
 export function TeacherDashboard() {
+  const [activeUnitIndex, setActiveUnitIndex] = useState(DEMO_DEFAULT_UNIT_INDEX);
+  const activeUnit = DEMO_UNITS[activeUnitIndex];
   const [classProgress, setClassProgress] = useState<StudentProgress[]>([]);
   const [search, setSearch] = useState("");
   const [highlightStatus, setHighlightStatus] = useState<OverallStatus | null>(null);
   const [openModal, setOpenModal] = useState<StatModal>(null);
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget>(null);
-  const [blockSectionId, setBlockSectionId] = useState(
-    () => UNIT.sections[UNIT.sections.length - 1].id
+  const [blockSectionId, setBlockSectionId] = useState("3.4");
+  const [curriculumUnits, setCurriculumUnits] = useState<CurriculumUnit[]>(
+    getDefaultDemoCurriculum
   );
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const sectionColumnRefs = useRef<(HTMLTableCellElement | null)[]>([]);
 
+  const isUnit3 = activeUnit.id === 3;
+  const blockIndex = isUnit3
+    ? activeUnit.sections.findIndex((s) => s.id === blockSectionId)
+    : -1;
+  const gateActive =
+    isUnit3 && blockIndex >= 0 && blockIndex < activeUnit.sections.length - 1;
+
+  function loadProgressForUnit(unitId: number): StudentProgress[] {
+    if (unitId === 3) return loadClassProgress();
+    return getDemoProgressForUnit(unitId);
+  }
+
+  function getCellStatus(
+    studentProgress: StudentProgress | undefined,
+    sectionId: string,
+    sIdx: number
+  ): TeacherSectionStatus {
+    if (isUnit3 && gateActive && sIdx > blockIndex) return "not-started";
+    if (!studentProgress) return "not-started";
+    return getTeacherSectionStatus(studentProgress, sectionId);
+  }
+
   useEffect(() => {
-    setClassProgress(loadClassProgress());
-    setBlockSectionId(getProgressBlockSectionId());
+    setClassProgress(loadProgressForUnit(activeUnit.id));
+    if (isUnit3) setBlockSectionId(getProgressBlockSectionId());
+    setCurriculumUnits(loadDemoCurriculum());
+  }, [activeUnitIndex, activeUnit.id, isUnit3]);
+
+  useEffect(() => {
+    if (!isUnit3) return;
     const refresh = () => {
       setClassProgress(loadClassProgress());
       setBlockSectionId(getProgressBlockSectionId());
+      setCurriculumUnits(loadDemoCurriculum());
     };
     window.addEventListener("focus", refresh);
     window.addEventListener(PROGRESS_BLOCK_CHANGE_EVENT, refresh);
@@ -114,7 +160,7 @@ export function TeacherDashboard() {
       window.removeEventListener("focus", refresh);
       window.removeEventListener(PROGRESS_BLOCK_CHANGE_EVENT, refresh);
     };
-  }, []);
+  }, [isUnit3]);
 
   const handleApprove = useCallback(() => {
     if (!reviewTarget) return;
@@ -130,12 +176,13 @@ export function TeacherDashboard() {
     s.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const classStats = UNIT.sections.map((section) => {
+  const classStats = activeUnit.sections.map((section, sIdx) => {
     const statuses = classProgress.map((p) =>
-      getTeacherSectionStatus(p, section.id)
+      getCellStatus(p, section.id, sIdx)
     );
     return {
       sectionId: section.id,
+      sectionTitle: section.title,
       complete: statuses.filter((s) => s === "complete").length,
       review: statuses.filter((s) => s === "review").length,
       help: statuses.filter((s) => s === "help").length,
@@ -145,15 +192,15 @@ export function TeacherDashboard() {
   });
 
   const totalStudents = STUDENTS.length;
-  const helpDetails = getHelpDetails(classProgress);
+  const helpDetails = getHelpDetails(classProgress, activeUnit.sections);
   const studentsNeedingHelp = helpDetails.length;
 
   const studentProgressList = classProgress.map((p) => {
     const student = STUDENTS.find((s) => s.id === p.studentId)!;
-    const completedCount = UNIT.sections.filter(
-      (s) => getTeacherSectionStatus(p, s.id) === "complete"
+    const completedCount = activeUnit.sections.filter(
+      (s, sIdx) => getCellStatus(p, s.id, sIdx) === "complete"
     ).length;
-    const pct = Math.round((completedCount / UNIT.sections.length) * 100);
+    const pct = Math.round((completedCount / activeUnit.sections.length) * 100);
     return { student, completedCount, pct };
   });
 
@@ -167,7 +214,7 @@ export function TeacherDashboard() {
     ? STUDENTS.find((s) => s.id === reviewTarget.studentId)
     : null;
   const reviewSection = reviewTarget
-    ? UNIT.sections.find((s) => s.id === reviewTarget.sectionId)
+    ? activeUnit.sections.find((s) => s.id === reviewTarget.sectionId)
     : null;
   const reviewProgress = reviewTarget
     ? classProgress.find((p) => p.studentId === reviewTarget.studentId)
@@ -176,14 +223,12 @@ export function TeacherDashboard() {
     ? reviewProgress?.sections[reviewTarget.sectionId]?.practiceProofUrl
     : undefined;
 
-  const blockIndex = UNIT.sections.findIndex((s) => s.id === blockSectionId);
-  const gateActive =
-    blockIndex >= 0 && blockIndex < UNIT.sections.length - 1;
-
   const handleBlockChange = useCallback((sectionId: string) => {
     setProgressBlockSectionId(sectionId);
     setBlockSectionId(sectionId);
   }, []);
+
+  const sectionIds = activeUnit.sections.map((s) => s.id);
 
   if (classProgress.length === 0) {
     return (
@@ -218,11 +263,33 @@ export function TeacherDashboard() {
       <div className="max-w-7xl mx-auto w-full px-5 py-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-            Class Progress
+            {DEMO_CLASS_NAME}
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Unit {UNIT.id} · {UNIT.title}
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <button
+              type="button"
+              onClick={() => setActiveUnitIndex((i) => Math.max(0, i - 1))}
+              disabled={activeUnitIndex === 0}
+              className="p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="Previous unit"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <p className="text-sm text-slate-500 dark:text-slate-400 min-w-0 text-center">
+              Unit {activeUnit.id} · {activeUnit.title}
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setActiveUnitIndex((i) => Math.min(DEMO_UNITS.length - 1, i + 1))
+              }
+              disabled={activeUnitIndex === DEMO_UNITS.length - 1}
+              className="p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="Next unit"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -252,7 +319,7 @@ export function TeacherDashboard() {
           />
           <StatCard
             label="Sections"
-            value={UNIT.sections.length}
+            value={activeUnit.sections.length}
             sub="this unit"
             icon={<LayoutGrid className="w-4 h-4 text-violet-500" />}
             color="violet"
@@ -297,29 +364,32 @@ export function TeacherDashboard() {
         <div>
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden isolate">
           <div ref={tableScrollRef} className="relative overflow-x-auto">
-            <TableProgressGate
-              blockSectionId={blockSectionId}
-              onChange={handleBlockChange}
-              containerRef={tableScrollRef}
-              columnRefs={sectionColumnRefs}
-            />
+            {isUnit3 && (
+              <TableProgressGate
+                blockSectionId={blockSectionId}
+                onChange={handleBlockChange}
+                containerRef={tableScrollRef}
+                columnRefs={sectionColumnRefs}
+                sectionIds={sectionIds}
+              />
+            )}
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800">
                   <th className="text-left px-4 py-3 font-semibold text-slate-500 dark:text-slate-400 w-36 sticky left-0 z-10 bg-white dark:bg-slate-900">
                     Student
                   </th>
-                  {UNIT.sections.map((section, sIdx) => (
+                  {activeUnit.sections.map((section, sIdx) => (
                     <th
                       key={section.id}
                       ref={(el) => {
                         sectionColumnRefs.current[sIdx] = el;
                       }}
-                      className="text-center px-2 py-3 font-semibold text-slate-500 dark:text-slate-400 min-w-[80px]"
+                      className="text-center px-2 py-3 font-semibold text-slate-500 dark:text-slate-400 min-w-[7.5rem]"
                     >
                       <div>{section.id}</div>
-                      <div className="text-[10px] font-normal text-slate-400 dark:text-slate-600 mt-0.5 whitespace-nowrap truncate max-w-[72px] mx-auto">
-                        {section.title.split(" ").slice(0, 2).join(" ")}
+                      <div className="text-[10px] font-normal text-slate-400 dark:text-slate-600 mt-0.5 leading-snug">
+                        {section.title}
                       </div>
                     </th>
                   ))}
@@ -352,12 +422,14 @@ export function TeacherDashboard() {
                   const studentProgress = classProgress.find(
                     (p) => p.studentId === student.id
                   );
-                  const completedCount = UNIT.sections.filter(
-                    (s) =>
+                  const completedCount = activeUnit.sections.filter(
+                    (s, sIdx) =>
                       studentProgress &&
-                      getTeacherSectionStatus(studentProgress, s.id) === "complete"
+                      getCellStatus(studentProgress, s.id, sIdx) === "complete"
                   ).length;
-                  const pct = Math.round((completedCount / UNIT.sections.length) * 100);
+                  const pct = Math.round(
+                    (completedCount / activeUnit.sections.length) * 100
+                  );
 
                   return (
                     <tr
@@ -387,10 +459,8 @@ export function TeacherDashboard() {
                         </div>
                       </td>
 
-                      {UNIT.sections.map((section, sIdx) => {
-                        const status = studentProgress
-                          ? getTeacherSectionStatus(studentProgress, section.id)
-                          : ("not-started" as const);
+                      {activeUnit.sections.map((section, sIdx) => {
+                        const status = getCellStatus(studentProgress, section.id, sIdx);
                         const dimmed =
                           highlightStatus !== null && status !== highlightStatus;
                         const cfg = STATUS_CONFIG[status];
@@ -459,7 +529,7 @@ export function TeacherDashboard() {
                 {filteredStudents.length === 0 && (
                   <tr>
                     <td
-                      colSpan={UNIT.sections.length + 2}
+                      colSpan={activeUnit.sections.length + 2}
                       className="text-center py-10 text-slate-400 dark:text-slate-600"
                     >
                       No students found
@@ -470,6 +540,7 @@ export function TeacherDashboard() {
             </table>
           </div>
         </div>
+        {isUnit3 && (
         <p className="mt-1 text-xs text-slate-400 dark:text-slate-600">
           Drag the{" "}
           <span className="text-red-500 dark:text-red-400">red line</span> to set how far
@@ -485,7 +556,20 @@ export function TeacherDashboard() {
           )}
           .
         </p>
+        )}
         </div>
+
+        <CurriculumTable
+          classId="demo"
+          units={curriculumUnits}
+          onUpdate={(units) => {
+            setCurriculumUnits(units);
+            saveDemoCurriculum(units);
+          }}
+          getSubunitHref={(id) =>
+            `/demo/teacher/subunit/${encodeURIComponent(id)}`
+          }
+        />
 
         <div>
           <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 mb-3">
@@ -493,19 +577,18 @@ export function TeacherDashboard() {
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {classStats.map((stat) => {
-              const section = UNIT.sections.find((s) => s.id === stat.sectionId)!;
               return (
                 <div
                   key={stat.sectionId}
                   className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4"
                 >
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="mb-3">
                     <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
                       {stat.sectionId}
                     </span>
-                    <span className="text-xs text-slate-400 dark:text-slate-600 truncate max-w-[100px]">
-                      {section.title.split(" ").slice(0, 3).join(" ")}
-                    </span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                      {stat.sectionTitle}
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <MiniBar
@@ -527,7 +610,7 @@ export function TeacherDashboard() {
                       color="bg-blue-500"
                     />
                     <MiniBar
-                      label="Help"
+                      label="Help!"
                       count={stat.help}
                       total={totalStudents}
                       color="bg-red-500"
@@ -646,7 +729,7 @@ export function TeacherDashboard() {
                       />
                     </div>
                     <span className="text-xs text-slate-400 dark:text-slate-600 shrink-0">
-                      {completedCount}/{UNIT.sections.length} sections
+                      {completedCount}/{activeUnit.sections.length} sections
                     </span>
                   </div>
                 </div>
@@ -662,10 +745,10 @@ export function TeacherDashboard() {
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Unit {UNIT.id}: {UNIT.title}
+            Unit {activeUnit.id}: {activeUnit.title}
           </p>
           <ul className="space-y-2">
-            {UNIT.sections.map((section) => (
+            {activeUnit.sections.map((section) => (
               <li
                 key={section.id}
                 className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800"
@@ -689,7 +772,7 @@ export function TeacherDashboard() {
               Assessments
             </p>
             <ul className="space-y-1.5">
-              {UNIT.quizzes.map((quiz) => (
+              {activeUnit.quizzes.map((quiz) => (
                 <li key={quiz.id} className="text-sm text-slate-600 dark:text-slate-400">
                   <span className="font-medium">{quiz.title}</span>
                   <span className="text-slate-400 dark:text-slate-600"> · {quiz.dueDate}</span>
@@ -697,7 +780,7 @@ export function TeacherDashboard() {
               ))}
               <li className="text-sm text-slate-600 dark:text-slate-400">
                 <span className="font-medium">Unit Test</span>
-                <span className="text-slate-400 dark:text-slate-600"> · {UNIT.testDate}</span>
+                <span className="text-slate-400 dark:text-slate-600"> · {activeUnit.testDate}</span>
               </li>
             </ul>
           </div>

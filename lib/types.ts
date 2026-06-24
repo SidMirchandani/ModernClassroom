@@ -36,6 +36,8 @@ export type SectionActivityStatus = {
   practiceProofUrl?: string;
   /** Teacher has approved the practice screenshot submission */
   practiceApproved?: boolean;
+  gradeNumerator?: number;
+  gradeDenominator?: number;
 };
 
 export interface StudentProgress {

@@ -1,7 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { StudentDashboard } from "@/components/student/StudentDashboard";
-
-export default function StudentPage() {
-  return <StudentDashboard />;
+export default function StudentRedirect() {
+  redirect("/demo/student");
 }

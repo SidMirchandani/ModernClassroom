@@ -10,6 +10,7 @@ interface Props {
   onChange: (sectionId: string) => void;
   containerRef: RefObject<HTMLDivElement | null>;
   columnRefs: RefObject<(HTMLTableCellElement | null)[]>;
+  sectionIds?: string[];
 }
 
 export function TableProgressGate({
@@ -17,12 +18,14 @@ export function TableProgressGate({
   onChange,
   containerRef,
   columnRefs,
+  sectionIds: sectionIdsProp,
 }: Props) {
+  const sectionIds = sectionIdsProp ?? UNIT.sections.map((s) => s.id);
   const [dragging, setDragging] = useState(false);
   const [lineLeft, setLineLeft] = useState<number | null>(null);
 
-  const blockIndex = UNIT.sections.findIndex((s) => s.id === blockSectionId);
-  const safeIndex = blockIndex >= 0 ? blockIndex : UNIT.sections.length - 1;
+  const blockIndex = sectionIds.indexOf(blockSectionId);
+  const safeIndex = blockIndex >= 0 ? blockIndex : sectionIds.length - 1;
 
   const updateLinePosition = useCallback(() => {
     const container = containerRef.current;
@@ -60,18 +63,18 @@ export function TableProgressGate({
         if (!el) continue;
         const rect = el.getBoundingClientRect();
         if (clientX >= rect.left && clientX <= rect.right) {
-          onChange(UNIT.sections[i].id);
+          onChange(sectionIds[i]);
           return;
         }
       }
 
       const first = cols[0]?.getBoundingClientRect();
       const last = cols[cols.length - 1]?.getBoundingClientRect();
-      if (first && clientX < first.left) onChange(UNIT.sections[0].id);
+      if (first && clientX < first.left) onChange(sectionIds[0]);
       else if (last && clientX > last.right)
-        onChange(UNIT.sections[UNIT.sections.length - 1].id);
+        onChange(sectionIds[sectionIds.length - 1]);
     },
-    [columnRefs, onChange]
+    [columnRefs, onChange, sectionIds]
   );
 
   useEffect(() => {
