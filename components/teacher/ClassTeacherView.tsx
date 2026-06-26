@@ -21,6 +21,13 @@ import { NavCapsule } from "@/components/NavCapsule";
 import { UserAvatar } from "@/components/UserAvatar";
 import { AppNavbar } from "@/components/AppNavbar";
 import { Modal } from "@/components/Modal";
+import { getCurrentUser } from "@/lib/auth-client";
+import {
+  getClassDetail,
+  inviteToClass,
+  saveAllClassProgress,
+  updateClass,
+} from "@/lib/db/client";
 import type { DbClass, DbInvite } from "@/lib/db/types";
 import type { Student, StudentProgress } from "@/lib/types";
 import {
@@ -140,13 +147,17 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     return getTeacherSectionStatus(studentProgress, sectionId, sectionIds);
   }
 
-  const loadData = useCallback(async () => {
-    const res = await fetch(`/api/classes/${classId}`);
-    if (!res.ok) {
+  const loadData = useCallback(() => {
+    const user = getCurrentUser();
+    if (!user) {
+      router.replace("/?auth=login");
+      return;
+    }
+    const data = getClassDetail(classId, user.id);
+    if (!data) {
       router.replace("/dashboard");
       return;
     }
-    const data = await res.json();
     setCls(data.class);
     setClassName(data.class.name);
     setStudents(data.students);
@@ -154,13 +165,11 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     setBlockSectionId(data.class.blockSectionId);
     setActiveUnitIndex(getCurrentUnitIndex(data.class.units, data.class.blockSectionId));
 
-    const progress: StudentProgress[] = (data.progress ?? []).map(
-      (p: { studentId: string; sections: StudentProgress["sections"] }) => ({
-        studentId: p.studentId,
-        unitId: 1,
-        sections: p.sections,
-      })
-    );
+    const progress: StudentProgress[] = (data.progress ?? []).map((p) => ({
+      studentId: p.studentId,
+      unitId: 1,
+      sections: p.sections,
+    }));
     setClassProgress(progress);
     setLoading(false);
   }, [classId, router]);
@@ -170,32 +179,24 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   }, [loadData]);
 
   const saveProgress = useCallback(
-    async (all: StudentProgress[]) => {
-      await fetch(`/api/classes/${classId}/progress`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          progress: all.map((p) => ({
-            classId,
-            studentId: p.studentId,
-            sections: p.sections,
-          })),
-        }),
-      });
+    (all: StudentProgress[]) => {
+      saveAllClassProgress(
+        classId,
+        all.map((p) => ({
+          classId,
+          studentId: p.studentId,
+          sections: p.sections,
+        }))
+      );
       setClassProgress(all);
     },
     [classId]
   );
 
   const saveClass = useCallback(
-    async (patch: Partial<DbClass>) => {
-      const res = await fetch(`/api/classes/${classId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const data = await res.json();
-      if (data.class) setCls(data.class);
+    (patch: Partial<DbClass>) => {
+      const updated = updateClass(classId, patch);
+      if (updated) setCls(updated);
     },
     [classId]
   );
@@ -215,23 +216,18 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     [saveClass]
   );
 
-  const handleInvite = async (e: React.FormEvent) => {
+  const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteInput.trim()) return;
     setInviting(true);
     try {
-      const res = await fetch(`/api/classes/${classId}/students`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailOrUsername: inviteInput.trim() }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setStudents(data.students);
-        setInvites(data.invites);
-        setInviteInput("");
-        await loadData();
-      }
+      const user = getCurrentUser();
+      if (!user) return;
+      const data = inviteToClass(classId, user.id, inviteInput.trim());
+      setStudents(data.students);
+      setInvites(data.invites);
+      setInviteInput("");
+      loadData();
     } finally {
       setInviting(false);
     }

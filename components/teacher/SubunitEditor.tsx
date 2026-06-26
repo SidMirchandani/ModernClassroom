@@ -16,6 +16,8 @@ import {
 } from "@/components/teacher/SubunitViewToggle";
 import type { Section, SectionActivityStatus } from "@/lib/types";
 import type { DbClass } from "@/lib/db/types";
+import { getCurrentUser } from "@/lib/auth-client";
+import { getClassDetail, updateClass } from "@/lib/db/client";
 import { normalizeSection } from "@/lib/section-blocks";
 
 const PREVIEW_PROGRESS: SectionActivityStatus = {
@@ -37,21 +39,25 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<SubunitViewMode>("edit");
 
-  const loadData = useCallback(async () => {
-    const res = await fetch(`/api/classes/${classId}`);
-    if (!res.ok) {
+  const loadData = useCallback(() => {
+    const user = getCurrentUser();
+    if (!user) {
+      router.replace("/?auth=login");
+      return;
+    }
+    const data = getClassDetail(classId, user.id);
+    if (!data) {
       router.replace("/dashboard");
       return;
     }
-    const data = await res.json();
     if (data.role !== "teacher") {
       router.replace(`/dashboard/class/${classId}`);
       return;
     }
     setCls(data.class);
     const found = data.class.units
-      .flatMap((u: { subunits: Section[] }) => u.subunits)
-      .find((s: Section) => s.id === decodeURIComponent(subunitId));
+      .flatMap((u) => u.subunits)
+      .find((s) => s.id === decodeURIComponent(subunitId));
     setSection(found ? normalizeSection(found) : null);
     setLoading(false);
   }, [classId, subunitId, router]);
@@ -61,7 +67,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   }, [loadData]);
 
   const saveSection = useCallback(
-    async (updated: Section) => {
+    (updated: Section) => {
       if (!cls) return;
       setSaving(true);
       const normalized = normalizeSection(updated);
@@ -69,17 +75,12 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
         ...u,
         subunits: u.subunits.map((s) => (s.id === normalized.id ? normalized : s)),
       }));
-      const res = await fetch(`/api/classes/${classId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ units }),
-      });
-      const data = await res.json();
-      if (data.class) {
-        setCls(data.class);
-        const found = data.class.units
-          .flatMap((u: { subunits: Section[] }) => u.subunits)
-          .find((s: Section) => s.id === normalized.id);
+      const updatedClass = updateClass(classId, { units });
+      if (updatedClass) {
+        setCls(updatedClass);
+        const found = updatedClass.units
+          .flatMap((u) => u.subunits)
+          .find((s) => s.id === normalized.id);
         setSection(found ? normalizeSection(found) : normalized);
       }
       setSaving(false);

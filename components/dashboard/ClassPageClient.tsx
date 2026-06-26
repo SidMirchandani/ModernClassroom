@@ -7,6 +7,8 @@ import { ClassTeacherView } from "@/components/teacher/ClassTeacherView";
 import { ClassStudentView } from "@/components/student/ClassStudentView";
 import { Loader2 } from "lucide-react";
 import type { PublicUser } from "@/lib/db/types";
+import { getCurrentUser } from "@/lib/auth-client";
+import { getClassDetail } from "@/lib/db/client";
 
 export function ClassPageClient({ classId }: { classId: string }) {
   const router = useRouter();
@@ -15,25 +17,20 @@ export function ClassPageClient({ classId }: { classId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      const meRes = await fetch("/api/auth/me");
-      const meData = await meRes.json();
-      if (!meData.user) {
-        router.replace("/?auth=login");
-        return;
-      }
-      setUser(meData.user);
-
-      const clsRes = await fetch(`/api/classes/${classId}`);
-      if (!clsRes.ok) {
-        router.replace("/dashboard");
-        return;
-      }
-      const clsData = await clsRes.json();
-      setRole(clsData.role);
-      setLoading(false);
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      router.replace("/?auth=login");
+      return;
     }
-    load();
+    setUser(currentUser);
+
+    const detail = getClassDetail(classId, currentUser.id);
+    if (!detail) {
+      router.replace("/dashboard");
+      return;
+    }
+    setRole(detail.role);
+    setLoading(false);
   }, [classId, router]);
 
   if (loading || !user || !role) {

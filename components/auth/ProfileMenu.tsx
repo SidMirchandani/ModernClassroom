@@ -6,6 +6,7 @@ import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getUserInitials } from "@/lib/avatar";
 import { UserAvatar } from "@/components/UserAvatar";
+import { getCurrentUser, logoutUser } from "@/lib/auth-client";
 import type { PublicUser } from "@/lib/db/types";
 
 export function ProfileMenu() {
@@ -15,10 +16,7 @@ export function ProfileMenu() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => setUser(d.user ?? null))
-      .catch(() => setUser(null));
+    setUser(getCurrentUser());
   }, []);
 
   useEffect(() => {
@@ -32,10 +30,9 @@ export function ProfileMenu() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [open]);
 
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+  function handleLogout() {
+    logoutUser();
     router.push("/");
-    router.refresh();
   }
 
   if (!user) return null;

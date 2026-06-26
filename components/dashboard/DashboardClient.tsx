@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell, type DashboardMode } from "./DashboardShell";
-import type { ClassSummary } from "@/lib/db/types";
+import { getCurrentUser } from "@/lib/auth-client";
+import {
+  createClassForTeacher,
+  joinClassWithCode,
+  listClassSummaries,
+} from "@/lib/db/client";
 import {
   GraduationCap,
   LayoutGrid,
@@ -17,39 +22,33 @@ import { cn } from "@/lib/utils";
 export function DashboardClient() {
   const router = useRouter();
   const [mode, setMode] = useState<DashboardMode>("teaching");
-  const [classes, setClasses] = useState<ClassSummary[]>([]);
+  const [classes, setClasses] = useState<
+    ReturnType<typeof listClassSummaries>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [joining, setJoining] = useState(false);
 
   useEffect(() => {
-    async function load() {
-      const meRes = await fetch("/api/auth/me");
-      const meData = await meRes.json();
-      if (!meData.user) {
-        router.replace("/?auth=login");
-        return;
-      }
-
-      const clsRes = await fetch("/api/classes");
-      const clsData = await clsRes.json();
-      setClasses(clsData.classes ?? []);
-      setLoading(false);
+    const user = getCurrentUser();
+    if (!user) {
+      router.replace("/?auth=login");
+      return;
     }
-    load();
+    setClasses(listClassSummaries(user.id));
+    setLoading(false);
   }, [router]);
 
   const filteredClasses = classes.filter((cls) =>
     mode === "teaching" ? cls.role === "teacher" : cls.role === "student"
   );
 
-  async function handleCreateClass() {
-    const res = await fetch("/api/classes", { method: "POST" });
-    const data = await res.json();
-    if (data.class) {
-      router.push(`/dashboard/class/${data.class.id}`);
-    }
+  function handleCreateClass() {
+    const user = getCurrentUser();
+    if (!user) return;
+    const cls = createClassForTeacher(user.id);
+    router.push(`/dashboard/class/${cls.id}`);
   }
 
   async function handleJoin(e: React.FormEvent) {
@@ -57,14 +56,10 @@ export function DashboardClient() {
     setJoinError("");
     setJoining(true);
     try {
-      const res = await fetch("/api/classes/join", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: joinCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to join");
-      router.push(`/dashboard/class/${data.class.id}`);
+      const user = getCurrentUser();
+      if (!user) throw new Error("Not logged in");
+      const cls = joinClassWithCode(user.id, joinCode);
+      router.push(`/dashboard/class/${cls.id}`);
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : "Failed to join");
     } finally {

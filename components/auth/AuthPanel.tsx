@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { PublicUser } from "@/lib/db/types";
+import { loginUser, signupUser } from "@/lib/auth-client";
 
 type AuthMode = "login" | "signup";
 
@@ -36,26 +36,13 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
 
     try {
       if (mode === "login") {
-        const res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ identifier, password }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Login failed");
+        await loginUser(identifier, password);
       } else {
-        const res = await fetch("/api/auth/signup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, firstName, lastName }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Signup failed");
+        await signupUser({ email, password, firstName, lastName });
       }
 
       onSuccess?.();
       router.push("/dashboard");
-      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -230,4 +217,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputClass =
   "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400";
 
-export type { PublicUser };

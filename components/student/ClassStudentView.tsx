@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Unit, StudentProgress, Section } from "@/lib/types";
+import { getClassDetail, saveStudentProgress } from "@/lib/db/client";
 import type { DbClass } from "@/lib/db/types";
 import {
   canAccessSection,
@@ -79,47 +80,33 @@ export function ClassStudentView({
   const sectionIds = unit?.sections.map((s) => s.id) ?? [];
 
   useEffect(() => {
-    async function load() {
-      const res = await fetch(`/api/classes/${classId}`);
-      if (!res.ok) {
-        router.replace("/dashboard");
-        return;
-      }
-      const data = await res.json();
-      setCls(data.class);
-      setBlockSectionId(data.class.blockSectionId);
-
-      const myProgress = (data.progress ?? []).find(
-        (p: { studentId: string }) => p.studentId === studentId
-      );
-      const ids = data.class.units.flatMap((u: { subunits: Section[] }) =>
-        u.subunits.map((s: Section) => s.id)
-      );
-      const initial: StudentProgress = {
-        studentId,
-        unitId: 1,
-        sections: myProgress?.sections ?? {},
-      };
-      const normalized = normalizeProgress(initial, ids, data.class.blockSectionId);
-      setProgress(normalized);
-      setActiveSectionId(firstAccessibleSection(normalized, ids, data.class.blockSectionId));
-      setLoading(false);
+    const data = getClassDetail(classId, studentId);
+    if (!data) {
+      router.replace("/dashboard");
+      return;
     }
-    load();
+    setCls(data.class);
+    setBlockSectionId(data.class.blockSectionId);
+
+    const myProgress = data.progress.find((p) => p.studentId === studentId);
+    const ids = data.class.units.flatMap((u) => u.subunits.map((s) => s.id));
+    const initial: StudentProgress = {
+      studentId,
+      unitId: 1,
+      sections: myProgress?.sections ?? {},
+    };
+    const normalized = normalizeProgress(initial, ids, data.class.blockSectionId);
+    setProgress(normalized);
+    setActiveSectionId(firstAccessibleSection(normalized, ids, data.class.blockSectionId));
+    setLoading(false);
   }, [classId, studentId, router]);
 
   const saveProgress = useCallback(
-    async (updated: StudentProgress) => {
-      await fetch(`/api/classes/${classId}/progress`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          progress: {
-            classId,
-            studentId,
-            sections: updated.sections,
-          },
-        }),
+    (updated: StudentProgress) => {
+      saveStudentProgress({
+        classId,
+        studentId,
+        sections: updated.sections,
       });
     },
     [classId, studentId]
