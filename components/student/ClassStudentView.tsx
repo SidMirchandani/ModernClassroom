@@ -19,6 +19,8 @@ import { BottomAlert } from "./BottomAlert";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { Logo } from "@/components/Logo";
+import { UserAvatar } from "@/components/UserAvatar";
+import { AppNavbar } from "@/components/AppNavbar";
 import { ArrowLeft, ChevronUp, List, X, Loader2 } from "lucide-react";
 
 interface ClassStudentViewProps {
@@ -160,6 +162,9 @@ export function ClassStudentView({
             updated.practiceProofUrl = proofUrl ?? DEMO_PROOF_PLACEHOLDER;
           }
         }
+        if (status === "done") {
+          updated.sentBackForReview = false;
+        }
         if (activity === "learn" && (status === "done" || status === "help")) {
           if (updated.practice === "locked") updated.practice = "available";
         }
@@ -205,32 +210,39 @@ export function ClassStudentView({
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0a0e]">
       <div className="sticky top-0 z-20 bg-white dark:bg-slate-950">
-        <header className="border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Dashboard</span>
-            </Link>
-            <span className="text-slate-300">|</span>
-            <Logo size={24} showText={false} />
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm">
-              <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">
-                {studentAvatar}
-              </div>
-              <span className="font-medium">{studentName}</span>
+        <AppNavbar
+          left={
+            <div className="flex items-center gap-3 min-w-0">
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </Link>
+              <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+              <Logo size={24} showText={false} />
             </div>
-            <ThemeToggle />
-            <ProfileMenu />
-          </div>
-        </header>
-        <div className="px-4 sm:px-6 border-b py-3">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{cls.name}</span>
+          }
+          right={
+            <>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm">
+                <UserAvatar initials={studentAvatar} size="xs" />
+                <span className="font-medium hidden sm:inline">{studentName}</span>
+              </div>
+              <ThemeToggle />
+              <ProfileMenu />
+            </>
+          }
+        />
+        <div className="h-11 px-5 sm:px-6 border-b border-slate-200 dark:border-slate-800 flex items-center">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">
+            {cls.name}
+          </span>
         </div>
       </div>
 
-      <div className="md:hidden sticky top-[97px] z-10 bg-white dark:bg-slate-950 border-b px-4 py-2.5">
+      <div className="md:hidden sticky top-[6.75rem] z-10 bg-white dark:bg-slate-950 border-b px-4 py-2.5">
         <button
           type="button"
           onClick={() => setSidebarOpen(true)}

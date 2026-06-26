@@ -9,7 +9,7 @@ import {
   normalizeProgress,
   resolveSectionProgress,
 } from "@/lib/progress";
-import { loadStudentProgress, upsertStudentProgress } from "@/lib/progress-store";
+import { loadStudentProgress, upsertStudentProgress, PROGRESS_CHANGE_EVENT } from "@/lib/progress-store";
 import {
   getProgressBlockSectionId,
   isBeyondProgressBlock,
@@ -21,6 +21,10 @@ import { SectionView } from "./SectionView";
 import { BottomAlert } from "./BottomAlert";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
+import { UserAvatar } from "@/components/UserAvatar";
+import { AppNavbar } from "@/components/AppNavbar";
+import { getInitialsFromName } from "@/lib/avatar";
+import { useDemoNotice } from "@/components/demo/DemoProvider";
 import Link from "next/link";
 import { ArrowLeft, ChevronDown, ChevronUp, List, X } from "lucide-react";
 
@@ -43,6 +47,7 @@ function firstAccessibleSection(progress: StudentProgress): string {
 }
 
 export function StudentDashboard() {
+  const notifyDemo = useDemoNotice();
   const [progress, setProgress] = useState<StudentProgress | null>(null);
   const [activeSectionId, setActiveSectionId] = useState(UNIT.sections[0].id);
   const [studentDropdown, setStudentDropdown] = useState(false);
@@ -65,14 +70,20 @@ export function StudentDashboard() {
   }, []);
 
   useEffect(() => {
-    const refreshBlock = () => setBlockSectionId(getProgressBlockSectionId());
-    window.addEventListener("focus", refreshBlock);
-    window.addEventListener(PROGRESS_BLOCK_CHANGE_EVENT, refreshBlock);
-    return () => {
-      window.removeEventListener("focus", refreshBlock);
-      window.removeEventListener(PROGRESS_BLOCK_CHANGE_EVENT, refreshBlock);
+    const refresh = () => {
+      const loaded = loadProgress(selectedStudent.id);
+      setProgress(loaded);
+      setBlockSectionId(getProgressBlockSectionId());
     };
-  }, []);
+    window.addEventListener("focus", refresh);
+    window.addEventListener(PROGRESS_CHANGE_EVENT, refresh);
+    window.addEventListener(PROGRESS_BLOCK_CHANGE_EVENT, refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(PROGRESS_CHANGE_EVENT, refresh);
+      window.removeEventListener(PROGRESS_BLOCK_CHANGE_EVENT, refresh);
+    };
+  }, [selectedStudent.id]);
 
   useEffect(() => {
     if (!progress) return;
@@ -125,6 +136,7 @@ export function StudentDashboard() {
       status: "done" | "help",
       proofUrl?: string
     ) => {
+      notifyDemo();
       setProgress((prev) => {
         if (!prev) return prev;
         const current = resolveSectionProgress(prev, sectionId);
@@ -137,6 +149,10 @@ export function StudentDashboard() {
           if (!updated.practiceProofUrl) {
             updated.practiceProofUrl = proofUrl ?? DEMO_PROOF_PLACEHOLDER;
           }
+        }
+
+        if (status === "done") {
+          updated.sentBackForReview = false;
         }
 
         // Done or help unlocks the next step
@@ -156,7 +172,7 @@ export function StudentDashboard() {
         return next;
       });
     },
-    []
+    [notifyDemo]
   );
 
   const activeSection = UNIT.sections.find((s) => s.id === activeSectionId)!;
@@ -175,78 +191,70 @@ export function StudentDashboard() {
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0a0e]">
       {/* Sticky top: nav + unit banner */}
       <div className="sticky top-0 z-20 bg-white dark:bg-slate-950">
-        <header className="border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors text-sm"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Home</span>
-            </Link>
-            <span className="text-slate-300 dark:text-slate-700">|</span>
-            <div className="flex items-center gap-2">
-              <Logo size={24} showText={false} />
-              <span className="font-semibold text-slate-900 dark:text-slate-100 text-sm">
-                Student View
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <button
-                onClick={() => setStudentDropdown((v) => !v)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm"
+        <AppNavbar
+          left={
+            <div className="flex items-center gap-3 min-w-0">
+              <Link
+                href="/"
+                className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors text-sm shrink-0"
               >
-                <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-bold text-blue-700 dark:text-blue-300">
-                  {selectedStudent.avatar}
-                </div>
-                <span className="text-slate-700 dark:text-slate-300 font-medium">
-                  {selectedStudent.name}
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-
-              {studentDropdown && (
-                <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden z-50">
-                  {STUDENTS.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => handleStudentChange(s.id)}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-left transition-colors"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-bold text-blue-700 dark:text-blue-300">
-                        {s.avatar}
-                      </div>
-                      <span className="text-slate-700 dark:text-slate-300">{s.name}</span>
-                      {s.id === selectedStudent.id && (
-                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Home</span>
+              </Link>
+              <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+              <Logo size={24} showText={false} />
             </div>
-            <ThemeToggle />
-          </div>
-        </header>
+          }
+          right={
+            <>
+              <div className="relative">
+                <button
+                  onClick={() => setStudentDropdown((v) => !v)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm"
+                >
+                  <UserAvatar initials={getInitialsFromName(selectedStudent.name)} size="xs" />
+                  <span className="text-slate-700 dark:text-slate-300 font-medium hidden sm:inline">
+                    {selectedStudent.name}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                </button>
 
-      <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-800 py-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-              Unit {UNIT.id}
-            </span>
-            <span className="text-slate-300 dark:text-slate-700">·</span>
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              {UNIT.title}
-            </span>
-          </div>
-        </div>
+                {studentDropdown && (
+                  <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden z-50">
+                    {STUDENTS.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => handleStudentChange(s.id)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-left transition-colors"
+                      >
+                        <UserAvatar initials={getInitialsFromName(s.name)} size="xs" />
+                        <span className="text-slate-700 dark:text-slate-300">{s.name}</span>
+                        {s.id === selectedStudent.id && (
+                          <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <ThemeToggle />
+            </>
+          }
+        />
+
+      <div className="h-11 px-5 sm:px-6 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+        <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+          Unit {UNIT.id}
+        </span>
+        <span className="text-slate-300 dark:text-slate-700">·</span>
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          {UNIT.title}
+        </span>
+      </div>
       </div>
 
       {/* Mobile: minimized section picker */}
-      <div className="md:hidden sticky top-[97px] z-10 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5">
+      <div className="md:hidden sticky top-[6.75rem] z-10 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5">
         <button
           type="button"
           onClick={() => setSidebarOpen(true)}

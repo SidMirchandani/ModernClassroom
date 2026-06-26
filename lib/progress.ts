@@ -126,6 +126,12 @@ export function needsTeacherReview(
   );
 }
 
+export {
+  applySendBackForReview,
+  hasRevisionNotice,
+  resolveHelpAsAllGood,
+} from "./class-progress";
+
 export type TeacherSectionStatus =
   | "not-started"
   | "in-progress"

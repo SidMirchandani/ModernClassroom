@@ -25,6 +25,7 @@ interface Props {
   requiresProof?: boolean;
   proofUrl?: string;
   onStatusChange: (status: "done" | "help", proofUrl?: string) => void;
+  readOnly?: boolean;
 }
 
 const colorMap = {
@@ -199,6 +200,7 @@ export function ActivityCard({
   requiresProof,
   proofUrl,
   onStatusChange,
+  readOnly = false,
 }: Props) {
   const [uploadedFile, setUploadedFile] = useState<string | null>(proofUrl ?? null);
   const [dragging, setDragging] = useState(false);
@@ -212,6 +214,7 @@ export function ActivityCard({
   const displayStatus = toDisplayStatus(status);
   const isDone = status === "done";
   const isHelp = status === "help";
+  const showLocked = locked && !readOnly;
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
@@ -238,7 +241,7 @@ export function ActivityCard({
       className={cn(
         "rounded-2xl border bg-white dark:bg-slate-900 overflow-hidden transition-opacity",
         c.border,
-        locked && "opacity-60"
+        showLocked && "opacity-60"
       )}
     >
       <div className={cn("flex items-center gap-3 px-5 py-4 border-b", c.header)}>
@@ -247,18 +250,20 @@ export function ActivityCard({
         </div>
         <span className="font-semibold text-slate-900 dark:text-slate-100">{title}</span>
 
-        <div className="ml-auto shrink-0">
-          <StatusDropdown
-            displayStatus={displayStatus}
-            onSelect={handleStatusSelect}
-            requiresProof={requiresProof}
-            hasProof={!!uploadedFile}
-          />
-        </div>
+        {!readOnly && (
+          <div className="ml-auto shrink-0">
+            <StatusDropdown
+              displayStatus={displayStatus}
+              onSelect={handleStatusSelect}
+              requiresProof={requiresProof}
+              hasProof={!!uploadedFile}
+            />
+          </div>
+        )}
       </div>
 
       <div className="px-5 py-4">
-        {locked ? (
+        {showLocked ? (
           <p className="text-sm text-slate-400 dark:text-slate-600 flex items-center gap-2">
             <Lock className="w-3.5 h-3.5 shrink-0" />
             {lockedMessage}
@@ -267,7 +272,7 @@ export function ActivityCard({
           <div className="space-y-4">
             <div>{children}</div>
 
-            {requiresProof && !isDone && (
+            {requiresProof && !isDone && !readOnly && (
               <div>
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                   Proof of Completion
@@ -343,7 +348,7 @@ export function ActivityCard({
               </div>
             )}
 
-            {isHelp && (
+            {isHelp && !readOnly && (
               <p className="text-xs text-slate-400 dark:text-slate-600">
                 Help! — your teacher will follow up. You can continue to the next step.
               </p>

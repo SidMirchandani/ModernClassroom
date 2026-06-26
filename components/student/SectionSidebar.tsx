@@ -9,9 +9,10 @@ import { isBeyondProgressBlock } from "@/lib/progress-block-store";
 import {
   canAccessSection as classCanAccess,
   getStudentSectionStatus as classGetStudentSectionStatus,
+  hasRevisionNotice,
   isBeyondBlock,
 } from "@/lib/class-progress";
-import { CheckCircle2, Circle, HelpCircle, Lock } from "lucide-react";
+import { CheckCircle2, Circle, HelpCircle, Lock, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -71,6 +72,7 @@ export function SectionSidebarContent({
       <nav className="space-y-0.5">
         {unit.sections.map((section) => {
           const status = getStatus(section.id);
+          const needsRevision = hasRevisionNotice(progress.sections[section.id]);
           const isActive = section.id === activeSectionId;
           const teacherBlocked = isBlocked(section.id);
           const accessible = canAccess(section.id);
@@ -104,19 +106,30 @@ export function SectionSidebarContent({
                 locked={!accessible}
                 teacherBlocked={teacherBlocked}
                 active={isActive}
+                needsRevision={needsRevision}
               />
               <div className="min-w-0 flex-1">
-                <div
-                  className={cn(
-                    "text-sm font-medium leading-tight",
-                    isActive
-                      ? "text-blue-700 dark:text-blue-300"
-                      : accessible
-                        ? "text-slate-700 dark:text-slate-300"
-                        : "text-slate-400 dark:text-slate-600"
+                <div className="flex items-center gap-1.5">
+                  <div
+                    className={cn(
+                      "text-sm font-medium leading-tight",
+                      isActive
+                        ? "text-blue-700 dark:text-blue-300"
+                        : accessible
+                          ? "text-slate-700 dark:text-slate-300"
+                          : "text-slate-400 dark:text-slate-600"
+                    )}
+                  >
+                    {section.id}
+                  </div>
+                  {needsRevision && (
+                    <span
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 shrink-0"
+                      title="Sent back for review"
+                    >
+                      <AlertCircle className="w-3 h-3" />
+                    </span>
                   )}
-                >
-                  {section.id}
                 </div>
                 <div className="text-xs text-slate-400 dark:text-slate-600 leading-snug mt-0.5">
                   {section.title}
@@ -200,11 +213,13 @@ function StatusIcon({
   locked,
   teacherBlocked,
   active,
+  needsRevision,
 }: {
   status: "not-started" | "in-progress" | "complete" | "help";
   locked: boolean;
   teacherBlocked?: boolean;
   active: boolean;
+  needsRevision?: boolean;
 }) {
   if (locked) {
     return (
@@ -224,12 +239,17 @@ function StatusIcon({
   }
   if (status === "in-progress") {
     return (
-      <div
-        className={cn(
-          "w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-0.5",
-          active ? "border-blue-500" : "border-blue-400 dark:border-blue-600"
+      <div className="relative shrink-0 mt-0.5">
+        <div
+          className={cn(
+            "w-3.5 h-3.5 rounded-full border-2",
+            active ? "border-blue-500" : "border-blue-400 dark:border-blue-600"
+          )}
+        />
+        {needsRevision && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white dark:ring-slate-900" />
         )}
-      />
+      </div>
     );
   }
   return (

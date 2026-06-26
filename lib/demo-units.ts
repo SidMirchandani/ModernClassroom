@@ -1,7 +1,8 @@
-import type { Section, StudentProgress, Unit } from "./types";
+import type { ContentBlock, Section, StudentProgress, Unit } from "./types";
 import { STUDENTS } from "./students";
 
 export const DEMO_CLASS_NAME = "Algebra II, Honors";
+export const DEMO_CLASS_CODE = "482910";
 
 function makeSection(
   unitNum: number,
@@ -10,6 +11,57 @@ function makeSection(
   practiceNote?: string
 ): Section {
   const id = `${unitNum}.${num}`;
+  const blocks: ContentBlock[] = [
+    {
+      id: `learn-${id}-1`,
+      type: "learn",
+      title: `Khan Academy – ${title}`,
+      attachments: [
+        {
+          id: `learn-${id}-1-a`,
+          kind: "link",
+          label: `Khan Academy – ${title}`,
+          url: "https://www.khanacademy.org/",
+        },
+      ],
+    },
+    {
+      id: `learn-${id}-2`,
+      type: "learn",
+      title: `Delta Math – ${id}`,
+      attachments: [
+        {
+          id: `learn-${id}-2-a`,
+          kind: "link",
+          label: `Delta Math – ${id}`,
+          url: "https://www.deltamath.com/",
+        },
+      ],
+    },
+    {
+      id: `practice-${id}`,
+      type: "practice",
+      title: "Practice Assignment",
+      description:
+        practiceNote ??
+        `Complete the assigned practice for Section ${id} and upload a screenshot of your work.`,
+      attachments: [],
+    },
+    {
+      id: `extra-${id}`,
+      type: "extra",
+      title: "Desmos Exploration",
+      attachments: [
+        {
+          id: `extra-${id}-a`,
+          kind: "link",
+          label: "Desmos Exploration",
+          url: "https://www.desmos.com/",
+        },
+      ],
+    },
+  ];
+
   return {
     id,
     title,
@@ -17,15 +69,53 @@ function makeSection(
       { id: `${id}.1`, text: `I can apply key concepts from ${title}` },
       { id: `${id}.2`, text: `I can solve problems involving ${title.toLowerCase()}` },
     ],
-    learnResources: [
-      { label: `Khan Academy – ${title}`, url: "https://www.khanacademy.org/" },
-      { label: `Delta Math – ${id}`, url: "https://www.deltamath.com/" },
-    ],
-    practiceDescription:
-      practiceNote ??
-      `Complete the assigned practice for Section ${id} and upload a screenshot of your work.`,
-    extraMaterials: [{ label: "Desmos Exploration", url: "https://www.desmos.com/" }],
+    blocks,
   };
+}
+
+function legacySection(
+  id: string,
+  title: string,
+  objectives: Section["objectives"],
+  learnResources: { label: string; url: string }[],
+  practiceDescription: string,
+  extraMaterials: { label: string; url: string }[]
+): Section {
+  const blocks: ContentBlock[] = [];
+
+  learnResources.forEach((r, i) => {
+    blocks.push({
+      id: `${id}-learn-${i}`,
+      type: "learn",
+      title: r.label,
+      attachments: [
+        { id: `${id}-learn-${i}-a`, kind: "link", label: r.label, url: r.url },
+      ],
+    });
+  });
+
+  if (practiceDescription.trim()) {
+    blocks.push({
+      id: `${id}-practice`,
+      type: "practice",
+      title: "Practice Assignment",
+      description: practiceDescription,
+      attachments: [],
+    });
+  }
+
+  extraMaterials.forEach((r, i) => {
+    blocks.push({
+      id: `${id}-extra-${i}`,
+      type: "extra",
+      title: r.label,
+      attachments: [
+        { id: `${id}-extra-${i}-a`, kind: "link", label: r.label, url: r.url },
+      ],
+    });
+  });
+
+  return { id, title, objectives, blocks };
 }
 
 const UNIT_1: Unit = {
@@ -60,109 +150,109 @@ const UNIT_3: Unit = {
   id: 3,
   title: "Linear Models and Systems",
   sections: [
-    {
-      id: "3.1",
-      title: "Slope & Recursive Formulas",
-      objectives: [
+    legacySection(
+      "3.1",
+      "Slope & Recursive Formulas",
+      [
         { id: "3.1.1", text: "I can compute slope given any scenario" },
         { id: "3.1.2", text: "I can relate recursive formulas to linear equations" },
         { id: "3.1.3", text: "I can interpret slope and intercepts in relation to a problem" },
         { id: "3.1.4", text: "I can interpret and classify: Recursion, linear and graphical models" },
       ],
-      learnResources: [
+      [
         { label: "Khan Academy – Slope", url: "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:linear-equations-graphs" },
         { label: "Delta Math – Section 3.1", url: "https://www.deltamath.com/" },
       ],
-      practiceDescription: "Complete the assigned Delta Math problems for Section 3.1 and upload a screenshot of your completed score.",
-      extraMaterials: [{ label: "Calculator Notes – Slope", url: "https://www.desmos.com/" }],
-    },
-    {
-      id: "3.2",
-      title: "Linear Equations as Models",
-      objectives: [
+      "Complete the assigned Delta Math problems for Section 3.1 and upload a screenshot of your completed score.",
+      [{ label: "Calculator Notes – Slope", url: "https://www.desmos.com/" }]
+    ),
+    legacySection(
+      "3.2",
+      "Linear Equations as Models",
+      [
         { id: "3.2.1", text: "I can create linear equations to model data" },
         { id: "3.2.2", text: "I can define linear descriptive vocabulary" },
         { id: "3.2.3", text: "I can write and interpret all 5 forms of linear equations" },
       ],
-      learnResources: [
+      [
         { label: "Khan Academy – Writing Linear Equations", url: "https://www.khanacademy.org/" },
         { label: "Edpuzzle – Section 3.2 Video", url: "https://edpuzzle.com/" },
       ],
-      practiceDescription: "Complete the Section 3.2 worksheet and upload a photo or scan of your finished work.",
-      extraMaterials: [{ label: "Desmos Activity – Lines", url: "https://www.desmos.com/activities" }],
-    },
-    {
-      id: "3.3",
-      title: "Line of Best Fit",
-      objectives: [
+      "Complete the Section 3.2 worksheet and upload a photo or scan of your finished work.",
+      [{ label: "Desmos Activity – Lines", url: "https://www.desmos.com/activities" }]
+    ),
+    legacySection(
+      "3.3",
+      "Line of Best Fit",
+      [
         { id: "3.3.1", text: "I can create and interpret the line of best fit by hand" },
         { id: "3.3.2", text: "I can use a line of best fit to interpolate and extrapolate data" },
       ],
-      learnResources: [
+      [
         { label: "Khan Academy – Scatter Plots", url: "https://www.khanacademy.org/" },
         { label: "CK-12 – Line of Best Fit", url: "https://www.ck12.org/" },
       ],
-      practiceDescription: "Using the provided data set, draw a line of best fit by hand and answer the analysis questions. Upload a photo of your work.",
-      extraMaterials: [{ label: "Desmos Regression Explorer", url: "https://www.desmos.com/" }],
-    },
-    {
-      id: "3.4",
-      title: "Median-Median Line",
-      objectives: [
+      "Using the provided data set, draw a line of best fit by hand and answer the analysis questions. Upload a photo of your work.",
+      [{ label: "Desmos Regression Explorer", url: "https://www.desmos.com/" }]
+    ),
+    legacySection(
+      "3.4",
+      "Median-Median Line",
+      [
         { id: "3.4.1", text: "I can create appropriate bins for a data set" },
         { id: "3.4.2", text: "I can find the median-median line of a small data set by hand" },
         { id: "3.4.3", text: "I can classify causation and correlation, and predicted outcomes" },
       ],
-      learnResources: [
+      [
         { label: "Notes – Median-Median Line", url: "https://www.khanacademy.org/" },
         { label: "Video – Correlation vs Causation", url: "https://www.youtube.com/" },
       ],
-      practiceDescription: "Complete the median-median line practice problems. Show all work and upload a clear photo.",
-      extraMaterials: [{ label: "Correlation Simulator", url: "https://www.rossmanchance.com/" }],
-    },
-    {
-      id: "3.5",
-      title: "Residuals & RMSE",
-      objectives: [
+      "Complete the median-median line practice problems. Show all work and upload a clear photo.",
+      [{ label: "Correlation Simulator", url: "https://www.rossmanchance.com/" }]
+    ),
+    legacySection(
+      "3.5",
+      "Residuals & RMSE",
+      [
         { id: "3.5.1", text: "I can interpret the meaning of residuals" },
         { id: "3.5.2", text: "I can compute the root mean square error" },
       ],
-      learnResources: [
+      [
         { label: "Khan Academy – Residuals", url: "https://www.khanacademy.org/" },
         { label: "Edpuzzle – RMSE Explained", url: "https://edpuzzle.com/" },
       ],
-      practiceDescription: "Complete the residuals and RMSE problems on Delta Math. Upload your completion screenshot.",
-      extraMaterials: [{ label: "RMSE Calculator Tool", url: "https://www.desmos.com/" }],
-    },
-    {
-      id: "3.6",
-      title: "Linear Systems – Graphical",
-      objectives: [
+      "Complete the residuals and RMSE problems on Delta Math. Upload your completion screenshot.",
+      [{ label: "RMSE Calculator Tool", url: "https://www.desmos.com/" }]
+    ),
+    legacySection(
+      "3.6",
+      "Linear Systems – Graphical",
+      [
         { id: "3.6.1", text: "I can estimate solutions to linear systems graphically and numerically" },
         { id: "3.6.2", text: "I can describe how the property of equality relates to solving systems" },
       ],
-      learnResources: [
+      [
         { label: "Khan Academy – Systems of Equations", url: "https://www.khanacademy.org/" },
         { label: "Desmos – Graphing Systems", url: "https://www.desmos.com/" },
       ],
-      practiceDescription: "Graph each system of equations and identify the solution. Upload a screenshot from Desmos showing your graphs.",
-      extraMaterials: [{ label: "Systems of Equations Activity", url: "https://teacher.desmos.com/" }],
-    },
-    {
-      id: "3.7",
-      title: "Linear Systems – Algebraic",
-      objectives: [
+      "Graph each system of equations and identify the solution. Upload a screenshot from Desmos showing your graphs.",
+      [{ label: "Systems of Equations Activity", url: "https://teacher.desmos.com/" }]
+    ),
+    legacySection(
+      "3.7",
+      "Linear Systems – Algebraic",
+      [
         { id: "3.7.1", text: "I can define linear descriptive vocabulary for systems" },
         { id: "3.7.2", text: "I can solve a system algebraically" },
         { id: "3.7.3", text: "I can create and solve real-world problems using systems" },
       ],
-      learnResources: [
+      [
         { label: "Khan Academy – Substitution", url: "https://www.khanacademy.org/" },
         { label: "Khan Academy – Elimination", url: "https://www.khanacademy.org/" },
       ],
-      practiceDescription: "Complete the algebraic systems worksheet (substitution and elimination). Upload a photo of your completed work.",
-      extraMaterials: [{ label: "Real-World Systems Problems", url: "https://www.desmos.com/" }],
-    },
+      "Complete the algebraic systems worksheet (substitution and elimination). Upload a photo of your completed work.",
+      [{ label: "Real-World Systems Problems", url: "https://www.desmos.com/" }]
+    ),
   ],
   quizzes: [
     { id: "quiz-3a", title: "Quiz 3A", dueDate: "10/12 or 10/13", afterSection: "3.5" },

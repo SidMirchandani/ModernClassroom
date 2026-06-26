@@ -16,6 +16,7 @@ export {
   DEMO_PROGRESS,
   DEMO_UNITS,
   DEMO_CLASS_NAME,
+  DEMO_CLASS_CODE,
   DEMO_UNIT_3_PROGRESS,
   getDemoProgressForUnit,
   demoUnitsToCurriculum,

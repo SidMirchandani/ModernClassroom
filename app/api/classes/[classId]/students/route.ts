@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getUserInitials } from "@/lib/avatar";
 import { getSessionUserId } from "@/lib/auth";
 import {
   enrollStudent,
@@ -53,7 +54,7 @@ export async function POST(request: Request, context: RouteContext) {
       id: s.id,
       name: `${s.firstName} ${s.lastName}`,
       username: s.username,
-      avatar: s.firstName.charAt(0).toUpperCase(),
+      avatar: getUserInitials(s.firstName, s.lastName),
     })),
     invites,
   });

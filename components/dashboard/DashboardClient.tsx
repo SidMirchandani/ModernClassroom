@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { ProfileMenu } from "@/components/auth/ProfileMenu";
-import { Logo } from "@/components/Logo";
+import { DashboardShell, type DashboardMode } from "./DashboardShell";
 import type { ClassSummary } from "@/lib/db/types";
 import {
   GraduationCap,
@@ -18,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 export function DashboardClient() {
   const router = useRouter();
+  const [mode, setMode] = useState<DashboardMode>("teaching");
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [joinCode, setJoinCode] = useState("");
@@ -40,6 +39,10 @@ export function DashboardClient() {
     }
     load();
   }, [router]);
+
+  const filteredClasses = classes.filter((cls) =>
+    mode === "teaching" ? cls.role === "teacher" : cls.role === "student"
+  );
 
   async function handleCreateClass() {
     const res = await fetch("/api/classes", { method: "POST" });
@@ -78,25 +81,19 @@ export function DashboardClient() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0a0e]">
-      <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-6 py-4 flex items-center justify-between">
-        <Logo href="/dashboard" textClassName="text-sm" />
-        <div className="flex items-center gap-3">
-          <ThemeToggle />
-          <ProfileMenu />
+    <DashboardShell mode={mode} onModeChange={setMode}>
+      <div className="flex items-start justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            {mode === "teaching" ? "Classes you teach" : "Classes you're enrolled in"}
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            {mode === "teaching"
+              ? "Create and manage your classes"
+              : "Join a class with a code or open one below"}
+          </p>
         </div>
-      </header>
-
-      <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-10">
-        <div className="flex items-start justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              Your classes
-            </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Classes you teach or are enrolled in
-            </p>
-          </div>
+        {mode === "teaching" && (
           <button
             type="button"
             onClick={handleCreateClass}
@@ -105,8 +102,10 @@ export function DashboardClient() {
             <Plus className="w-4 h-4" />
             New class
           </button>
-        </div>
+        )}
+      </div>
 
+      {mode === "enrolled" && (
         <form
           onSubmit={handleJoin}
           className="mb-8 flex flex-col sm:flex-row gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
@@ -133,53 +132,54 @@ export function DashboardClient() {
             <p className="text-sm text-red-600 dark:text-red-400 sm:col-span-2">{joinError}</p>
           )}
         </form>
+      )}
 
-        {classes.length === 0 ? (
-          <div className="text-center py-16 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
-            <p className="text-slate-500 dark:text-slate-400">
-              No classes yet. Create one to teach, or join with a class code.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {classes.map((cls) => (
-              <Link
-                key={cls.id}
-                href={`/dashboard/class/${cls.id}`}
-                className="flex items-center gap-4 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-400 dark:hover:border-blue-600 transition-colors group"
+      {filteredClasses.length === 0 ? (
+        <div className="text-center py-16 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+          <p className="text-slate-500 dark:text-slate-400">
+            {mode === "teaching"
+              ? "No classes yet. Create one to get started."
+              : "Not enrolled in any classes yet. Join with a class code above."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {filteredClasses.map((cls) => (
+            <Link
+              key={cls.id}
+              href={`/dashboard/class/${cls.id}`}
+              className="flex items-center gap-4 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-400 dark:hover:border-blue-600 transition-colors group"
+            >
+              <div
+                className={cn(
+                  "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
+                  cls.role === "teacher"
+                    ? "bg-violet-50 dark:bg-violet-950"
+                    : "bg-blue-50 dark:bg-blue-950"
+                )}
               >
-                <div
-                  className={cn(
-                    "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
-                    cls.role === "teacher"
-                      ? "bg-violet-50 dark:bg-violet-950"
-                      : "bg-blue-50 dark:bg-blue-950"
-                  )}
-                >
-                  {cls.role === "teacher" ? (
-                    <LayoutGrid className="w-6 h-6 text-violet-600 dark:text-violet-400" />
-                  ) : (
-                    <GraduationCap className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                  )}
+                {cls.role === "teacher" ? (
+                  <LayoutGrid className="w-6 h-6 text-violet-600 dark:text-violet-400" />
+                ) : (
+                  <GraduationCap className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  {cls.name}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {cls.name}
-                  </div>
-                  <div className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                    {cls.role === "teacher" ? "Teaching" : "Enrolled"} · {cls.studentCount}{" "}
-                    student{cls.studentCount !== 1 ? "s" : ""} · {cls.subunitCount} subunit
-                    {cls.subunitCount !== 1 ? "s" : ""}
-                  </div>
+                <div className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                  {cls.studentCount} student{cls.studentCount !== 1 ? "s" : ""} ·{" "}
+                  {cls.subunitCount} subunit{cls.subunitCount !== 1 ? "s" : ""}
                 </div>
-                <div className="text-xs font-mono text-slate-400 dark:text-slate-600 hidden sm:block">
-                  {cls.code}
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </main>
-    </div>
+              </div>
+              <div className="text-xs font-mono text-slate-400 dark:text-slate-600 hidden sm:block">
+                {cls.code}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </DashboardShell>
   );
 }

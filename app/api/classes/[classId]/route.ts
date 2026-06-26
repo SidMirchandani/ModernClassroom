@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getUserInitials } from "@/lib/avatar";
 import { getSessionUserId } from "@/lib/auth";
 import {
   getClassById,
@@ -42,7 +43,7 @@ export async function GET(_request: Request, context: RouteContext) {
       id: s.id,
       name: `${s.firstName} ${s.lastName}`,
       username: s.username,
-      avatar: s.firstName.charAt(0).toUpperCase(),
+      avatar: getUserInitials(s.firstName, s.lastName),
     })),
     invites,
     progress,

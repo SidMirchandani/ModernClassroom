@@ -122,7 +122,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               className={inputClass}
-              placeholder="you@school.edu or ScottA"
+              placeholder="Email or username"
               required
               autoComplete="username"
             />
@@ -136,6 +136,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   className={inputClass}
+                  placeholder="First name"
                   required
                   autoComplete="given-name"
                 />
@@ -146,6 +147,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   className={inputClass}
+                  placeholder="Last name"
                   required
                   autoComplete="family-name"
                 />
@@ -157,7 +159,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={inputClass}
-                placeholder="you@school.edu"
+                placeholder="Email"
                 required
                 autoComplete="email"
               />
@@ -171,7 +173,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className={inputClass}
-            placeholder={mode === "signup" ? "At least 6 characters" : ""}
+            placeholder="Password"
             required
             minLength={mode === "signup" ? 6 : undefined}
             autoComplete={mode === "login" ? "current-password" : "new-password"}

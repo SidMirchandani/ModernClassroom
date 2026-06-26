@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getUserInitials } from "@/lib/avatar";
 import { ClassTeacherView } from "@/components/teacher/ClassTeacherView";
 import { ClassStudentView } from "@/components/student/ClassStudentView";
 import { Loader2 } from "lucide-react";
@@ -52,7 +53,7 @@ export function ClassPageClient({ classId }: { classId: string }) {
       classId={classId}
       studentId={user.id}
       studentName={`${user.firstName} ${user.lastName}`}
-      studentAvatar={user.firstName.charAt(0).toUpperCase()}
+      studentAvatar={getUserInitials(user.firstName, user.lastName)}
     />
   );
 }

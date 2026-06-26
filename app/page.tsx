@@ -19,9 +19,15 @@ export default async function Home({
         <div className="flex items-center gap-3">
           <Link
             href="/demo/student"
-            className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hidden sm:inline"
+            className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium hidden sm:inline"
           >
-            Try demo
+            Try student demo
+          </Link>
+          <Link
+            href="/demo/teacher"
+            className="text-xs text-violet-600 dark:text-violet-400 hover:underline font-medium hidden sm:inline"
+          >
+            Try teacher demo
           </Link>
           <ThemeToggle />
         </div>

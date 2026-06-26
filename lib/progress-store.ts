@@ -1,8 +1,10 @@
+import { applySendBackForReview, resolveHelpAsAllGood } from "./class-progress";
 import { DEMO_PROGRESS } from "./data";
 import { DEMO_PROOF_PLACEHOLDER } from "./demo-proof";
 import type { StudentProgress } from "./types";
 
 const STORAGE_KEY = "modern-classroom-progress";
+export const PROGRESS_CHANGE_EVENT = "progress-change";
 
 function enrichProgress(data: StudentProgress[]): StudentProgress[] {
   return data.map((p) => ({
@@ -43,6 +45,7 @@ export function loadClassProgress(): StudentProgress[] {
 export function saveClassProgress(all: StudentProgress[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  window.dispatchEvent(new CustomEvent(PROGRESS_CHANGE_EVENT));
 }
 
 export function loadStudentProgress(studentId: string): StudentProgress {
@@ -74,7 +77,43 @@ export function approvePracticeSubmission(
   const section = progress?.sections[sectionId];
   if (!progress || !section) return all;
 
-  progress.sections[sectionId] = { ...section, practiceApproved: true };
+  progress.sections[sectionId] = {
+    ...section,
+    practiceApproved: true,
+    sentBackForReview: false,
+  };
+  saveClassProgress(all);
+  return all;
+}
+
+export function sendBackPracticeSubmission(
+  studentId: string,
+  sectionId: string
+): StudentProgress[] {
+  const all = loadClassProgress();
+  const progress = all.find((p) => p.studentId === studentId);
+  const section = progress?.sections[sectionId];
+  if (!progress || !section) return all;
+
+  progress.sections[sectionId] = applySendBackForReview(section);
+  saveClassProgress(all);
+  return all;
+}
+
+export function resolveHelpRequest(
+  studentId: string,
+  sectionId: string,
+  resolution: "all-good" | "send-back"
+): StudentProgress[] {
+  const all = loadClassProgress();
+  const progress = all.find((p) => p.studentId === studentId);
+  const section = progress?.sections[sectionId];
+  if (!progress || !section) return all;
+
+  progress.sections[sectionId] =
+    resolution === "send-back"
+      ? applySendBackForReview(section)
+      : resolveHelpAsAllGood(section);
   saveClassProgress(all);
   return all;
 }

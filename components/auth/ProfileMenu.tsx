@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getUserInitials } from "@/lib/avatar";
+import { UserAvatar } from "@/components/UserAvatar";
 import type { PublicUser } from "@/lib/db/types";
 
 export function ProfileMenu() {
@@ -38,7 +40,7 @@ export function ProfileMenu() {
 
   if (!user) return null;
 
-  const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+  const initials = getUserInitials(user.firstName, user.lastName);
 
   return (
     <div className="relative" ref={menuRef}>
@@ -46,24 +48,20 @@ export function ProfileMenu() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex items-center justify-center w-9 h-9 rounded-full border transition-colors",
-          open
-            ? "border-blue-400 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300"
-            : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
+          "rounded-full transition-opacity",
+          open ? "ring-2 ring-violet-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-950" : "hover:opacity-90"
         )}
         aria-label="Profile and settings"
         aria-expanded={open}
       >
-        <span className="text-xs font-bold">{initials}</span>
+        <UserAvatar initials={initials} size="md" bordered />
       </button>
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl z-50 overflow-hidden">
           <div className="px-4 py-4 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center text-sm font-bold text-violet-700 dark:text-violet-300 shrink-0">
-                {initials}
-              </div>
+              <UserAvatar initials={initials} size="lg" />
               <div className="min-w-0">
                 <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">
                   {user.firstName} {user.lastName}

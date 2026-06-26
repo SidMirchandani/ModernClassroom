@@ -4,18 +4,29 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  applySendBackForReview,
+  countClassHelpRequests,
   getTeacherSectionStatus,
+  resolveHelpAsAllGood,
+  type TeacherSectionStatus,
 } from "@/lib/class-progress";
+import { getCurrentUnitIndex, getUnitPhase } from "@/lib/unit-phase";
+import { UnitPhaseBadge } from "./UnitPhaseBadge";
 import { TableProgressGate } from "./TableProgressGate";
 import { CurriculumTable } from "./CurriculumTable";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { Logo } from "@/components/Logo";
+import { NavCapsule } from "@/components/NavCapsule";
+import { UserAvatar } from "@/components/UserAvatar";
+import { AppNavbar } from "@/components/AppNavbar";
 import { Modal } from "@/components/Modal";
 import type { DbClass, DbInvite } from "@/lib/db/types";
 import type { Student, StudentProgress } from "@/lib/types";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   LayoutGrid,
   CheckCircle2,
   HelpCircle,
@@ -26,12 +37,15 @@ import {
   Eye,
   Loader2,
   UserPlus,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type OverallStatus = "complete" | "help" | "in-progress" | "not-started" | "review";
 type StatModal = "students" | "help" | "progress" | "sections" | null;
+type TeacherView = "classroom" | "curriculum";
 type ReviewTarget = { studentId: string; sectionId: string } | null;
+type HelpTarget = { studentId: string; sectionId: string } | null;
 
 const STATUS_CONFIG: Record<OverallStatus, { label: string; classes: string; icon: React.ReactNode }> = {
   complete: {
@@ -83,16 +97,48 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const [highlightStatus, setHighlightStatus] = useState<OverallStatus | null>(null);
   const [openModal, setOpenModal] = useState<StatModal>(null);
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget>(null);
+  const [helpTarget, setHelpTarget] = useState<HelpTarget>(null);
   const [gradeNum, setGradeNum] = useState(10);
   const [gradeDenom, setGradeDenom] = useState(10);
   const [inviteInput, setInviteInput] = useState("");
   const [inviting, setInviting] = useState(false);
   const [blockSectionId, setBlockSectionId] = useState<string | null>(null);
+  const [activeUnitIndex, setActiveUnitIndex] = useState(0);
+  const [activeView, setActiveView] = useState<TeacherView>("classroom");
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const sectionColumnRefs = useRef<(HTMLTableCellElement | null)[]>([]);
 
-  const sections = cls?.units.flatMap((u) => u.subunits) ?? [];
+  const units = cls?.units ?? [];
+  const activeUnit = units[activeUnitIndex];
+  const sections = activeUnit?.subunits ?? [];
   const sectionIds = sections.map((s) => s.id);
+  const currentUnitIndex = getCurrentUnitIndex(units, blockSectionId);
+  const unitPhase = getUnitPhase(activeUnitIndex, currentUnitIndex);
+  const isActiveUnit = unitPhase === "active";
+  const effectiveBlockId =
+    isActiveUnit && blockSectionId
+      ? blockSectionId
+      : isActiveUnit && sectionIds.length > 0
+        ? sectionIds[sectionIds.length - 1]
+        : null;
+  const blockIndex = effectiveBlockId ? sectionIds.indexOf(effectiveBlockId) : -1;
+  const gateActive =
+    isActiveUnit &&
+    blockSectionId !== null &&
+    blockIndex >= 0 &&
+    blockIndex < sections.length - 1;
+
+  function getCellStatus(
+    studentProgress: StudentProgress | undefined,
+    sectionId: string,
+    sIdx: number
+  ): TeacherSectionStatus {
+    if (unitPhase === "finished") return "complete";
+    if (unitPhase === "upcoming") return "not-started";
+    if (gateActive && sIdx > blockIndex) return "not-started";
+    if (!studentProgress) return "not-started";
+    return getTeacherSectionStatus(studentProgress, sectionId, sectionIds);
+  }
 
   const loadData = useCallback(async () => {
     const res = await fetch(`/api/classes/${classId}`);
@@ -106,6 +152,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     setStudents(data.students);
     setInvites(data.invites);
     setBlockSectionId(data.class.blockSectionId);
+    setActiveUnitIndex(getCurrentUnitIndex(data.class.units, data.class.blockSectionId));
 
     const progress: StudentProgress[] = (data.progress ?? []).map(
       (p: { studentId: string; sections: StudentProgress["sections"] }) => ({
@@ -206,6 +253,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         [reviewTarget.sectionId]: {
           ...section,
           practiceApproved: true,
+          sentBackForReview: false,
           gradeNumerator: gradeNum,
           gradeDenominator: gradeDenom,
         },
@@ -215,6 +263,54 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     await saveProgress(all);
     setReviewTarget(null);
   }, [reviewTarget, classProgress, gradeNum, gradeDenom, saveProgress]);
+
+  const handleSendBack = useCallback(async () => {
+    if (!reviewTarget) return;
+    const all = [...classProgress];
+    const idx = all.findIndex((p) => p.studentId === reviewTarget.studentId);
+    if (idx < 0) return;
+
+    const section = all[idx].sections[reviewTarget.sectionId];
+    if (!section) return;
+
+    all[idx] = {
+      ...all[idx],
+      sections: {
+        ...all[idx].sections,
+        [reviewTarget.sectionId]: applySendBackForReview(section),
+      },
+    };
+
+    await saveProgress(all);
+    setReviewTarget(null);
+  }, [reviewTarget, classProgress, saveProgress]);
+
+  const handleResolveHelp = useCallback(
+    async (resolution: "all-good" | "send-back") => {
+      if (!helpTarget) return;
+      const all = [...classProgress];
+      const idx = all.findIndex((p) => p.studentId === helpTarget.studentId);
+      if (idx < 0) return;
+
+      const section = all[idx].sections[helpTarget.sectionId];
+      if (!section) return;
+
+      all[idx] = {
+        ...all[idx],
+        sections: {
+          ...all[idx].sections,
+          [helpTarget.sectionId]:
+            resolution === "send-back"
+              ? applySendBackForReview(section)
+              : resolveHelpAsAllGood(section),
+        },
+      };
+
+      await saveProgress(all);
+      setHelpTarget(null);
+    },
+    [helpTarget, classProgress, saveProgress]
+  );
 
   useEffect(() => {
     if (reviewTarget) {
@@ -237,9 +333,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     s.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const classStats = sections.map((section) => {
+  const classStats = sections.map((section, sIdx) => {
     const statuses = classProgress.map((p) =>
-      getTeacherSectionStatus(p, section.id, sectionIds)
+      getCellStatus(p, section.id, sIdx)
     );
     return {
       sectionId: section.id,
@@ -253,13 +349,6 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   });
 
   const totalStudents = students.length;
-  const effectiveBlockId =
-    blockSectionId ?? (sectionIds.length > 0 ? sectionIds[sectionIds.length - 1] : null);
-  const blockIndex = effectiveBlockId ? sectionIds.indexOf(effectiveBlockId) : -1;
-  const gateActive =
-    blockSectionId !== null &&
-    blockIndex >= 0 &&
-    blockIndex < sections.length - 1;
 
   const reviewStudent = reviewTarget
     ? students.find((s) => s.id === reviewTarget.studentId)
@@ -274,10 +363,32 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     ? reviewProgress?.sections[reviewTarget.sectionId]?.practiceProofUrl
     : undefined;
 
+  const helpStudent = helpTarget
+    ? students.find((s) => s.id === helpTarget.studentId)
+    : null;
+  const helpSection = helpTarget
+    ? sections.find((s) => s.id === helpTarget.sectionId)
+    : null;
+  const helpProgress = helpTarget
+    ? classProgress.find((p) => p.studentId === helpTarget.studentId)
+    : null;
+  const helpSectionProgress = helpTarget
+    ? helpProgress?.sections[helpTarget.sectionId]
+    : undefined;
+  const helpActivities = helpSectionProgress
+    ? (
+        [
+          helpSectionProgress.learn === "help" ? "Learn" : null,
+          helpSectionProgress.practice === "help" ? "Practice" : null,
+          helpSectionProgress.extra === "help" ? "Extra Material" : null,
+        ] as const
+      ).filter(Boolean)
+    : [];
+
   const studentProgressList = classProgress.map((p) => {
     const student = students.find((s) => s.id === p.studentId)!;
     const completedCount = sections.filter(
-      (s) => getTeacherSectionStatus(p, s.id, sectionIds) === "complete"
+      (s, sIdx) => getCellStatus(p, s.id, sIdx) === "complete"
     ).length;
     const pct = sections.length > 0 ? Math.round((completedCount / sections.length) * 100) : 0;
     return { student, completedCount, pct };
@@ -289,35 +400,53 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         studentProgressList.length
       : 0;
 
+  const pendingHelpCount = countClassHelpRequests(units, classProgress, blockSectionId);
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0a0e]">
-      <header className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-5 py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors text-sm shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Dashboard</span>
-          </Link>
-          <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
-          <Logo size={24} showText={false} />
-        </div>
-
-        <div className="flex flex-col items-center justify-center">
-          <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-600 font-medium">
-            Class code
-          </span>
-          <span className="text-xl font-mono font-bold tracking-[0.2em] text-slate-900 dark:text-slate-100">
-            {cls.code}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-end gap-2">
-          <ThemeToggle />
-          <ProfileMenu />
-        </div>
-      </header>
+      <AppNavbar
+        sticky
+        left={
+          <div className="flex items-center gap-3 min-w-0">
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors text-sm shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </Link>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+            <Logo size={24} showText={false} />
+            <span className="font-mono text-sm font-bold tracking-[0.15em] text-slate-700 dark:text-slate-300 tabular-nums">
+              {cls.code}
+            </span>
+          </div>
+        }
+        center={
+          <NavCapsule
+            tabs={[
+              {
+                id: "classroom",
+                label: "Classroom",
+                onClick: () => setActiveView("classroom"),
+                notify: pendingHelpCount > 0,
+              },
+              {
+                id: "curriculum",
+                label: "Curriculum",
+                onClick: () => setActiveView("curriculum"),
+              },
+            ]}
+            activeId={activeView}
+          />
+        }
+        right={
+          <>
+            <ThemeToggle />
+            <ProfileMenu />
+          </>
+        }
+      />
 
       <div className="max-w-7xl mx-auto w-full px-5 py-6 space-y-6">
         <div>
@@ -341,11 +470,51 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               {cls.name}
             </button>
           )}
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Teacher view · {sections.length} subunit{sections.length !== 1 ? "s" : ""}
-          </p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {units.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveUnitIndex((i) => Math.max(0, i - 1))}
+                  disabled={activeUnitIndex === 0}
+                  className="p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Previous unit"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <p className="text-sm text-slate-500 dark:text-slate-400 min-w-0 text-center flex items-center justify-center gap-2 flex-wrap">
+                  <span>{activeUnit?.title ?? "No units"}</span>
+                  {activeUnit && <UnitPhaseBadge phase={unitPhase} />}
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveUnitIndex((i) => Math.min(units.length - 1, i + 1))
+                  }
+                  disabled={activeUnitIndex >= units.length - 1}
+                  className="p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Next unit"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
+                <span>
+                  {units.length === 1
+                    ? activeUnit?.title
+                    : `Teacher view · ${sections.length} subunit${sections.length !== 1 ? "s" : ""}`}
+                </span>
+                {activeUnit && units.length === 1 && (
+                  <UnitPhaseBadge phase={unitPhase} />
+                )}
+              </p>
+            )}
+          </div>
         </div>
 
+        {activeView === "classroom" && (
+          <>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Students" value={totalStudents} sub="enrolled" icon={<Users className="w-4 h-4 text-blue-500" />} color="blue" onClick={() => setOpenModal("students")} />
           <StatCard label="Avg Progress" value={`${Math.round(avgProgress * 100)}%`} sub="complete" icon={<CheckCircle2 className="w-4 h-4 text-green-500" />} color="green" onClick={() => setOpenModal("progress")} />
@@ -387,7 +556,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
               <div ref={tableScrollRef} className="relative overflow-x-auto">
-                {effectiveBlockId && sections.length > 0 && (
+                {effectiveBlockId && isActiveUnit && sections.length > 0 && (
                   <TableProgressGate
                     blockSectionId={effectiveBlockId}
                     onChange={handleBlockChange}
@@ -423,7 +592,8 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                     {filteredStudents.map((student, idx) => {
                       const studentProgress = classProgress.find((p) => p.studentId === student.id);
                       const completedCount = sections.filter(
-                        (s) => studentProgress && getTeacherSectionStatus(studentProgress, s.id, sectionIds) === "complete"
+                        (s, sIdx) =>
+                          studentProgress && getCellStatus(studentProgress, s.id, sIdx) === "complete"
                       ).length;
                       const pct = sections.length > 0 ? Math.round((completedCount / sections.length) * 100) : 0;
 
@@ -431,18 +601,15 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                         <tr key={student.id} className={cn("border-b border-slate-100 dark:border-slate-800/50", idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50")}>
                           <td className={cn("px-4 py-3 sticky left-0 z-10", idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50")}>
                             <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center text-xs font-bold text-violet-700">
-                                {student.avatar}
-                              </div>
+                              <UserAvatar initials={student.avatar} size="sm" />
                               <span className="font-medium text-sm">{student.name}</span>
                             </div>
                           </td>
                           {sections.map((section, sIdx) => {
-                            const status = studentProgress
-                              ? getTeacherSectionStatus(studentProgress, section.id, sectionIds)
-                              : ("not-started" as const);
+                            const status = getCellStatus(studentProgress, section.id, sIdx);
                             const cfg = STATUS_CONFIG[status];
                             const isReview = status === "review";
+                            const isHelp = status === "help";
                             const beyondGate = gateActive && sIdx > blockIndex;
 
                             return (
@@ -451,6 +618,15 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                                   <button
                                     type="button"
                                     onClick={() => setReviewTarget({ studentId: student.id, sectionId: section.id })}
+                                    className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium cursor-pointer hover:opacity-80", cfg.classes)}
+                                  >
+                                    {cfg.icon}
+                                    {cfg.label}
+                                  </button>
+                                ) : isHelp ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setHelpTarget({ studentId: student.id, sectionId: section.id })}
                                     className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium cursor-pointer hover:opacity-80", cfg.classes)}
                                   >
                                     {cfg.icon}
@@ -502,6 +678,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                 </table>
               </div>
             </div>
+            {isActiveUnit && (
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-600">
               Drag the{" "}
               <span className="text-red-500 dark:text-red-400">red line</span> to set how far
@@ -517,14 +694,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               )}
               .
             </p>
+            )}
           </>
         )}
-
-        <CurriculumTable
-          classId={classId}
-          units={cls.units}
-          onUpdate={(units) => saveClass({ units })}
-        />
 
         {sections.length > 0 && (
           <div>
@@ -552,6 +724,17 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
             </div>
           </div>
         )}
+          </>
+        )}
+
+        {activeView === "curriculum" && (
+          <CurriculumTable
+            classId={classId}
+            units={cls.units}
+            onUpdate={(units) => saveClass({ units })}
+          />
+        )}
+
       </div>
 
       <Modal open={reviewTarget !== null} onClose={() => setReviewTarget(null)} title="Review Submission" className="max-w-xl">
@@ -596,12 +779,66 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
               <button type="button" onClick={handleApprove} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium">
                 <CheckCircle2 className="w-4 h-4" />
                 Submit grade & complete
               </button>
+              <button type="button" onClick={handleSendBack} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium">
+                <RotateCcw className="w-4 h-4" />
+                Send Back to Review
+              </button>
               <button type="button" onClick={() => setReviewTarget(null)} className="px-4 py-2 rounded-lg border text-sm">
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={helpTarget !== null} onClose={() => setHelpTarget(null)} title="Resolve Help Request" className="max-w-xl">
+        {helpStudent && helpSection && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center text-sm font-bold text-red-700">
+                {helpStudent.avatar}
+              </div>
+              <div>
+                <p className="font-semibold">{helpStudent.name}</p>
+                <p className="text-sm text-slate-500">
+                  {helpSection.id} · {helpSection.title}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                Help requested on
+              </p>
+              <ul className="space-y-1">
+                {helpActivities.map((activity) => (
+                  <li key={activity} className="text-sm text-red-600 font-medium">
+                    {activity}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              &ldquo;All good&rdquo; lets the student continue. &ldquo;Send back to review&rdquo;
+              notifies them to revise and resubmit.
+            </p>
+
+            <div className="flex flex-wrap gap-2 pt-2">
+              <button type="button" onClick={() => handleResolveHelp("all-good")} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium">
+                <CheckCircle2 className="w-4 h-4" />
+                All Good
+              </button>
+              <button type="button" onClick={() => handleResolveHelp("send-back")} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium">
+                <RotateCcw className="w-4 h-4" />
+                Send Back to Review
+              </button>
+              <button type="button" onClick={() => setHelpTarget(null)} className="px-4 py-2 rounded-lg border text-sm">
                 Close
               </button>
             </div>

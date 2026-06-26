@@ -1,4 +1,6 @@
+import type { CurriculumUnit } from "./db/types";
 import type { ActivityStatus, SectionActivityStatus, StudentProgress } from "./types";
+import { getCurrentUnitIndex, getUnitPhase } from "./unit-phase";
 
 export function isActivityFinished(status: ActivityStatus | undefined): boolean {
   return status === "done" || status === "help";
@@ -141,6 +143,43 @@ export function needsTeacherReview(
   );
 }
 
+export function hasRevisionNotice(
+  sectionProgress: SectionActivityStatus | undefined
+): boolean {
+  return sectionProgress?.sentBackForReview === true;
+}
+
+export function applySendBackForReview(
+  section: SectionActivityStatus
+): SectionActivityStatus {
+  const updated: SectionActivityStatus = { ...section };
+
+  if (updated.practice === "done") {
+    updated.practice = "available";
+    updated.practiceApproved = false;
+    delete updated.practiceProofUrl;
+  }
+
+  if (updated.learn === "help") updated.learn = "available";
+  if (updated.practice === "help") updated.practice = "available";
+  if (updated.extra === "help") updated.extra = "available";
+
+  updated.sentBackForReview = true;
+  return updated;
+}
+
+export function resolveHelpAsAllGood(
+  section: SectionActivityStatus
+): SectionActivityStatus {
+  const updated: SectionActivityStatus = { ...section };
+
+  if (updated.learn === "help") updated.learn = "available";
+  if (updated.practice === "help") updated.practice = "available";
+  if (updated.extra === "help") updated.extra = "available";
+
+  return updated;
+}
+
 export type TeacherSectionStatus =
   | "not-started"
   | "in-progress"
@@ -166,6 +205,40 @@ export function getTeacherSectionStatus(
   if (sectionIdx > currentIdx) return "not-started";
   if (sectionHasHelp(sectionProgress)) return "help";
   return "in-progress";
+}
+
+/** Count help requests visible to the teacher across all units. */
+export function countClassHelpRequests(
+  units: CurriculumUnit[],
+  classProgress: StudentProgress[],
+  blockSectionId: string | null
+): number {
+  if (units.length === 0) return 0;
+
+  const currentUnitIndex = getCurrentUnitIndex(units, blockSectionId);
+  let count = 0;
+
+  for (let uIdx = 0; uIdx < units.length; uIdx++) {
+    const unitPhase = getUnitPhase(uIdx, currentUnitIndex);
+    if (unitPhase === "upcoming") continue;
+
+    const sectionIds = units[uIdx].subunits.map((s) => s.id);
+    const isActiveUnit = unitPhase === "active";
+    const gateActive = isActiveUnit && blockSectionId !== null;
+    const blockIndex = blockSectionId ? sectionIds.indexOf(blockSectionId) : -1;
+
+    for (const progress of classProgress) {
+      for (let sIdx = 0; sIdx < sectionIds.length; sIdx++) {
+        if (unitPhase === "finished") continue;
+        if (gateActive && blockIndex >= 0 && sIdx > blockIndex) continue;
+        if (getTeacherSectionStatus(progress, sectionIds[sIdx], sectionIds) === "help") {
+          count++;
+        }
+      }
+    }
+  }
+
+  return count;
 }
 
 export function getStudentSectionStatus(

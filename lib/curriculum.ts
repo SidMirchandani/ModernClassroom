@@ -5,8 +5,6 @@ export function emptySection(id: string, title: string): Section {
     id,
     title,
     objectives: [],
-    learnResources: [],
-    practiceDescription: "",
-    extraMaterials: [],
+    blocks: [],
   };
 }
