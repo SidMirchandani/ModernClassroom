@@ -1,3 +1,4 @@
+import type { AccentId } from "@/lib/class-appearance";
 import { cn } from "@/lib/utils";
 
 type UserAvatarSize = "xs" | "sm" | "md" | "lg";
@@ -14,6 +15,11 @@ interface UserAvatarProps {
   size?: UserAvatarSize;
   className?: string;
   bordered?: boolean;
+  /**
+   * The person's own colour. It re-points `primary` on this element alone, so
+   * the initials stay theirs inside a class wearing a different colour.
+   */
+  accent?: AccentId;
 }
 
 export function UserAvatar({
@@ -21,9 +27,11 @@ export function UserAvatar({
   size = "md",
   className,
   bordered = false,
+  accent,
 }: UserAvatarProps) {
   return (
     <div
+      data-accent={accent}
       className={cn(
         "rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center font-bold text-primary dark:text-primary-glow shrink-0",
         SIZE_CLASSES[size],

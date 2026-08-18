@@ -17,6 +17,8 @@ interface Props {
   label: ReactNode | ((open: boolean) => ReactNode);
   triggerClassName?: string | ((open: boolean) => string);
   triggerTitle?: string;
+  /** Sets `data-accent` on the trigger, so its ring can be someone's colour. */
+  triggerAccent?: string;
   align?: "left" | "right";
   /** Panel width in pixels — panels are anchored, not stretched to the trigger. */
   width?: number;
@@ -33,6 +35,7 @@ export function Popover({
   label,
   triggerClassName,
   triggerTitle,
+  triggerAccent,
   align = "right",
   width = 320,
   panelClassName,
@@ -92,6 +95,7 @@ export function Popover({
         ref={triggerRef}
         type="button"
         title={triggerTitle}
+        data-accent={triggerAccent}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}

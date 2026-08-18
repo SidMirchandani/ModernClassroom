@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getUserInitials } from "@/lib/avatar";
+import { personAccent } from "@/lib/class-appearance";
 import { ClassTeacherView } from "@/components/teacher/ClassTeacherView";
 import { ClassStudentView } from "@/components/student/ClassStudentView";
 import { Loader2 } from "lucide-react";
@@ -55,6 +56,7 @@ export function ClassPageClient({ classId }: { classId: string }) {
       studentId={user.id}
       studentName={`${user.firstName} ${user.lastName}`}
       studentAvatar={getUserInitials(user.firstName, user.lastName)}
+      studentAccent={personAccent(user.id, user.accent)}
     />
   );
 }

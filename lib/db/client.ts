@@ -13,6 +13,7 @@ import type { Section } from "../types";
 import { emptySection } from "../curriculum";
 import { getCourseTemplate, instantiateTemplate } from "../course-templates";
 import { getUserInitials } from "../avatar";
+import { randomAccent, type AccentId } from "../class-appearance";
 
 export const DB_STORAGE_KEY = "modern-classroom-db";
 
@@ -143,6 +144,9 @@ export function createUser(
       throw new Error("Username already taken");
     }
     const user: DbUser = {
+      // Assigned, not asked for — a new account arrives already wearing a
+      // colour, and the profile menu is where it gets changed.
+      accent: randomAccent(),
       ...data,
       id: uuidv4(),
       createdAt: new Date().toISOString(),
@@ -191,6 +195,15 @@ export function duplicateClass(
     };
     db.classes.push(copy);
     return copy;
+  });
+}
+
+export function setUserAccent(userId: string, accent: AccentId): DbUser | null {
+  return withWrite((db) => {
+    const user = db.users.find((u) => u.id === userId);
+    if (!user) return null;
+    user.accent = accent;
+    return user;
   });
 }
 

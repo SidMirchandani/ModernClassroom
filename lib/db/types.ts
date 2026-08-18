@@ -17,6 +17,8 @@ export interface DbUser {
   role: UserRole;
   firstName: string;
   lastName: string;
+  /** Their own colour, chosen in the profile menu. Never the class's. */
+  accent?: AccentId;
   createdAt: string;
 }
 

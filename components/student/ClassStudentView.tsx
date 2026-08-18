@@ -54,6 +54,8 @@ interface ClassStudentViewProps {
   studentId: string;
   studentName: string;
   studentAvatar: string;
+  /** The student's own colour — theirs, not the class's. */
+  studentAccent?: AccentId;
 }
 
 function firstAccessibleSection(
@@ -81,6 +83,7 @@ export function ClassStudentView({
   studentId,
   studentName,
   studentAvatar,
+  studentAccent,
 }: ClassStudentViewProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -347,7 +350,7 @@ export function ClassStudentView({
           right={
             <>
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm">
-                <UserAvatar initials={studentAvatar} size="xs" />
+                <UserAvatar initials={studentAvatar} size="xs" accent={studentAccent} />
                 <span className="font-medium hidden sm:inline">
                   {studentName}
                 </span>

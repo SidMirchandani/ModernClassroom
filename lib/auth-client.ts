@@ -18,6 +18,7 @@ export function toPublicUser(user: {
   role: PublicUser["role"];
   firstName: string;
   lastName: string;
+  accent?: PublicUser["accent"];
 }): PublicUser {
   return {
     id: user.id,
@@ -26,6 +27,7 @@ export function toPublicUser(user: {
     role: user.role,
     firstName: user.firstName,
     lastName: user.lastName,
+    accent: user.accent,
   };
 }
 
