@@ -169,6 +169,14 @@ Each subunit carries its due date and a per-resource
 come in **empty** — the teacher attaches documents, keys and videos as the year
 runs, which is the stated workflow.
 
+**A subunit is numbered by the class unit it sits in, never by the textbook.**
+`9.1` is the first subunit of Unit 9 whatever chapter covers it; the chapter
+lives in that resource's `reference` (`Ch 8.1`), which is the whole point of
+tracks. Algebra II shipped four units transcribed straight off the textbook
+spine — Unit 9 opening at "8.1" — and they are renumbered. The curriculum
+editor already numbers new subunits `${unit}.${n}`, so this is the rule
+everywhere.
+
 `instantiateTemplate()` builds `CurriculumUnit[]`; `createDefaultClass()` sets
 the initial gate to the **last subunit of Unit 1** so a fresh template class
 opens on Unit 1 rather than the end of the year.
