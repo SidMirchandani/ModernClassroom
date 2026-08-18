@@ -24,6 +24,8 @@ import { DEMO_PROOF_PLACEHOLDER } from "@/lib/demo-proof";
 import { referenceToday } from "@/lib/demo-seed";
 import { useOverlayTransition } from "@/lib/use-overlay-transition";
 import { shortUnitLabel } from "@/lib/curriculum";
+import { classIcon, type AccentId } from "@/lib/class-appearance";
+import { useClassTheme } from "@/lib/use-class-theme";
 import { buildClassTodos } from "@/lib/todos";
 import { TodoButton } from "@/components/TodoButton";
 import { SectionSidebar, SectionSidebarContent } from "./SectionSidebar";
@@ -228,6 +230,8 @@ export function ClassStudentView({
     [sections, blockSectionId, saveProgress],
   );
 
+  useClassTheme(cls?.color);
+
   if (loading || !progress || !cls) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -235,6 +239,10 @@ export function ClassStudentView({
       </div>
     );
   }
+
+  // The teacher's Customize choices, which reach the student only here. The
+  // colour is not read as a class name — `useClassTheme` re-points `primary`.
+  const ClassGlyph = classIcon(cls.icon, "student");
 
   const activeSection = sections.find((s) => s.id === activeSectionId);
   if (sections.length === 0) {
@@ -351,7 +359,11 @@ export function ClassStudentView({
         />
         {/* The class strip: which room you are in, and the two controls that
             move you around it — the dashboard and the unit you are reading. */}
-        <div className="h-11 px-4 sm:px-6 bg-primary/[0.85] dark:bg-primary-900/[0.85] backdrop-blur-md flex items-center gap-2 sm:gap-3">
+        <div
+          data-tour="class-strip"
+          className="h-11 px-4 sm:px-6 bg-primary/[0.85] dark:bg-primary-900/[0.85] backdrop-blur-md flex items-center gap-2 sm:gap-3"
+        >
+          <ClassGlyph className="w-4 h-4 text-white shrink-0" />
           <span className="text-sm font-semibold text-white truncate">
             {cls.name}
           </span>
@@ -377,6 +389,7 @@ export function ClassStudentView({
           </div>
 
           <div className="flex-1" />
+          <span data-tour="todo-button" className="inline-flex">
           <TodoButton
             items={todos}
             onPrimary
@@ -384,6 +397,7 @@ export function ClassStudentView({
               item.sectionId && handleSectionSelect(item.sectionId)
             }
           />
+          </span>
         </div>
 
         {/* Mobile: minimized section picker — inside the sticky block so it

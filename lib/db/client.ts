@@ -185,6 +185,8 @@ export function duplicateClass(
       teacherId,
       units: structuredClone(source.units),
       blockSectionId: null,
+      color: source.color,
+      icon: source.icon,
       createdAt: new Date().toISOString(),
     };
     db.classes.push(copy);
@@ -199,7 +201,7 @@ export function getClassById(classId: string): DbClass | null {
 
 export function updateClass(
   classId: string,
-  patch: Partial<Pick<DbClass, "name" | "units" | "blockSectionId">>
+  patch: Partial<Pick<DbClass, "name" | "units" | "blockSectionId" | "color" | "icon">>
 ): DbClass | null {
   return withWrite((db) => {
     const cls = db.classes.find((c) => c.id === classId);
@@ -443,6 +445,8 @@ export function listClassSummaries(userId: string): ClassSummary[] {
       code: cls.code,
       studentCount: enrollments.filter((e) => e.studentId !== cls.teacherId).length,
       subunitCount: getAllSubunits(cls).length,
+      color: cls.color,
+      icon: cls.icon,
     };
     return classRolesForUser(db, userId, cls.id).map((role) => ({ ...base, role }));
   });

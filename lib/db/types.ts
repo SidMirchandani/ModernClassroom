@@ -1,3 +1,4 @@
+import type { AccentId, ClassIconId } from "../class-appearance";
 import type {
   Checkpoint,
   CheckpointGrade,
@@ -34,6 +35,9 @@ export interface DbClass {
   teacherId: string;
   units: CurriculumUnit[];
   blockSectionId: string | null;
+  /** Teacher's Customize choices. Absent means the house default. */
+  color?: AccentId;
+  icon?: ClassIconId;
   createdAt: string;
 }
 
@@ -74,6 +78,7 @@ export interface PublicUser {
   role: UserRole;
   firstName: string;
   lastName: string;
+  accent?: AccentId;
 }
 
 export interface ClassSummary {
@@ -83,4 +88,6 @@ export interface ClassSummary {
   role: "teacher" | "student";
   studentCount: number;
   subunitCount: number;
+  color?: AccentId;
+  icon?: ClassIconId;
 }

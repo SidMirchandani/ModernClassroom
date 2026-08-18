@@ -20,6 +20,7 @@ import type { DbClass } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth-client";
 import { getClassDetail, updateClass } from "@/lib/db/client";
 import { normalizeSection } from "@/lib/section-tracks";
+import { useClassTheme } from "@/lib/use-class-theme";
 
 const PREVIEW_PROGRESS: SectionActivityStatus = { tracks: {} };
 
@@ -62,6 +63,8 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useClassTheme(cls?.color);
 
   const saveSection = useCallback(
     (updated: Section) => {

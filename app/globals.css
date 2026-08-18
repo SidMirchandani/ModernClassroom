@@ -3,7 +3,28 @@
 @tailwind utilities;
 
 @layer base {
+  /**
+   * The brand blue lives here as channels, not as a fixed hex in the Tailwind
+   * config, so a class can re-point every `primary` utility at its own colour
+   * by carrying one attribute. Nothing has to know the colour: `text-primary`
+   * on any element inside a class reads that class's palette.
+   */
   :root {
+    --primary: 37 99 234;
+    --primary-dark: 29 79 196;
+    --primary-glow: 122 168 245;
+    --primary-light: 234 241 254;
+    --primary-50: 242 246 254;
+    --primary-100: 219 232 253;
+    --primary-200: 191 212 251;
+    --primary-300: 147 183 248;
+    --primary-400: 91 142 241;
+    --primary-500: 58 117 238;
+    --primary-600: 37 99 234;
+    --primary-700: 29 79 196;
+    --primary-800: 26 64 156;
+    --primary-900: 22 48 111;
+
     --background: 249 250 251;
     --foreground: 15 23 42;
     --surface: 255 255 255;
@@ -19,6 +40,129 @@
     --surface-2: 30 41 59;
     --border: 51 65 85;
     --muted: 148 163 184;
+  }
+
+  [data-accent="indigo"] {
+    --primary: 79 70 229;
+    --primary-dark: 67 56 202;
+    --primary-glow: 165 180 252;
+    --primary-light: 238 242 255;
+    --primary-50: 238 242 255;
+    --primary-100: 224 231 255;
+    --primary-200: 199 210 254;
+    --primary-300: 165 180 252;
+    --primary-400: 129 140 248;
+    --primary-500: 99 102 241;
+    --primary-600: 79 70 229;
+    --primary-700: 67 56 202;
+    --primary-800: 55 48 163;
+    --primary-900: 49 46 129;
+  }
+
+  [data-accent="violet"] {
+    --primary: 124 58 237;
+    --primary-dark: 109 40 217;
+    --primary-glow: 196 181 253;
+    --primary-light: 245 243 255;
+    --primary-50: 245 243 255;
+    --primary-100: 237 233 254;
+    --primary-200: 221 214 254;
+    --primary-300: 196 181 253;
+    --primary-400: 167 139 250;
+    --primary-500: 139 92 246;
+    --primary-600: 124 58 237;
+    --primary-700: 109 40 217;
+    --primary-800: 91 33 182;
+    --primary-900: 76 29 149;
+  }
+
+  [data-accent="teal"] {
+    --primary: 13 148 136;
+    --primary-dark: 15 118 110;
+    --primary-glow: 94 234 212;
+    --primary-light: 240 253 250;
+    --primary-50: 240 253 250;
+    --primary-100: 204 251 241;
+    --primary-200: 153 246 228;
+    --primary-300: 94 234 212;
+    --primary-400: 45 212 191;
+    --primary-500: 20 184 166;
+    --primary-600: 13 148 136;
+    --primary-700: 15 118 110;
+    --primary-800: 17 94 89;
+    --primary-900: 19 78 74;
+  }
+
+  [data-accent="emerald"] {
+    --primary: 5 150 105;
+    --primary-dark: 4 120 87;
+    --primary-glow: 110 231 183;
+    --primary-light: 236 253 245;
+    --primary-50: 236 253 245;
+    --primary-100: 209 250 229;
+    --primary-200: 167 243 208;
+    --primary-300: 110 231 183;
+    --primary-400: 52 211 153;
+    --primary-500: 16 185 129;
+    --primary-600: 5 150 105;
+    --primary-700: 4 120 87;
+    --primary-800: 6 95 70;
+    --primary-900: 6 78 59;
+  }
+
+  /* One step darker than the others: amber-600 on white is ~3:1, which the
+     11px labels cannot carry. */
+  [data-accent="amber"] {
+    --primary: 180 83 9;
+    --primary-dark: 146 64 14;
+    --primary-glow: 252 211 77;
+    --primary-light: 255 251 235;
+    --primary-50: 255 251 235;
+    --primary-100: 254 243 199;
+    --primary-200: 253 230 138;
+    --primary-300: 252 211 77;
+    --primary-400: 251 191 36;
+    --primary-500: 245 158 11;
+    --primary-600: 217 119 6;
+    --primary-700: 180 83 9;
+    --primary-800: 146 64 14;
+    --primary-900: 120 53 15;
+  }
+
+  [data-accent="rose"] {
+    --primary: 225 29 72;
+    --primary-dark: 190 18 60;
+    --primary-glow: 253 164 175;
+    --primary-light: 255 241 242;
+    --primary-50: 255 241 242;
+    --primary-100: 255 228 230;
+    --primary-200: 254 205 211;
+    --primary-300: 253 164 175;
+    --primary-400: 251 113 133;
+    --primary-500: 244 63 94;
+    --primary-600: 225 29 72;
+    --primary-700: 190 18 60;
+    --primary-800: 159 18 57;
+    --primary-900: 136 19 55;
+  }
+
+  [data-accent="slate"] {
+    --primary: 71 85 105;
+    --primary-dark: 51 65 85;
+    --primary-glow: 203 213 225;
+    --primary-light: 248 250 252;
+    --primary-50: 248 250 252;
+    --primary-100: 241 245 249;
+    --primary-200: 226 232 240;
+    --primary-300: 203 213 225;
+    --primary-400: 148 163 184;
+    --primary-500: 100 116 139;
+    --primary-600: 71 85 105;
+    --primary-700: 51 65 85;
+    --primary-800: 30 41 59;
+    /* slate-800, not -900: the darkest slate *is* the dark page, and the
+       class strip has to stay visible against it. */
+    --primary-900: 30 41 59;
   }
 
   * {
@@ -91,7 +235,7 @@
     outline-offset: 2px;
   }
   .dark :focus-visible {
-    outline-color: theme("colors.primary.glow");
+    outline-color: rgb(var(--primary-glow));
   }
 }
 

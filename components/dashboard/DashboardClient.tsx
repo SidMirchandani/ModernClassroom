@@ -13,14 +13,13 @@ import {
 } from "@/lib/db/client";
 import { buildTodosForClasses, type TodoItem } from "@/lib/todos";
 import { referenceToday } from "@/lib/demo-seed";
+import { classIcon } from "@/lib/class-appearance";
 import { TodoButton } from "@/components/TodoButton";
 import {
   Check,
   Copy,
   CopyPlus,
-  GraduationCap,
   Hash,
-  LayoutGrid,
   Loader2,
   Plus,
 } from "lucide-react";
@@ -207,14 +206,23 @@ export function DashboardClient() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {filteredClasses.map((cls) => {
-            // One quiet glyph, same size and colour on every card — a boxed
-            // tile per class turned the list into a row of unrelated logos.
-            const Icon = cls.role === "teacher" ? LayoutGrid : GraduationCap;
+          {filteredClasses.map((cls, i) => {
+            // One quiet glyph per card, never a boxed tile — but the teacher
+            // picks which glyph and which colour, so six periods are told
+            // apart at a glance instead of reading as one grey list.
+            const Icon = classIcon(cls.icon, cls.role);
 
             return (
-              <div key={`${cls.id}-${cls.role}`} className="relative">
+              // The one place several classes share a page, so the palette
+              // is scoped to the card rather than to the document.
+              <div
+                key={`${cls.id}-${cls.role}`}
+                className="relative"
+                data-accent={cls.color}
+                data-tour={i === 0 ? "class-card" : undefined}
+              >
                 <Link
+                  data-tour={i === 0 ? "class-card-link" : undefined}
                   href={
                     cls.role === "student"
                       ? `/dashboard/class/${cls.id}?as=student`
@@ -222,7 +230,7 @@ export function DashboardClient() {
                   }
                   className="flex items-center gap-3.5 p-5 card hover:border-primary/60 transition-colors group"
                 >
-                  <Icon className="w-5 h-5 shrink-0 text-slate-300 dark:text-slate-600 group-hover:text-primary dark:group-hover:text-primary-glow transition-colors" />
+                  <Icon className="w-5 h-5 shrink-0 text-primary dark:text-primary-glow transition-colors" />
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-primary dark:group-hover:text-primary-glow transition-colors">
                       {cls.name}

@@ -15,7 +15,7 @@ interface Props {
   items: TodoItem[];
   /** Name each item's class — only worth the room when several are mixed. */
   showClass?: boolean;
-  /** Sits on the blue class strip rather than on the white page. */
+  /** Sits on the coloured class strip rather than on the white page. */
   onPrimary?: boolean;
   onOpenItem?: (item: TodoItem) => void;
 }

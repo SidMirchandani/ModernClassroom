@@ -21,21 +21,27 @@ const config: Config = {
         serif: ["var(--font-eb-garamond)", "Georgia", "serif"],
       },
       colors: {
+        // The house blue, fixed. `primary` moves with the class you are in, so
+        // the colour picker needs one swatch that cannot move with it.
+        brand: "#2563ea",
+        // Channels, not hexes: every `primary` utility resolves through a CSS
+        // variable, so a class page can re-point the whole brand ramp at the
+        // colour its teacher picked. The blue values live in globals.css.
         primary: {
-          DEFAULT: "#2563ea",
-          dark: "#1d4fc4",
-          glow: "#7aa8f5",
-          light: "#eaf1fe",
-          50: "#f2f6fe",
-          100: "#dbe8fd",
-          200: "#bfd4fb",
-          300: "#93b7f8",
-          400: "#5b8ef1",
-          500: "#3a75ee",
-          600: "#2563ea",
-          700: "#1d4fc4",
-          800: "#1a409c",
-          900: "#16306f",
+          DEFAULT: "rgb(var(--primary) / <alpha-value>)",
+          dark: "rgb(var(--primary-dark) / <alpha-value>)",
+          glow: "rgb(var(--primary-glow) / <alpha-value>)",
+          light: "rgb(var(--primary-light) / <alpha-value>)",
+          50: "rgb(var(--primary-50) / <alpha-value>)",
+          100: "rgb(var(--primary-100) / <alpha-value>)",
+          200: "rgb(var(--primary-200) / <alpha-value>)",
+          300: "rgb(var(--primary-300) / <alpha-value>)",
+          400: "rgb(var(--primary-400) / <alpha-value>)",
+          500: "rgb(var(--primary-500) / <alpha-value>)",
+          600: "rgb(var(--primary-600) / <alpha-value>)",
+          700: "rgb(var(--primary-700) / <alpha-value>)",
+          800: "rgb(var(--primary-800) / <alpha-value>)",
+          900: "rgb(var(--primary-900) / <alpha-value>)",
         },
       },
       borderRadius: {

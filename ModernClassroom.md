@@ -188,7 +188,7 @@ app/
   page.tsx                    Landing + AuthPanel
   dashboard/                  The app — class list, class view, subunit editor
     new/                      Start a class from a template (its own page, not a dialog)
-  demo/                       Seeds the store, then redirects into the app
+  demo/                       Asks tour-or-no-tour, seeds the store, then enters
   api/                        ⚠️ orphaned server routes
 components/
   AppNavbar.tsx / NavCapsule.tsx   Fixed h-14 bar · the segmented tab pill
@@ -198,6 +198,7 @@ components/
   CheckpointRow.tsx           Shared dated quiz/test/project row
   TrackStatusDots.tsx         ⭐ per-resource status chips (T / AP / GN / EX)
   demo/DemoNotice.tsx         "Nothing is saved" — shows on the first edit
+  tour/DemoTour.tsx           ⭐ the guided tour's panel and highlight ring
   student/
     ClassStudentView.tsx      ⭐ the shell: class strip, sidebar, section
     CourseOverview.tsx        ⭐ the Class Dashboard view (whole curriculum, dates, assessments)
@@ -211,6 +212,7 @@ components/
     SubunitScheduleEditor.tsx Soft due date
     SubunitObjectivesEditor.tsx / ObjectiveListEditor.tsx
     CurriculumTable.tsx       Units · subunits · checkpoints (all editable)
+    ClassCustomize.tsx        ⭐ the Customize tab — name, icon, colour
     TableProgressGate.tsx     The draggable red line
 lib/
   types.ts                    ⭐ Section / ResourceTrack / Checkpoint / TrackProgress
@@ -218,9 +220,11 @@ lib/
   class-progress.ts           ⭐ unlock / status / review logic — the only copy
   todos.ts                    ⭐ due-date parsing + the three to-do buckets
   course-templates.ts         ⭐ Algebra II / AP Precalc / AP Stats skeletons
+  class-appearance.ts         ⭐ the eight accents and twelve class glyphs
   curriculum.ts               Empty section factory + `shortUnitLabel`
   demo-units.ts               Seeded Algebra II Unit 3 with real objectives + dates
   demo-seed.ts                ⭐ the whole demo world, and its pinned clock
+  tour.ts                     ⭐ the tour's stops, in order
   db/client.ts                ⭐ localStorage store (create-from-template, duplicate)
   db/index.ts, auth.ts        ⚠️ orphaned server data layer
 ```
@@ -259,9 +263,10 @@ column for every checkpoint in it. The chrome around it:
 
 The student's class page is three pieces of chrome and one canvas:
 
-- **The class strip** (`h-11`, brand blue, white text) carries the class name and
-  everything that moves you around it: **Class Dashboard**, a **unit navigator**
-  (`‹ Unit 3 ›`), and **To-Do** at the right end. Below `md` only the name and
+- **The class strip** (`h-11`, the class's own colour, white text) carries its
+  glyph, the class name, and everything that moves you around it: **Class
+  Dashboard**, a **unit navigator** (`‹ Unit 3 ›`), and **To-Do** at the right
+  end. Below `md` only the name and
   To-Do stay; the other two move into the phone sheet.
 - **The sidebar lists one unit at a time.** Seventy-two subunits in one scroll
   was the thing it replaced. The navigator picks the unit; opening a section
@@ -287,6 +292,100 @@ Three rules make the list mean something:
 3. **A checkpoint inherits the section it follows.** Quizzes carry no progress of
    their own, so once the section before a quiz is signed off, the quiz drops
    off the list — otherwise "Unit 1 Test" stays overdue all year.
+
+### Customize — how a class presents itself — `lib/class-appearance.ts`
+
+A third tab beside **Classroom** and **Curriculum**, teacher-only. It sets the
+class name, its **glyph** (twelve subject icons) and its **colour** (eight), and
+the choices ride on the class itself, so a colour picked by the teacher is the
+colour every student in that class sees — and only that class.
+
+Both are ids into fixed maps, never free text: `color` and `icon` on `DbClass`,
+each optional. It is a fixed set of eight rather than a hex field because every
+option has to be legible in light and dark, as text and as a background — a free
+picker cannot promise that. An unset glyph still falls back to the old
+role-based default: a grid for a class you teach, a cap for one you sit in.
+
+**The colour is not a class name — it is the `primary` ramp.** `primary` is
+defined in `tailwind.config.ts` as `rgb(var(--primary-*) / <alpha-value>)`, and
+the channels live in `globals.css`: the house blue on `:root`, then one block
+per colour under `[data-accent="…"]`. `useClassTheme()` puts that attribute on
+`<html>` while a class page is open and takes it off on the way out.
+
+So **every** `text-primary` / `bg-primary/[0.85]` / `border-primary/30` /
+`focus-visible` outline already in the app becomes that class's colour, with no
+component knowing a colour exists — subunit numbers, unit titles, links, the
+class strip, buttons, eyebrows, the avatar rings, the section headers in the
+editor. It reaches portalled overlays too, which is why the attribute sits on
+`<html>` and not on the page's own root: a dialog opened from a green class must
+not come back blue. The dashboard is the one page holding several classes at
+once, so there each card carries its own `data-accent`.
+
+**A person has an accent too, and it is not the class's.** `DbUser.accent` is
+set from the profile menu, where the eight options appear as swatches with no
+names — the colours *are* the control. A new account is assigned one at random
+rather than asked to choose; accounts made before the setting (and the seeded
+classmates) fall back to one derived from the user id, which is effectively
+random but stable across renders. It rides on the same `data-accent` attribute,
+set on the avatar itself, so your initials stay yours on a page wearing a
+different colour. That is why the attribute is `data-accent` and not
+`data-class-color`: two different things can carry one.
+
+Two colours are tuned rather than taken straight from Tailwind: **amber** runs a
+step darker (600 is ~3:1 on white, too thin for 11px labels) and **slate**'s
+`900` is really `800`, because the darkest slate *is* the dark page and the
+strip would vanish into it. And the picker's blue swatch uses `bg-brand`, a
+fixed hex — inside a rose class, `bg-primary` would paint it rose.
+
+### The guided tour — `lib/tour.ts`
+
+`/demo` asks one question before it seeds anything, because the two people who
+arrive there want opposite things: someone who has never seen the app needs to
+be shown where things are, and someone who has needs to be left alone. Both
+landing-page buttons point here, so the choice is offered once and in one place.
+
+Choosing the tour writes a step index to `localStorage`; `DemoTour`, mounted in
+the dashboard layout, reads it and walks fourteen stops across both sides of a
+class. A stop is a screen (`href` + a `place` name), a thing to look at
+(`anchor`, matched against a `data-tour` attribute) and what that thing is for —
+adding or reordering one is an edit to a single array.
+
+**Changing screens is shown, never done silently.** Every stop names the screen
+it is on in the panel header ("Step 6 of 14 · Teacher view"), the panel says
+"Going to the student view…", and the page behind dips to 35% while it happens.
+
+More than that, **the tour presses the buttons rather than jumping**. A stop
+that moves you carries a `route` — the `data-tour` values of the controls to
+click, in order. Each one is scrolled to, ringed, given a ripple at the point of
+contact, held for ~220ms, and then genuinely `click()`ed, so the app navigates
+through its own handlers. Reaching the student side is three presses —
+**Dashboard → Enrolled → the class card** — and you watch all three, which
+means you could repeat the trip yourself afterwards. `href` remains the
+destination check and the fallback if a control cannot be found. Going *back*
+skips the theatre: the controls that lead forward are on the screen you just
+left, so Back simply returns.
+
+Three things it deliberately does **not** do:
+
+- **It does not block the page.** No scrim, no dimming — the ring is the only
+  separation, so a stop can say "try one" and mean it. Same reasoning as popups
+  blurring rather than darkening.
+- **It does not re-run its own walk.** The travel effect reads the location from
+  `window` instead of depending on `pathname`: a route changes the path halfway
+  through, and depending on it would tear the walk down and restart it from the
+  first click. A generation counter cancels a walk if the step changes under it.
+- **It does not guess when to measure.** The ring tracks the smooth scroll frame
+  by frame for ~900ms; a single reading taken after a guessed delay lands where
+  the element was passing through. It also clamps to the viewport, because a
+  stop can point at something taller than the screen.
+- **It does not drive the UI through state it does not own.** The teacher's tabs
+  became URL-addressable (`?view=curriculum`, `?view=customize`) so the tour
+  navigates by link like anything else. That deep-linking is useful on its own.
+
+The panel places itself in whichever half of the screen the ring is not; when
+the ring fills the height — the table, the curriculum — it steps sideways
+instead. Anchors must be **real boxes**: `display: contents` was tried on one
+wrapper and measured as all zeros.
 
 ### Demo data — `lib/demo-seed.ts`
 
@@ -358,13 +457,14 @@ Checked at 375px, 768px and 1280px, in light and dark, with no horizontal overfl
 One brand blue, one status vocabulary, one radius scale. Tokens live in
 `tailwind.config.ts` and `app/globals.css`; components never invent a colour.
 
-- **`primary` (`#2563ea`)** is the only accent — nav, links, CTAs, focus rings, eyebrows, the current-section highlight. The teacher side used to run on violet; it does not any more.
+- **`primary` is the only accent** — nav, links, CTAs, focus rings, eyebrows, the current-section highlight. The teacher side used to run on violet; it does not any more. It defaults to the house blue `#2563ea` but **is not a fixed hex**: inside a class it becomes that class's colour (see *Customize*). `bg-brand` is the one fixed blue, for the colour picker's own swatch.
 - **Colour sits on white, never on colour.** Chips are the card's own surface with a tinted border and tinted text; checkpoint rows are white with a thin coloured left stripe; the beyond-the-gate column is dimmed rather than tinted. Stacked tints were what made the page read as noise.
-- **Status is one vocabulary** — `lib/status-styles.ts` holds the tonal chips every surface reads from: slate `Not Started` · sky `In Progress` · amber `Submitted` · rose `Help!` · emerald `Done`. The student badges, the teacher grid chips and the section pills all import it, so a colour never means two things.
+- **Status is one vocabulary** — `lib/status-styles.ts` holds the tonal chips every surface reads from: slate `Not Started` · sky `In Progress` · amber `Submitted` · rose `Help!` · emerald `Done`, plus `STATUS_DOT` for the bar/dot form. The student badges, the step chips, the teacher grid chips, the section-breakdown bars and the section pills all import it, so a colour never means two things. **Status colours never follow the class colour** — a step that is in progress is sky in a rose class too, or "in progress" and "done" would collide in a green one.
 - **Resource hues are category identity only** — indigo textbook · violet AP Classroom · teal guided notes · amber extra · slate custom. They appear on the icon tile, the editor badge and the objective dot, never on chrome and never on a status. Attachments share one neutral treatment (`ATTACHMENT_CLASS`).
 - **Flat by design.** The page is white (`#0b0f16` in dark) and every surface sits on it with a 1px border and no shadow. Only true overlays — modals, dropdowns, the demo notice — carry `shadow-z5`. `shadow-z1`–`z3` are no longer used on cards.
 - **No native `<select>`.** `components/Select.tsx` draws the option list, because the browser's own popup ignores the app's font and highlight colour. It renders through a **portal**: these sit inside `overflow-x-auto` tables and `overflow-hidden` cards that would clip an absolutely-positioned menu.
-- **Students get a brand-blue class strip** (white text) so the room they are in is unmistakable; teachers keep the neutral strip. In dark mode it drops to `primary-900` — full-strength blue against a near-black page glares.
+- **One scrollbar, everywhere**: `scrollbar-width: thin` with a transparent track, and matching `::-webkit-scrollbar` rules for the engines that ignore it (8px track, 4px thumb via a transparent border and `background-clip: content-box`). The native Windows bar is a 17px grey gutter with arrow buttons — a piece of the OS sitting on the page.
+- **Students get a class-coloured strip** (white text) so the room they are in is unmistakable; teachers keep the neutral strip. In dark mode it drops to `primary-900` — a full-strength accent against a near-black page glares.
 - **Popups blur the page behind them; they never darken it.** The blur lives on **`#app-root`** (a wrapper in the root layout around everything the app renders), driven by a `body.overlay-open` class, and it is animated — `filter: blur(10px)` over 280ms. Because that blur is what separates a popup from the page, popups carry **no shadow**. Two things forced this shape:
   - **`backdrop-filter` on the overlay is not enough.** It only samples content composited into the same layer, so a sticky navbar or the class strip stayed razor-sharp behind a blurred page. Blurring the app subtree is the only thing that blurs the chrome too.
   - **Everything that floats must therefore portal to `<body>`** — outside `#app-root`, or it blurs itself. `Modal`, `Popover`, `Select` and the phone section sheet all do.

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   applyApproveTrack,
   applySendBackForTrack,
@@ -15,6 +15,8 @@ import {
   type TeacherSectionStatus,
 } from "@/lib/class-progress";
 import { getActiveSteps, getVisibleTracks } from "@/lib/section-tracks";
+import { classIcon } from "@/lib/class-appearance";
+import { useClassTheme } from "@/lib/use-class-theme";
 import { TrackStatusDots } from "@/components/TrackStatusDots";
 import { CHECKPOINT_KIND_META } from "@/components/CheckpointRow";
 import { Popover } from "@/components/Popover";
@@ -25,6 +27,7 @@ import { getCurrentUnitIndex, getUnitPhase, type UnitPhase } from "@/lib/unit-ph
 import { UnitPhaseBadge } from "./UnitPhaseBadge";
 import { TableProgressGate } from "./TableProgressGate";
 import { CurriculumTable } from "./CurriculumTable";
+import { ClassCustomize } from "./ClassCustomize";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { Logo } from "@/components/Logo";
@@ -75,7 +78,11 @@ import { cn } from "@/lib/utils";
 
 type OverallStatus = "complete" | "help" | "in-progress" | "not-started" | "review";
 type StatModal = "students" | "help" | "progress" | "sections" | null;
-type TeacherView = "classroom" | "curriculum";
+type TeacherView = "classroom" | "curriculum" | "customize";
+
+function readView(value: string | null): TeacherView {
+  return value === "curriculum" || value === "customize" ? value : "classroom";
+}
 type ReviewTarget = { studentId: string; sectionId: string; trackId: string } | null;
 type HelpTarget = { studentId: string; sectionId: string; trackId: string } | null;
 
@@ -180,7 +187,27 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const [inviting, setInviting] = useState(false);
   const [blockSectionId, setBlockSectionId] = useState<string | null>(null);
   const [activeUnitIndex, setActiveUnitIndex] = useState(0);
-  const [activeView, setActiveView] = useState<TeacherView>("classroom");
+  // The tab lives in the URL as well as in state, so a link can land on
+  // Curriculum or Customize — which is how the guided tour walks the class.
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const [activeView, setActiveView] = useState<TeacherView>(() =>
+    readView(searchParams.get("view"))
+  );
+
+  useEffect(() => {
+    setActiveView(readView(searchParams.get("view")));
+  }, [searchParams]);
+
+  const selectView = useCallback(
+    (view: TeacherView) => {
+      setActiveView(view);
+      router.replace(view === "classroom" ? pathname : `${pathname}?view=${view}`, {
+        scroll: false,
+      });
+    },
+    [router, pathname]
+  );
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const sectionColumnRefs = useRef<(HTMLTableCellElement | null)[]>([]);
   const inviteRowRef = useRef<HTMLTableRowElement>(null);
@@ -286,6 +313,8 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     },
     [classId]
   );
+
+  useClassTheme(cls?.color);
 
   const saveClass = useCallback(
     (patch: Partial<DbClass>) => {
@@ -591,17 +620,27 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
   const pendingHelpCount = countClassHelpRequests(units, classProgress, blockSectionId);
 
+  const ClassGlyph = classIcon(cls?.icon);
+
   const navTabs = [
     {
       id: "classroom",
       label: "Classroom",
-      onClick: () => setActiveView("classroom" as TeacherView),
+      tourId: "nav-classroom",
+      onClick: () => selectView("classroom"),
       notify: pendingHelpCount > 0,
     },
     {
       id: "curriculum",
       label: "Curriculum",
-      onClick: () => setActiveView("curriculum" as TeacherView),
+      tourId: "nav-curriculum",
+      onClick: () => selectView("curriculum"),
+    },
+    {
+      id: "customize",
+      label: "Customize",
+      tourId: "nav-customize",
+      onClick: () => selectView("customize"),
     },
   ];
 
@@ -613,6 +652,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           <div className="flex items-center gap-3 min-w-0">
             <Link
               href="/dashboard?tab=teaching"
+              data-tour="nav-dashboard"
               className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors text-sm shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -626,11 +666,13 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           </div>
         }
         center={
-          <NavCapsule
-            tabs={navTabs}
-            activeId={activeView}
-            className="hidden sm:inline-flex"
-          />
+          <span data-tour="class-nav" className="inline-flex">
+            <NavCapsule
+              tabs={navTabs}
+              activeId={activeView}
+              className="hidden sm:inline-flex"
+            />
+          </span>
         }
         right={
           <>
@@ -659,24 +701,29 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               autoFocus
             />
           ) : (
-            <button
-              type="button"
-              onClick={() => setEditingName(true)}
-              className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight hover:text-primary dark:hover:text-primary-glow transition-colors text-left"
-              title="Click to edit class name"
-            >
-              {cls.name}
-            </button>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <ClassGlyph className="w-5 h-5 shrink-0 text-primary dark:text-primary-glow" />
+              <button
+                type="button"
+                onClick={() => setEditingName(true)}
+                className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight hover:text-primary dark:hover:text-primary-glow transition-colors text-left truncate"
+                title="Click to edit class name"
+              >
+                {cls.name}
+              </button>
+            </div>
           )}
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <UnitNav
-              index={activeUnitIndex}
-              count={units.length}
-              title={activeUnit?.title ?? "No units"}
-              phase={unitPhase}
-              onChange={setActiveUnitIndex}
-            />
-          </div>
+          {activeView !== "customize" && (
+            <div data-tour="unit-nav" className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <UnitNav
+                index={activeUnitIndex}
+                count={units.length}
+                title={activeUnit?.title ?? "No units"}
+                phase={unitPhase}
+                onChange={setActiveUnitIndex}
+              />
+            </div>
+          )}
         </div>
 
         {activeView === "classroom" && (
@@ -721,7 +768,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               </div>
             </div>
 
-            <div className="card overflow-hidden">
+            <div data-tour="progress-table" className="card overflow-hidden">
               <div ref={tableScrollRef} className="relative overflow-x-auto">
                 {effectiveBlockId && isActiveUnit && sections.length > 0 && (
                   <TableProgressGate
@@ -1014,10 +1061,25 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         )}
 
         {activeView === "curriculum" && (
+          <div data-tour="curriculum">
           <CurriculumTable
             classId={classId}
             units={cls.units}
             onUpdate={(units) => saveClass({ units })}
+          />
+          </div>
+        )}
+
+        {activeView === "customize" && (
+          <ClassCustomize
+            name={cls.name}
+            code={cls.code}
+            color={cls.color}
+            icon={cls.icon}
+            onChange={(patch) => {
+              if (patch.name) setClassName(patch.name);
+              saveClass(patch);
+            }}
           />
         )}
 
@@ -1250,7 +1312,7 @@ function TableKeys({ sections }: { sections: Section[] }) {
   const kinds: CheckpointKind[] = ["quiz", "test", "checkpoint", "project"];
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div data-tour="table-keys" className="flex items-center gap-1.5 flex-wrap">
       <span className="eyebrow-muted mr-0.5">Key</span>
 
       <KeyPopover label="Resources" hint="The two-letter chip on each subunit.">
