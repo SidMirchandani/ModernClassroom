@@ -33,3 +33,6 @@ yarn-error.log*
 # IDE
 .idea
 .vscode
+
+# local file-backed db — never commit (contains password hashes)
+/data
