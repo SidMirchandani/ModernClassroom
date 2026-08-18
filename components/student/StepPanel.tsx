@@ -5,6 +5,7 @@ import type { ActivityStatus, ContentBlock, TrackStep } from "@/lib/types";
 import { AttachmentList } from "@/components/AttachmentList";
 import { Popover } from "@/components/Popover";
 import { ATTACHMENT_CLASS } from "@/lib/section-tracks";
+import { STATUS_CHIP, STATUS_LABEL, type ProgressStatus } from "@/lib/status-styles";
 import {
   BookOpen,
   CheckCircle2,
@@ -21,35 +22,33 @@ import { cn } from "@/lib/utils";
 
 type DisplayStatus = "locked" | "in-progress" | "done" | "help";
 
-const STATUS_STYLES: Record<
-  DisplayStatus,
-  { label: string; classes: string; icon: ReactNode }
-> = {
-  locked: {
-    label: "Locked",
-    classes:
-      "bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-600 border border-slate-200 dark:border-slate-800",
-    icon: <Lock className="w-3 h-3" />,
-  },
-  "in-progress": {
-    label: "In Progress",
-    classes:
-      "bg-white dark:bg-slate-900 border border-primary/30 text-primary dark:text-primary-glow border border-primary/25",
-    icon: <Clock className="w-3 h-3" />,
-  },
-  done: {
-    label: "Done",
-    classes:
-      "bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800",
-    icon: <CheckCircle2 className="w-3 h-3" />,
-  },
-  help: {
-    label: "Help!",
-    classes:
-      "bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800",
-    icon: <HelpCircle className="w-3 h-3" />,
-  },
+/**
+ * A step has four states, and they are the same four the rest of the app names
+ * — so the wording and the colour come from the one vocabulary rather than
+ * being spelled again here. Only the icon is local.
+ */
+const SHARED_STATUS: Record<DisplayStatus, ProgressStatus> = {
+  locked: "locked",
+  "in-progress": "in-progress",
+  done: "complete",
+  help: "help",
 };
+
+const STATUS_ICON: Record<DisplayStatus, ReactNode> = {
+  locked: <Lock className="w-3 h-3" />,
+  "in-progress": <Clock className="w-3 h-3" />,
+  done: <CheckCircle2 className="w-3 h-3" />,
+  help: <HelpCircle className="w-3 h-3" />,
+};
+
+function statusStyle(status: DisplayStatus) {
+  const shared = SHARED_STATUS[status];
+  return {
+    label: STATUS_LABEL[shared],
+    classes: STATUS_CHIP[shared],
+    icon: STATUS_ICON[status],
+  };
+}
 
 export function toDisplayStatus(status: ActivityStatus): DisplayStatus {
   if (status === "locked") return "locked";
@@ -59,7 +58,7 @@ export function toDisplayStatus(status: ActivityStatus): DisplayStatus {
 }
 
 export function StatusPill({ status }: { status: ActivityStatus }) {
-  const style = STATUS_STYLES[toDisplayStatus(status)];
+  const style = statusStyle(toDisplayStatus(status));
   return (
     <span
       className={cn(
@@ -84,7 +83,7 @@ function StatusDropdown({
   requiresProof?: boolean;
   hasProof?: boolean;
 }) {
-  const style = STATUS_STYLES[displayStatus];
+  const style = statusStyle(displayStatus);
 
   if (displayStatus === "locked") {
     return (
@@ -150,7 +149,7 @@ function StatusDropdown({
                   : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               )}
             >
-              {STATUS_STYLES[opt.value === "done" ? "done" : "help"].icon}
+              {STATUS_ICON[opt.value === "done" ? "done" : "help"]}
               {opt.label}
             </button>
           ))}

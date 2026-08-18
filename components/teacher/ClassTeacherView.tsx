@@ -66,6 +66,7 @@ import {
 } from "lucide-react";
 import {
   STATUS_CHIP,
+  STATUS_DOT,
   STATUS_LABEL,
   STATUS_LABEL_SHORT,
   type ProgressStatus,
@@ -996,11 +997,14 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                       {stat.sectionTitle}
                     </p>
                   </div>
-                  <MiniBar label="Done" count={stat.complete} total={totalStudents} color="bg-emerald-500" />
-                  <MiniBar label="Review" count={stat.review} total={totalStudents} color="bg-yellow-400" />
-                  <MiniBar label="Active" count={stat.inProgress} total={totalStudents} color="bg-primary" />
-                  <MiniBar label="Help!" count={stat.help} total={totalStudents} color="bg-rose-500" />
-                  <MiniBar label="Not started" count={stat.notStarted} total={totalStudents} color="bg-slate-200 dark:bg-slate-700" />
+                  {/* Same five colours as every chip in the app — these bars
+                      used to spell their own, so "Active" read blue here and
+                      sky everywhere else. */}
+                  <MiniBar label="Done" count={stat.complete} total={totalStudents} color={STATUS_DOT.complete} />
+                  <MiniBar label="Review" count={stat.review} total={totalStudents} color={STATUS_DOT.review} />
+                  <MiniBar label="Active" count={stat.inProgress} total={totalStudents} color={STATUS_DOT["in-progress"]} />
+                  <MiniBar label="Help!" count={stat.help} total={totalStudents} color={STATUS_DOT.help} />
+                  <MiniBar label="Not started" count={stat.notStarted} total={totalStudents} color={STATUS_DOT["not-started"]} />
                 </div>
               ))}
             </div>
