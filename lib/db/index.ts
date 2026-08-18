@@ -92,6 +92,7 @@ export function createDefaultClass(teacherId: string): DbClass {
         id: unitId,
         title: "Unit 1",
         subunits: [emptySection(subunitId, "Subunit 1.1")],
+        checkpoints: [],
       },
     ],
     blockSectionId: null,

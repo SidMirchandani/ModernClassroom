@@ -1,16 +1,27 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  applySendBackForReview,
+  applyApproveTrack,
+  applySendBackForTrack,
   countClassHelpRequests,
   getTeacherSectionStatus,
-  resolveHelpAsAllGood,
+  getTrackProgress,
+  resolveHelpForTrack,
+  trackHasHelp,
+  trackNeedsReview,
   type TeacherSectionStatus,
 } from "@/lib/class-progress";
-import { getCurrentUnitIndex, getUnitPhase } from "@/lib/unit-phase";
+import { getActiveSteps, getVisibleTracks } from "@/lib/section-tracks";
+import { TrackStatusDots } from "@/components/TrackStatusDots";
+import { CHECKPOINT_KIND_META } from "@/components/CheckpointRow";
+import { Popover } from "@/components/Popover";
+import { Tooltip } from "@/components/Tooltip";
+import { checkpointMax, gradeToneClass } from "@/lib/grades";
+import { trackAbbr, TRACK_KIND_COLORS } from "@/lib/section-tracks";
+import { getCurrentUnitIndex, getUnitPhase, type UnitPhase } from "@/lib/unit-phase";
 import { UnitPhaseBadge } from "./UnitPhaseBadge";
 import { TableProgressGate } from "./TableProgressGate";
 import { CurriculumTable } from "./CurriculumTable";
@@ -29,7 +40,13 @@ import {
   updateClass,
 } from "@/lib/db/client";
 import type { DbClass, DbInvite } from "@/lib/db/types";
-import type { Student, StudentProgress } from "@/lib/types";
+import type {
+  Checkpoint,
+  CheckpointKind,
+  Section,
+  Student,
+  StudentProgress,
+} from "@/lib/types";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -40,52 +57,100 @@ import {
   Clock,
   Lock,
   Search,
+  KeyRound,
   Users,
   Eye,
   Loader2,
   UserPlus,
   RotateCcw,
 } from "lucide-react";
+import {
+  STATUS_CHIP,
+  STATUS_LABEL,
+  STATUS_LABEL_SHORT,
+  type ProgressStatus,
+} from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
 
 type OverallStatus = "complete" | "help" | "in-progress" | "not-started" | "review";
 type StatModal = "students" | "help" | "progress" | "sections" | null;
 type TeacherView = "classroom" | "curriculum";
-type ReviewTarget = { studentId: string; sectionId: string } | null;
-type HelpTarget = { studentId: string; sectionId: string } | null;
+type ReviewTarget = { studentId: string; sectionId: string; trackId: string } | null;
+type HelpTarget = { studentId: string; sectionId: string; trackId: string } | null;
 
 const STATUS_CONFIG: Record<OverallStatus, { label: string; classes: string; icon: React.ReactNode }> = {
   complete: {
-    label: "Done",
-    classes:
-      "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800",
+    label: STATUS_LABEL_SHORT.complete,
+    classes: STATUS_CHIP.complete,
     icon: <CheckCircle2 className="w-3 h-3" />,
   },
   review: {
-    label: "Review",
-    classes:
-      "bg-yellow-50 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800",
+    label: STATUS_LABEL_SHORT.review,
+    classes: STATUS_CHIP.review,
     icon: <Eye className="w-3 h-3" />,
   },
   help: {
-    label: "Help!",
-    classes:
-      "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800",
+    label: STATUS_LABEL_SHORT.help,
+    classes: STATUS_CHIP.help,
     icon: <HelpCircle className="w-3 h-3" />,
   },
   "in-progress": {
-    label: "Active",
-    classes:
-      "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800",
+    label: STATUS_LABEL_SHORT["in-progress"],
+    classes: STATUS_CHIP["in-progress"],
     icon: <Clock className="w-3 h-3" />,
   },
   "not-started": {
-    label: "—",
-    classes:
-      "bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-600 border border-slate-200 dark:border-slate-800",
+    label: STATUS_LABEL_SHORT["not-started"],
+    classes: STATUS_CHIP["not-started"],
     icon: <Lock className="w-3 h-3" />,
   },
 };
+
+/**
+ * Wide enough for a column title to wrap in **two lines at most**. Garamond at
+ * 10px runs about 4.6px a character, so two lines hold half the string — and a
+ * single long word still has to fit on one line whatever the total. Clamped so
+ * one wordy subunit cannot push the grid off the screen.
+ */
+function titleColumnWidth(title: string): number {
+  const CHAR = 4.6;
+  const PADDING = 22;
+  const longestWord = title
+    .split(/\s+/)
+    .reduce((widest, word) => Math.max(widest, word.length), 0);
+  const needed = Math.max((title.length * CHAR) / 2, longestWord * CHAR) + PADDING;
+  return Math.round(Math.min(224, Math.max(120, needed)));
+}
+
+/**
+ * The grid runs subunit, subunit, subunit — with a checkpoint dropped in
+ * wherever the unit says it falls. A checkpoint pinned to the top of the unit
+ * (`afterSectionId: null`) leads; one whose anchor is not in this unit still
+ * gets a column at the end rather than disappearing.
+ */
+type GridColumn =
+  | { kind: "section"; section: Section; index: number }
+  | { kind: "checkpoint"; checkpoint: Checkpoint };
+
+function buildColumns(sections: Section[], checkpoints: Checkpoint[]): GridColumn[] {
+  const ids = new Set(sections.map((s) => s.id));
+  const columns: GridColumn[] = checkpoints
+    .filter((c) => c.afterSectionId === null)
+    .map((checkpoint) => ({ kind: "checkpoint" as const, checkpoint }));
+
+  sections.forEach((section, index) => {
+    columns.push({ kind: "section", section, index });
+    checkpoints
+      .filter((c) => c.afterSectionId === section.id)
+      .forEach((checkpoint) => columns.push({ kind: "checkpoint", checkpoint }));
+  });
+
+  checkpoints
+    .filter((c) => c.afterSectionId !== null && !ids.has(c.afterSectionId))
+    .forEach((checkpoint) => columns.push({ kind: "checkpoint", checkpoint }));
+
+  return columns;
+}
 
 interface ClassTeacherViewProps {
   classId: string;
@@ -101,12 +166,15 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const [className, setClassName] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [search, setSearch] = useState("");
-  const [highlightStatus, setHighlightStatus] = useState<OverallStatus | null>(null);
   const [openModal, setOpenModal] = useState<StatModal>(null);
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget>(null);
   const [helpTarget, setHelpTarget] = useState<HelpTarget>(null);
   const [gradeNum, setGradeNum] = useState(10);
   const [gradeDenom, setGradeDenom] = useState(10);
+  // Grading happens in the cells. Drafts hold what is being typed until it is
+  // committed on blur, so a half-typed "1" of "18" never lands in the store.
+  const [gradeDrafts, setGradeDrafts] = useState<Record<string, string>>({});
+  const [pointsDrafts, setPointsDrafts] = useState<Record<string, string>>({});
   const [inviteInput, setInviteInput] = useState("");
   const [inviting, setInviting] = useState(false);
   const [blockSectionId, setBlockSectionId] = useState<string | null>(null);
@@ -114,11 +182,15 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const [activeView, setActiveView] = useState<TeacherView>("classroom");
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const sectionColumnRefs = useRef<(HTMLTableCellElement | null)[]>([]);
+  const inviteRowRef = useRef<HTMLTableRowElement>(null);
 
-  const units = cls?.units ?? [];
+  // Memoised: `handleSaveGrades` closes over it, and a fresh [] each render
+  // would rebuild that callback every time.
+  const units = useMemo(() => cls?.units ?? [], [cls]);
   const activeUnit = units[activeUnitIndex];
   const sections = activeUnit?.subunits ?? [];
   const sectionIds = sections.map((s) => s.id);
+  const columns = buildColumns(sections, activeUnit?.checkpoints ?? []);
   const currentUnitIndex = getCurrentUnitIndex(units, blockSectionId);
   const unitPhase = getUnitPhase(activeUnitIndex, currentUnitIndex);
   const isActiveUnit = unitPhase === "active";
@@ -144,7 +216,26 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     if (unitPhase === "upcoming") return "not-started";
     if (gateActive && sIdx > blockIndex) return "not-started";
     if (!studentProgress) return "not-started";
-    return getTeacherSectionStatus(studentProgress, sectionId, sectionIds);
+    return getTeacherSectionStatus(studentProgress, sectionId, sections);
+  }
+
+  /**
+   * Clicking a resource chip jumps straight to whatever that resource needs —
+   * a submission to sign off, or a help request to clear.
+   */
+  function openTrackTarget(studentId: string, sectionId: string, trackId: string) {
+    const section = sections.find((s) => s.id === sectionId);
+    const track = section ? getVisibleTracks(section).find((t) => t.id === trackId) : null;
+    if (!section || !track) return;
+
+    const studentProgress = classProgress.find((p) => p.studentId === studentId);
+    const trackProgress = getTrackProgress(studentProgress?.sections[sectionId], trackId);
+
+    if (trackNeedsReview(track, trackProgress)) {
+      setReviewTarget({ studentId, sectionId, trackId });
+    } else if (trackHasHelp(track, trackProgress)) {
+      setHelpTarget({ studentId, sectionId, trackId });
+    }
   }
 
   const loadData = useCallback(() => {
@@ -169,6 +260,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
       studentId: p.studentId,
       unitId: 1,
       sections: p.sections,
+      checkpoints: p.checkpoints,
     }));
     setClassProgress(progress);
     setLoading(false);
@@ -186,6 +278,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           classId,
           studentId: p.studentId,
           sections: p.sections,
+          checkpoints: p.checkpoints,
         }))
       );
       setClassProgress(all);
@@ -216,6 +309,94 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     [saveClass]
   );
 
+  /** One student's mark on one checkpoint. Empty clears it. */
+  const commitGrade = useCallback(
+    (studentId: string, checkpoint: Checkpoint, raw: string) => {
+      const key = `${studentId}:${checkpoint.id}`;
+      setGradeDrafts((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+
+      const outOf = checkpointMax(checkpoint);
+      const trimmed = raw.trim();
+      const score = Number(trimmed);
+      const valid = trimmed !== "" && Number.isFinite(score);
+      const current = classProgress.find((p) => p.studentId === studentId)?.checkpoints?.[
+        checkpoint.id
+      ];
+
+      if (!valid && !current) return;
+      if (valid && current && current.score === score && current.outOf === outOf) return;
+
+      const all = classProgress.map((p) => {
+        if (p.studentId !== studentId) return p;
+        const checkpoints = { ...(p.checkpoints ?? {}) };
+        if (valid) checkpoints[checkpoint.id] = { score, outOf };
+        else delete checkpoints[checkpoint.id];
+        return { ...p, checkpoints };
+      });
+
+      // A student who has not opened the class yet still needs somewhere to
+      // keep a mark.
+      if (valid && !classProgress.some((p) => p.studentId === studentId)) {
+        all.push({
+          studentId,
+          unitId: 1,
+          sections: {},
+          checkpoints: { [checkpoint.id]: { score, outOf } },
+        });
+      }
+
+      saveProgress(all);
+    },
+    [classProgress, saveProgress]
+  );
+
+  /**
+   * The total belongs to the checkpoint, so changing it re-denominates the
+   * marks already given — raw scores stay, the denominator moves with the
+   * assignment rather than leaving old marks reading against a stale total.
+   */
+  const commitPoints = useCallback(
+    (checkpoint: Checkpoint, raw: string) => {
+      setPointsDrafts((prev) => {
+        const next = { ...prev };
+        delete next[checkpoint.id];
+        return next;
+      });
+
+      const outOf = Number(raw.trim());
+      if (!Number.isFinite(outOf) || outOf <= 0) return;
+      if (outOf === checkpointMax(checkpoint)) return;
+
+      saveClass({
+        units: units.map((unit) => ({
+          ...unit,
+          checkpoints: (unit.checkpoints ?? []).map((c) =>
+            c.id === checkpoint.id ? { ...c, maxPoints: outOf } : c
+          ),
+        })),
+      });
+
+      const touched = classProgress.some((p) => p.checkpoints?.[checkpoint.id]);
+      if (!touched) return;
+
+      saveProgress(
+        classProgress.map((p) => {
+          const grade = p.checkpoints?.[checkpoint.id];
+          if (!grade) return p;
+          return {
+            ...p,
+            checkpoints: { ...p.checkpoints, [checkpoint.id]: { ...grade, outOf } },
+          };
+        })
+      );
+    },
+    [classProgress, saveClass, saveProgress, units]
+  );
+
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteInput.trim()) return;
@@ -242,18 +423,24 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     const section = all[idx].sections[reviewTarget.sectionId];
     if (!section) return;
 
+    const approved = applyApproveTrack(section, reviewTarget.trackId);
+    const graded = approved.tracks[reviewTarget.trackId]
+      ? {
+          ...approved,
+          tracks: {
+            ...approved.tracks,
+            [reviewTarget.trackId]: {
+              ...approved.tracks[reviewTarget.trackId],
+              gradeNumerator: gradeNum,
+              gradeDenominator: gradeDenom,
+            },
+          },
+        }
+      : approved;
+
     all[idx] = {
       ...all[idx],
-      sections: {
-        ...all[idx].sections,
-        [reviewTarget.sectionId]: {
-          ...section,
-          practiceApproved: true,
-          sentBackForReview: false,
-          gradeNumerator: gradeNum,
-          gradeDenominator: gradeDenom,
-        },
-      },
+      sections: { ...all[idx].sections, [reviewTarget.sectionId]: graded },
     };
 
     await saveProgress(all);
@@ -273,7 +460,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
       ...all[idx],
       sections: {
         ...all[idx].sections,
-        [reviewTarget.sectionId]: applySendBackForReview(section),
+        [reviewTarget.sectionId]: applySendBackForTrack(section, reviewTarget.trackId),
       },
     };
 
@@ -297,8 +484,8 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           ...all[idx].sections,
           [helpTarget.sectionId]:
             resolution === "send-back"
-              ? applySendBackForReview(section)
-              : resolveHelpAsAllGood(section),
+              ? applySendBackForTrack(section, helpTarget.trackId)
+              : resolveHelpForTrack(section, helpTarget.trackId),
         },
       };
 
@@ -311,9 +498,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   useEffect(() => {
     if (reviewTarget) {
       const p = classProgress.find((x) => x.studentId === reviewTarget.studentId);
-      const sec = p?.sections[reviewTarget.sectionId];
-      setGradeNum(sec?.gradeNumerator ?? 10);
-      setGradeDenom(sec?.gradeDenominator ?? 10);
+      const tp = getTrackProgress(p?.sections[reviewTarget.sectionId], reviewTarget.trackId);
+      setGradeNum(tp?.gradeNumerator ?? 10);
+      setGradeDenom(tp?.gradeDenominator ?? 10);
     }
   }, [reviewTarget, classProgress]);
 
@@ -355,8 +542,13 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const reviewProgress = reviewTarget
     ? classProgress.find((p) => p.studentId === reviewTarget.studentId)
     : null;
+  const reviewTrack =
+    reviewTarget && reviewSection
+      ? getVisibleTracks(reviewSection).find((t) => t.id === reviewTarget.trackId)
+      : null;
   const reviewProofUrl = reviewTarget
-    ? reviewProgress?.sections[reviewTarget.sectionId]?.practiceProofUrl
+    ? getTrackProgress(reviewProgress?.sections[reviewTarget.sectionId], reviewTarget.trackId)
+        ?.practiceProofUrl
     : undefined;
 
   const helpStudent = helpTarget
@@ -368,17 +560,17 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const helpProgress = helpTarget
     ? classProgress.find((p) => p.studentId === helpTarget.studentId)
     : null;
-  const helpSectionProgress = helpTarget
-    ? helpProgress?.sections[helpTarget.sectionId]
+  const helpTrack =
+    helpTarget && helpSection
+      ? getVisibleTracks(helpSection).find((t) => t.id === helpTarget.trackId)
+      : null;
+  const helpTrackProgress = helpTarget
+    ? getTrackProgress(helpProgress?.sections[helpTarget.sectionId], helpTarget.trackId)
     : undefined;
-  const helpActivities = helpSectionProgress
-    ? (
-        [
-          helpSectionProgress.learn === "help" ? "Learn" : null,
-          helpSectionProgress.practice === "help" ? "Practice" : null,
-          helpSectionProgress.extra === "help" ? "Extra Material" : null,
-        ] as const
-      ).filter(Boolean)
+  const helpActivities = helpTrack
+    ? getActiveSteps(helpTrack)
+        .filter((step) => helpTrackProgress?.[step] === "help")
+        .map((step) => (step === "learn" ? "Learn" : "Practice"))
     : [];
 
   const studentProgressList = classProgress.map((p) => {
@@ -398,14 +590,28 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
   const pendingHelpCount = countClassHelpRequests(units, classProgress, blockSectionId);
 
+  const navTabs = [
+    {
+      id: "classroom",
+      label: "Classroom",
+      onClick: () => setActiveView("classroom" as TeacherView),
+      notify: pendingHelpCount > 0,
+    },
+    {
+      id: "curriculum",
+      label: "Curriculum",
+      onClick: () => setActiveView("curriculum" as TeacherView),
+    },
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0a0e]">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0b0f16]">
       <AppNavbar
         sticky
         left={
           <div className="flex items-center gap-3 min-w-0">
             <Link
-              href="/dashboard"
+              href="/dashboard?tab=teaching"
               className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors text-sm shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -420,20 +626,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         }
         center={
           <NavCapsule
-            tabs={[
-              {
-                id: "classroom",
-                label: "Classroom",
-                onClick: () => setActiveView("classroom"),
-                notify: pendingHelpCount > 0,
-              },
-              {
-                id: "curriculum",
-                label: "Curriculum",
-                onClick: () => setActiveView("curriculum"),
-              },
-            ]}
+            tabs={navTabs}
             activeId={activeView}
+            className="hidden sm:inline-flex"
           />
         }
         right={
@@ -444,6 +639,12 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         }
       />
 
+      {/* Phone: the capsule needs its own row — sharing the navbar with the
+          class code overflows a 375px screen. */}
+      <div className="sm:hidden sticky top-14 z-20 flex justify-center px-5 py-2 border-b border-slate-200 dark:border-slate-800 float-pane">
+        <NavCapsule tabs={navTabs} activeId={activeView} />
+      </div>
+
       <div className="max-w-7xl mx-auto w-full px-5 py-6 space-y-6">
         <div>
           {editingName ? (
@@ -453,104 +654,73 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               onChange={(e) => setClassName(e.target.value)}
               onBlur={handleNameSave}
               onKeyDown={(e) => e.key === "Enter" && handleNameSave()}
-              className="text-2xl font-bold bg-transparent border-b-2 border-violet-500 focus:outline-none text-slate-900 dark:text-slate-100 w-full max-w-md"
+              className="text-2xl font-bold bg-transparent border-b-2 border-primary focus:outline-none text-slate-900 dark:text-slate-100 w-full max-w-md"
               autoFocus
             />
           ) : (
             <button
               type="button"
               onClick={() => setEditingName(true)}
-              className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors text-left"
+              className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight hover:text-primary dark:hover:text-primary-glow transition-colors text-left"
               title="Click to edit class name"
             >
               {cls.name}
             </button>
           )}
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {units.length > 1 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setActiveUnitIndex((i) => Math.max(0, i - 1))}
-                  disabled={activeUnitIndex === 0}
-                  className="p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Previous unit"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <p className="text-sm text-slate-500 dark:text-slate-400 min-w-0 text-center flex items-center justify-center gap-2 flex-wrap">
-                  <span>{activeUnit?.title ?? "No units"}</span>
-                  {activeUnit && <UnitPhaseBadge phase={unitPhase} />}
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveUnitIndex((i) => Math.min(units.length - 1, i + 1))
-                  }
-                  disabled={activeUnitIndex >= units.length - 1}
-                  className="p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Next unit"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </>
-            ) : (
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
-                <span>
-                  {units.length === 1
-                    ? activeUnit?.title
-                    : `Teacher view · ${sections.length} subunit${sections.length !== 1 ? "s" : ""}`}
-                </span>
-                {activeUnit && units.length === 1 && (
-                  <UnitPhaseBadge phase={unitPhase} />
-                )}
-              </p>
-            )}
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <UnitNav
+              index={activeUnitIndex}
+              count={units.length}
+              title={activeUnit?.title ?? "No units"}
+              phase={unitPhase}
+              onChange={setActiveUnitIndex}
+            />
           </div>
         </div>
 
         {activeView === "classroom" && (
           <>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Students" value={totalStudents} sub="enrolled" icon={<Users className="w-4 h-4 text-blue-500" />} color="blue" onClick={() => setOpenModal("students")} />
-          <StatCard label="Avg Progress" value={`${Math.round(avgProgress * 100)}%`} sub="complete" icon={<CheckCircle2 className="w-4 h-4 text-green-500" />} color="green" onClick={() => setOpenModal("progress")} />
-          <StatCard label="Sections" value={sections.length} sub="subunits" icon={<LayoutGrid className="w-4 h-4 text-violet-500" />} color="violet" onClick={() => setOpenModal("sections")} />
+          <StatCard label="Students" value={totalStudents} sub="enrolled" icon={<Users className="w-4 h-4 text-primary" />} color="blue" onClick={() => setOpenModal("students")} />
+          <StatCard label="Avg Progress" value={`${Math.round(avgProgress * 100)}%`} sub="complete" icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} color="green" onClick={() => setOpenModal("progress")} />
+          <StatCard label="Sections" value={sections.length} sub="subunits" icon={<LayoutGrid className="w-4 h-4 text-primary" />} color="violet" onClick={() => setOpenModal("sections")} />
         </div>
 
         {sections.length > 0 && (
           <>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-slate-400 font-medium mr-1">Filter:</span>
-                {(Object.keys(STATUS_CONFIG) as OverallStatus[]).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setHighlightStatus(highlightStatus === s ? null : s)}
-                    className={cn(
-                      "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border",
-                      STATUS_CONFIG[s].classes,
-                      highlightStatus && highlightStatus !== s ? "opacity-40" : "opacity-100"
-                    )}
-                  >
-                    {STATUS_CONFIG[s].icon}
-                    {STATUS_CONFIG[s].label}
-                  </button>
-                ))}
-              </div>
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search students..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 w-48"
+            {/*
+              Three things want this row: the unit selector, the keys and the
+              search. They only all fit side by side on a wide screen, so the
+              row gives up one thing at a time — below `xl` the unit selector
+              goes (the page heading carries the same control, on the same
+              state), and below `md` the keys move above the search.
+            */}
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="hidden xl:block min-w-0">
+                <UnitNav
+                  index={activeUnitIndex}
+                  count={units.length}
+                  title={activeUnit?.title ?? "No units"}
+                  phase={unitPhase}
+                  onChange={setActiveUnitIndex}
                 />
+              </div>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-2">
+                <TableKeys sections={sections} />
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search students..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 w-full md:w-48"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="card overflow-hidden">
               <div ref={tableScrollRef} className="relative overflow-x-auto">
                 {effectiveBlockId && isActiveUnit && sections.length > 0 && (
                   <TableProgressGate
@@ -559,26 +729,96 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                     containerRef={tableScrollRef}
                     columnRefs={sectionColumnRefs}
                     sectionIds={sectionIds}
+                    endRef={inviteRowRef}
                   />
                 )}
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-slate-800">
-                      <th className="text-left px-4 py-3 font-semibold text-slate-500 w-36 sticky left-0 z-10 bg-white dark:bg-slate-900">
+                      <th className="text-left px-4 py-3 font-semibold text-slate-500 w-36 sticky left-0 z-10 float-pane-sticky">
                         Student
                       </th>
-                      {sections.map((section, sIdx) => (
-                        <th
-                          key={section.id}
-                          ref={(el) => { sectionColumnRefs.current[sIdx] = el; }}
-                          className="text-center px-2 py-3 font-semibold text-slate-500 min-w-[7.5rem]"
-                        >
-                          <div>{section.id}</div>
-                          <div className="text-[10px] font-normal text-slate-400 mt-0.5 leading-snug">
-                            {section.title}
-                          </div>
-                        </th>
-                      ))}
+                      {columns.map((column) =>
+                        column.kind === "section" ? (
+                          <th
+                            key={column.section.id}
+                            ref={(el) => {
+                              sectionColumnRefs.current[column.index] = el;
+                            }}
+                            style={{ minWidth: titleColumnWidth(column.section.title) }}
+                            className="text-center align-bottom px-2 py-3 font-semibold text-slate-500"
+                          >
+                            <div>{column.section.id}</div>
+                            <div className="text-[10px] font-normal text-slate-400 mt-0.5 leading-[14px]">
+                              {column.section.title}
+                            </div>
+                          </th>
+                        ) : (
+                          <th
+                            key={column.checkpoint.id}
+                            style={{ minWidth: titleColumnWidth(column.checkpoint.title) }}
+                            className="px-2 py-3 align-bottom border-x border-slate-100 dark:border-slate-800"
+                          >
+                            {/* Tight stack, with the title given room for two
+                               lines whether it needs them or not — that is what
+                               keeps the totals on one line across the row
+                               without spreading each header apart. */}
+                            <div className="flex flex-col items-center gap-0.5">
+                              {/* No kind row: the title itself carries the
+                                  colour, and the tooltip spells it out. */}
+                              <Tooltip
+                                className="min-h-[1.8rem] flex items-center"
+                                label={
+                                  <>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                      {column.checkpoint.title}
+                                    </span>
+                                    {" — "}
+                                    {CHECKPOINT_KIND_META[column.checkpoint.kind].label.toLowerCase()}
+                                    {column.checkpoint.afterSectionId
+                                      ? `, after ${column.checkpoint.afterSectionId}`
+                                      : ""}
+                                    {column.checkpoint.date ? ` · due ${column.checkpoint.date}` : ""}
+                                    {column.checkpoint.note ? ` · ${column.checkpoint.note}` : ""}
+                                  </>
+                                }
+                              >
+                                <span
+                                  className={cn(
+                                    "text-xs font-semibold leading-[1.15] cursor-help",
+                                    CHECKPOINT_KIND_META[column.checkpoint.kind].accent
+                                  )}
+                                >
+                                  {column.checkpoint.title}
+                                </span>
+                              </Tooltip>
+                              <label className="flex items-center justify-center gap-0.5 h-[14px] text-[10px] font-normal leading-[14px] text-slate-400">
+                                out of
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={
+                                    pointsDrafts[column.checkpoint.id] ??
+                                    String(checkpointMax(column.checkpoint))
+                                  }
+                                  onChange={(e) =>
+                                    setPointsDrafts((prev) => ({
+                                      ...prev,
+                                      [column.checkpoint.id]: e.target.value,
+                                    }))
+                                  }
+                                  onBlur={(e) => commitPoints(column.checkpoint, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                  }}
+                                  title="Points this is out of"
+                                  className="no-spinner w-8 h-[14px] px-0.5 py-0 leading-[14px] text-center text-[10px] font-semibold tabular-nums bg-transparent border-0 border-b border-slate-300 dark:border-slate-600 rounded-none hover:border-slate-400 focus:border-primary focus:outline-none"
+                                />
+                              </label>
+                            </div>
+                          </th>
+                        )
+                      )}
                       <th className="text-center px-3 py-3 font-semibold text-slate-500 min-w-[80px]">
                         Overall
                       </th>
@@ -594,14 +834,55 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                       const pct = sections.length > 0 ? Math.round((completedCount / sections.length) * 100) : 0;
 
                       return (
-                        <tr key={student.id} className={cn("border-b border-slate-100 dark:border-slate-800/50", idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50")}>
-                          <td className={cn("px-4 py-3 sticky left-0 z-10", idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50")}>
+                        <tr key={student.id} className={cn("border-b border-slate-100 dark:border-slate-800/50", idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/30")}>
+                          <td className="px-4 py-3 sticky left-0 z-10 float-pane-sticky">
                             <div className="flex items-center gap-2.5">
                               <UserAvatar initials={student.avatar} size="sm" />
                               <span className="font-medium text-sm">{student.name}</span>
                             </div>
                           </td>
-                          {sections.map((section, sIdx) => {
+                          {columns.map((column) => {
+                            if (column.kind === "checkpoint") {
+                              const grade =
+                                studentProgress?.checkpoints?.[column.checkpoint.id];
+                              const draftKey = `${student.id}:${column.checkpoint.id}`;
+                              return (
+                                <td
+                                  key={column.checkpoint.id}
+                                  className="px-2 py-3 text-center border-x border-slate-100 dark:border-slate-800"
+                                >
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    placeholder="—"
+                                    aria-label={`${column.checkpoint.title} score for ${student.name}`}
+                                    value={
+                                      gradeDrafts[draftKey] ??
+                                      (grade ? String(grade.score) : "")
+                                    }
+                                    onChange={(e) =>
+                                      setGradeDrafts((prev) => ({
+                                        ...prev,
+                                        [draftKey]: e.target.value,
+                                      }))
+                                    }
+                                    onBlur={(e) =>
+                                      commitGrade(student.id, column.checkpoint, e.target.value)
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") e.currentTarget.blur();
+                                    }}
+                                    className={cn(
+                                      "no-spinner w-14 px-1.5 py-1 text-center text-xs font-semibold tabular-nums rounded-lg border border-transparent bg-transparent transition-colors placeholder:text-slate-300 dark:placeholder:text-slate-600 hover:border-slate-200 dark:hover:border-slate-700 focus:border-primary focus:outline-none focus:bg-white dark:focus:bg-slate-900",
+                                      grade ? gradeToneClass(grade) : ""
+                                    )}
+                                  />
+                                </td>
+                              );
+                            }
+
+                            const section = column.section;
+                            const sIdx = column.index;
                             const status = getCellStatus(studentProgress, section.id, sIdx);
                             const cfg = STATUS_CONFIG[status];
                             const isReview = status === "review";
@@ -609,31 +890,33 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                             const beyondGate = gateActive && sIdx > blockIndex;
 
                             return (
-                              <td key={section.id} className={cn("text-center px-2 py-3", beyondGate && "bg-red-50/40 dark:bg-red-950/20")}>
-                                {isReview ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setReviewTarget({ studentId: student.id, sectionId: section.id })}
-                                    className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium cursor-pointer hover:opacity-80", cfg.classes)}
+                              <td key={section.id} className={cn("px-2 py-3", beyondGate && "opacity-60")}>
+                                <div className="flex flex-col items-center gap-1.5">
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium",
+                                      cfg.classes
+                                    )}
+                                    title={
+                                      isReview
+                                        ? "A submission is waiting on you — click the resource below"
+                                        : isHelp
+                                          ? "Help requested — click the resource below"
+                                          : undefined
+                                    }
                                   >
-                                    {cfg.icon}
-                                    {cfg.label}
-                                  </button>
-                                ) : isHelp ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setHelpTarget({ studentId: student.id, sectionId: section.id })}
-                                    className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium cursor-pointer hover:opacity-80", cfg.classes)}
-                                  >
-                                    {cfg.icon}
-                                    {cfg.label}
-                                  </button>
-                                ) : (
-                                  <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium", cfg.classes)}>
                                     {cfg.icon}
                                     {cfg.label}
                                   </span>
-                                )}
+                                  <TrackStatusDots
+                                    section={section}
+                                    sectionProgress={studentProgress?.sections[section.id]}
+                                    accessible={!beyondGate && unitPhase !== "upcoming"}
+                                    onTrackClick={(trackId) =>
+                                      openTrackTarget(student.id, section.id, trackId)
+                                    }
+                                  />
+                                </div>
                               </td>
                             );
                           })}
@@ -644,8 +927,11 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                       );
                     })}
 
-                    <tr className="bg-slate-50 dark:bg-slate-800/30 border-t-2 border-dashed border-slate-200 dark:border-slate-700">
-                      <td colSpan={sections.length + 2} className="px-4 py-3">
+                    <tr
+                      ref={inviteRowRef}
+                      className="bg-slate-50 dark:bg-slate-800/30 border-t-2 border-dashed border-slate-200 dark:border-slate-700"
+                    >
+                      <td colSpan={columns.length + 2} className="px-4 py-3">
                         <form onSubmit={handleInvite} className="flex items-center gap-3">
                           <UserPlus className="w-4 h-4 text-slate-400 shrink-0" />
                           <input
@@ -658,7 +944,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                           <button
                             type="submit"
                             disabled={inviting || !inviteInput.trim()}
-                            className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium disabled:opacity-50"
+                            className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-dark text-white text-xs font-medium disabled:opacity-50"
                           >
                             {inviting ? "Inviting…" : "Invite"}
                           </button>
@@ -677,7 +963,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
             {isActiveUnit && (
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-600">
               Drag the{" "}
-              <span className="text-red-500 dark:text-red-400">red line</span> to set how far
+              <span className="text-rose-500 dark:text-rose-400">red line</span> to set how far
               students can progress
               {gateActive ? (
                 <>
@@ -710,10 +996,10 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                       {stat.sectionTitle}
                     </p>
                   </div>
-                  <MiniBar label="Done" count={stat.complete} total={totalStudents} color="bg-green-500" />
+                  <MiniBar label="Done" count={stat.complete} total={totalStudents} color="bg-emerald-500" />
                   <MiniBar label="Review" count={stat.review} total={totalStudents} color="bg-yellow-400" />
-                  <MiniBar label="Active" count={stat.inProgress} total={totalStudents} color="bg-blue-500" />
-                  <MiniBar label="Help!" count={stat.help} total={totalStudents} color="bg-red-500" />
+                  <MiniBar label="Active" count={stat.inProgress} total={totalStudents} color="bg-primary" />
+                  <MiniBar label="Help!" count={stat.help} total={totalStudents} color="bg-rose-500" />
                   <MiniBar label="Not started" count={stat.notStarted} total={totalStudents} color="bg-slate-200 dark:bg-slate-700" />
                 </div>
               ))}
@@ -737,13 +1023,14 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         {reviewStudent && reviewSection && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-violet-100 flex items-center justify-center text-sm font-bold text-violet-700">
+              <div className="w-9 h-9 rounded-full bg-white border border-primary/30 flex items-center justify-center text-sm font-bold text-primary">
                 {reviewStudent.avatar}
               </div>
               <div>
                 <p className="font-semibold">{reviewStudent.name}</p>
                 <p className="text-sm text-slate-500">
                   {reviewSection.id} · {reviewSection.title}
+                  {reviewTrack ? ` · ${reviewTrack.label}` : ""}
                 </p>
               </div>
             </div>
@@ -776,7 +1063,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
             </div>
 
             <div className="flex flex-wrap gap-2 pt-2">
-              <button type="button" onClick={handleApprove} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium">
+              <button type="button" onClick={handleApprove} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium">
                 <CheckCircle2 className="w-4 h-4" />
                 Submit grade & complete
               </button>
@@ -796,13 +1083,14 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         {helpStudent && helpSection && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center text-sm font-bold text-red-700">
+              <div className="w-9 h-9 rounded-full bg-rose-100 flex items-center justify-center text-sm font-bold text-rose-700">
                 {helpStudent.avatar}
               </div>
               <div>
                 <p className="font-semibold">{helpStudent.name}</p>
                 <p className="text-sm text-slate-500">
                   {helpSection.id} · {helpSection.title}
+                  {helpTrack ? ` · ${helpTrack.label}` : ""}
                 </p>
               </div>
             </div>
@@ -813,7 +1101,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               </p>
               <ul className="space-y-1">
                 {helpActivities.map((activity) => (
-                  <li key={activity} className="text-sm text-red-600 font-medium">
+                  <li key={activity} className="text-sm text-rose-600 font-medium">
                     {activity}
                   </li>
                 ))}
@@ -826,7 +1114,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
             </p>
 
             <div className="flex flex-wrap gap-2 pt-2">
-              <button type="button" onClick={() => handleResolveHelp("all-good")} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium">
+              <button type="button" onClick={() => handleResolveHelp("all-good")} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium">
                 <CheckCircle2 className="w-4 h-4" />
                 All Good
               </button>
@@ -849,7 +1137,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           <ul className="space-y-2">
             {students.map((s) => (
               <li key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border">
-                <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-sm font-bold text-violet-700">{s.avatar}</div>
+                <div className="w-8 h-8 rounded-full bg-white border border-primary/30 flex items-center justify-center text-sm font-bold text-primary">{s.avatar}</div>
                 <span className="font-medium">{s.name}</span>
               </li>
             ))}
@@ -872,7 +1160,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         <ul className="space-y-2">
           {sections.map((s) => (
             <li key={s.id} className="px-3 py-2 rounded-lg border">
-              <span className="font-bold text-violet-600">{s.id}</span> {s.title}
+              <span className="font-bold text-primary">{s.id}</span> {s.title}
             </li>
           ))}
         </ul>
@@ -881,13 +1169,189 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   );
 }
 
+/**
+ * The unit selector. It appears twice — under the class name and above the
+ * progress table — and both instances drive the same state, so moving the unit
+ * in one place moves it in the other.
+ */
+function UnitNav({
+  index,
+  count,
+  title,
+  phase,
+  onChange,
+}: {
+  index: number;
+  count: number;
+  title: string;
+  phase: UnitPhase;
+  onChange: (next: number) => void;
+}) {
+  const arrows = count > 1;
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      {arrows && (
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(0, index - 1))}
+          disabled={index === 0}
+          aria-label="Previous unit"
+          className="w-7 h-7 shrink-0 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+      )}
+      <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2 min-w-0">
+        <span className="truncate">{title}</span>
+        {count > 0 && <UnitPhaseBadge phase={phase} />}
+      </p>
+      {arrows && (
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(count - 1, index + 1))}
+          disabled={index >= count - 1}
+          aria-label="Next unit"
+          className="w-7 h-7 shrink-0 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Three keys rather than one long list — the grid carries three separate
+ * vocabularies, and a teacher looking up a colour should not have to read past
+ * the other two.
+ */
+function TableKeys({ sections }: { sections: Section[] }) {
+  const resources = new Map<string, string>();
+  for (const section of sections) {
+    for (const track of getVisibleTracks(section)) {
+      const abbr = trackAbbr(track);
+      if (!resources.has(abbr)) resources.set(abbr, track.label);
+    }
+  }
+
+  const statuses: ProgressStatus[] = [
+    "not-started",
+    "in-progress",
+    "review",
+    "help",
+    "complete",
+  ];
+
+  const kinds: CheckpointKind[] = ["quiz", "test", "checkpoint", "project"];
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="eyebrow-muted mr-0.5">Key</span>
+
+      <KeyPopover label="Resources" hint="The two-letter chip on each subunit.">
+        {[...resources].map(([abbr, label]) => (
+          <KeyRow
+            key={abbr}
+            swatch={
+              <span className="inline-flex items-center justify-center w-6 h-5 rounded font-bold text-[10px] leading-none tracking-wide bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500">
+                {abbr}
+              </span>
+            }
+            label={label}
+          />
+        ))}
+      </KeyPopover>
+
+      <KeyPopover
+        label="Assignment Colors"
+        hint="Where a student is on one resource. Click a chip to open what it needs."
+      >
+        {statuses.map((status) => (
+          <KeyRow
+            key={status}
+            swatch={
+              <span
+                className={cn(
+                  "inline-flex items-center justify-center w-6 h-5 rounded font-bold text-[10px] leading-none",
+                  STATUS_CHIP[status]
+                )}
+              >
+                Aa
+              </span>
+            }
+            label={STATUS_LABEL[status]}
+          />
+        ))}
+      </KeyPopover>
+
+      <KeyPopover label="Title Colors" hint="What a graded column is.">
+        {kinds.map((kind) => (
+          <KeyRow
+            key={kind}
+            swatch={
+              <span
+                className={cn(
+                  "text-xs font-semibold w-6 text-center",
+                  CHECKPOINT_KIND_META[kind].accent
+                )}
+              >
+                Aa
+              </span>
+            }
+            label={CHECKPOINT_KIND_META[kind].label}
+          />
+        ))}
+      </KeyPopover>
+    </div>
+  );
+}
+
+function KeyPopover({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Popover
+      width={264}
+      align="right"
+      triggerTitle={hint}
+      triggerClassName="inline-flex items-center h-[34px] px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-primary/50 hover:text-primary dark:hover:text-primary-glow transition-colors shrink-0"
+      label={label}
+    >
+      {() => (
+        <div className="p-4">
+          <ul className="space-y-1.5">{children}</ul>
+          <p className="mt-3 text-xs text-slate-400 dark:text-slate-500 leading-snug">
+            {hint}
+          </p>
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+function KeyRow({ swatch, label }: { swatch: React.ReactNode; label: string }) {
+  return (
+    <li className="flex items-center gap-2.5 text-sm">
+      <span className="shrink-0">{swatch}</span>
+      <span className="text-slate-600 dark:text-slate-300">{label}</span>
+    </li>
+  );
+}
+
 function StatCard({ label, value, sub, icon, color, onClick }: {
   label: string; value: string | number; sub: string; icon: React.ReactNode;
   color: "blue" | "red" | "green" | "violet"; onClick: () => void;
 }) {
-  const bg = { blue: "bg-blue-50 dark:bg-blue-950", red: "bg-red-50 dark:bg-red-950", green: "bg-green-50 dark:bg-green-950", violet: "bg-violet-50 dark:bg-violet-950" }[color];
+  const bg = { blue: "bg-white dark:bg-slate-900 border border-primary/30", red: "bg-rose-50 dark:bg-rose-950", green: "bg-emerald-50 dark:bg-emerald-950", violet: "bg-white dark:bg-slate-900 border border-primary/30" }[color];
   return (
-    <button type="button" onClick={onClick} className="rounded-xl border bg-white dark:bg-slate-900 p-4 text-left hover:border-blue-300 transition-colors">
+    <button type="button" onClick={onClick} className="rounded-xl border bg-white dark:bg-slate-900 p-4 text-left hover:border-primary/50 transition-colors">
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-medium text-slate-500">{label}</span>
         <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", bg)}>{icon}</div>

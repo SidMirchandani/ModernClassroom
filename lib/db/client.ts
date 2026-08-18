@@ -11,6 +11,7 @@ import type {
 } from "./types";
 import type { Section } from "../types";
 import { emptySection } from "../curriculum";
+import { getCourseTemplate, instantiateTemplate } from "../course-templates";
 import { getUserInitials } from "../avatar";
 
 export const DB_STORAGE_KEY = "modern-classroom-db";
@@ -34,8 +35,17 @@ function readDb(): Database {
   }
 }
 
+/**
+ * Fired after any change lands in the store. The demo notice waits for the
+ * first one — it only has something to say once you have edited something.
+ */
+export const DB_WRITE_EVENT = "modern-classroom:db-write";
+
 function writeDb(db: Database): void {
   localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(db));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(DB_WRITE_EVENT));
+  }
 }
 
 function withWrite<T>(fn: (db: Database) => T): T {
@@ -77,22 +87,31 @@ export function generateUsername(
   return `${base}${uuidv4().slice(0, 4)}`;
 }
 
-export function createDefaultClass(teacherId: string): DbClass {
-  const unitId = uuidv4();
-  const subunitId = "1.1";
+export function createDefaultClass(teacherId: string, templateId?: string): DbClass {
+  const template = templateId ? getCourseTemplate(templateId) : undefined;
+
+  const units: CurriculumUnit[] = template
+    ? instantiateTemplate(template)
+    : [
+        {
+          id: uuidv4(),
+          title: "Unit 1",
+          subunits: [emptySection("1.1", "Subunit 1.1")],
+          checkpoints: [],
+        },
+      ];
+
+  // A whole year of units arrives at once from a template, so the gate starts
+  // at the end of the first unit — the class opens as the teacher moves it.
+  const blockSectionId = template ? units[0]?.subunits.at(-1)?.id ?? null : null;
+
   return {
     id: uuidv4(),
-    name: "New Class",
+    name: template?.name ?? "New Class",
     code: "000000",
     teacherId,
-    units: [
-      {
-        id: unitId,
-        title: "Unit 1",
-        subunits: [emptySection(subunitId, "Subunit 1.1")],
-      },
-    ],
-    blockSectionId: null,
+    units,
+    blockSectionId,
     createdAt: new Date().toISOString(),
   };
 }
@@ -133,12 +152,43 @@ export function createUser(
   });
 }
 
-export function createClassForTeacher(teacherId: string): DbClass {
+export function createClassForTeacher(
+  teacherId: string,
+  templateId?: string
+): DbClass {
   return withWrite((db) => {
-    const cls = createDefaultClass(teacherId);
+    const cls = createDefaultClass(teacherId, templateId);
     cls.code = generateClassCode(db);
     db.classes.push(cls);
     return cls;
+  });
+}
+
+/**
+ * Copy a class's curriculum into a fresh class. Students, progress and the
+ * progress gate are deliberately left behind — this is for running the same
+ * course with another period, not for cloning a class in flight.
+ */
+export function duplicateClass(
+  classId: string,
+  teacherId: string,
+  name?: string
+): DbClass | null {
+  return withWrite((db) => {
+    const source = db.classes.find((c) => c.id === classId);
+    if (!source || source.teacherId !== teacherId) return null;
+
+    const copy: DbClass = {
+      id: uuidv4(),
+      name: name?.trim() || `${source.name} (copy)`,
+      code: generateClassCode(db),
+      teacherId,
+      units: structuredClone(source.units),
+      blockSectionId: null,
+      createdAt: new Date().toISOString(),
+    };
+    db.classes.push(copy);
+    return copy;
   });
 }
 
@@ -185,8 +235,9 @@ export function getEnrollmentsForClass(classId: string): DbEnrollment[] {
 
 export function getStudentsForClass(classId: string): DbUser[] {
   const db = readDb();
+  const cls = db.classes.find((c) => c.id === classId);
   const studentIds = db.enrollments
-    .filter((e) => e.classId === classId)
+    .filter((e) => e.classId === classId && e.studentId !== cls?.teacherId)
     .map((e) => e.studentId);
   return db.users.filter((u) => studentIds.includes(u.id));
 }
@@ -311,12 +362,22 @@ export function saveStudentProgress(progress: DbStudentProgress): DbStudentProgr
   });
 }
 
+/**
+ * Replaces the rows it is given and leaves the rest of the class alone. It used
+ * to drop every row for the class first, which quietly deleted the progress of
+ * anyone missing from the caller's list — the teacher grid works from the
+ * roster, so a teacher enrolled in their own class lost their student progress
+ * the first time they approved anything.
+ */
 export function saveAllClassProgress(
   classId: string,
   all: DbStudentProgress[]
 ): void {
   withWrite((db) => {
-    db.progress = db.progress.filter((p) => p.classId !== classId);
+    const incoming = new Set(all.map((p) => p.studentId));
+    db.progress = db.progress.filter(
+      (p) => p.classId !== classId || !incoming.has(p.studentId)
+    );
     db.progress.push(...all);
   });
 }
@@ -336,33 +397,54 @@ export function findSubunit(
   return null;
 }
 
-export function userCanAccessClass(
+/**
+ * Roles are per-class, and a user can hold both — the demo account teaches its
+ * classes and is enrolled in them so the student side is reachable. Teaching
+ * wins unless the caller explicitly asks for the student view.
+ */
+export function classRolesForUser(
   db: Database,
   userId: string,
   classId: string
-): "teacher" | "student" | null {
+): ("teacher" | "student")[] {
   const cls = db.classes.find((c) => c.id === classId);
-  if (!cls) return null;
-  if (cls.teacherId === userId) return "teacher";
+  if (!cls) return [];
+
+  const roles: ("teacher" | "student")[] = [];
+  if (cls.teacherId === userId) roles.push("teacher");
   if (db.enrollments.some((e) => e.classId === classId && e.studentId === userId)) {
-    return "student";
+    roles.push("student");
   }
-  return null;
+  return roles;
 }
 
+export function userCanAccessClass(
+  db: Database,
+  userId: string,
+  classId: string,
+  preferred?: "teacher" | "student"
+): "teacher" | "student" | null {
+  const roles = classRolesForUser(db, userId, classId);
+  if (roles.length === 0) return null;
+  if (preferred && roles.includes(preferred)) return preferred;
+  return roles[0];
+}
+
+/** One row per (class, role) — a class you both teach and sit in appears twice. */
 export function listClassSummaries(userId: string): ClassSummary[] {
+  const db = readDb();
   const classes = getClassesForUser(userId);
-  return classes.map((cls) => {
+
+  return classes.flatMap((cls) => {
     const enrollments = getEnrollmentsForClass(cls.id);
-    const role = cls.teacherId === userId ? "teacher" : "student";
-    return {
+    const base = {
       id: cls.id,
       name: cls.name,
       code: cls.code,
-      role,
-      studentCount: enrollments.length,
+      studentCount: enrollments.filter((e) => e.studentId !== cls.teacherId).length,
       subunitCount: getAllSubunits(cls).length,
     };
+    return classRolesForUser(db, userId, cls.id).map((role) => ({ ...base, role }));
   });
 }
 
@@ -375,9 +457,13 @@ export interface ClassDetail {
   teacherName: string;
 }
 
-export function getClassDetail(classId: string, userId: string): ClassDetail | null {
+export function getClassDetail(
+  classId: string,
+  userId: string,
+  preferredRole?: "teacher" | "student"
+): ClassDetail | null {
   const db = readDb();
-  const access = userCanAccessClass(db, userId, classId);
+  const access = userCanAccessClass(db, userId, classId, preferredRole);
   if (!access) return null;
 
   const cls = getClassById(classId);
@@ -385,7 +471,16 @@ export function getClassDetail(classId: string, userId: string): ClassDetail | n
 
   const students = getStudentsForClass(classId);
   const invites = access === "teacher" ? getInvitesForClass(classId) : [];
-  const progress = getClassProgress(classId);
+
+  // A teacher enrolled in their own class (the demo account) has a progress row
+  // but no roster seat. The teacher grid iterates progress rows against the
+  // roster, so that row has to be dropped here or it dereferences undefined.
+  const rosterIds = new Set(students.map((s) => s.id));
+  const allProgress = getClassProgress(classId);
+  const progress =
+    access === "teacher"
+      ? allProgress.filter((p) => rosterIds.has(p.studentId))
+      : allProgress;
   const teacher = db.users.find((u) => u.id === cls.teacherId);
 
   return {

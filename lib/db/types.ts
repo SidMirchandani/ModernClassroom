@@ -1,4 +1,9 @@
-import type { Section, SectionActivityStatus } from "../types";
+import type {
+  Checkpoint,
+  CheckpointGrade,
+  Section,
+  SectionActivityStatus,
+} from "../types";
 
 /** @deprecated Global role is no longer used for permissions; class role is per-class. */
 export type UserRole = "member" | "teacher" | "student";
@@ -18,6 +23,8 @@ export interface CurriculumUnit {
   id: string;
   title: string;
   subunits: Section[];
+  /** Dated quizzes, tests and projects anchored between subunits. */
+  checkpoints: Checkpoint[];
 }
 
 export interface DbClass {
@@ -43,15 +50,13 @@ export interface DbInvite {
   invitedAt: string;
 }
 
-export interface DbProgressSection extends SectionActivityStatus {
-  gradeNumerator?: number;
-  gradeDenominator?: number;
-}
+export type DbProgressSection = SectionActivityStatus;
 
 export interface DbStudentProgress {
   classId: string;
   studentId: string;
   sections: Record<string, DbProgressSection>;
+  checkpoints?: Record<string, CheckpointGrade>;
 }
 
 export interface Database {

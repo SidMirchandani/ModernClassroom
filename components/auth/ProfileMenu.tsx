@@ -1,34 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getUserInitials } from "@/lib/avatar";
 import { UserAvatar } from "@/components/UserAvatar";
+import { Popover } from "@/components/Popover";
 import { getCurrentUser, logoutUser } from "@/lib/auth-client";
 import type { PublicUser } from "@/lib/db/types";
 
 export function ProfileMenu() {
   const router = useRouter();
   const [user, setUser] = useState<PublicUser | null>(null);
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setUser(getCurrentUser());
   }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    function onClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [open]);
 
   function handleLogout() {
     logoutUser();
@@ -40,22 +28,23 @@ export function ProfileMenu() {
   const initials = getUserInitials(user.firstName, user.lastName);
 
   return (
-    <div className="relative" ref={menuRef}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
+    <Popover
+      width={288}
+      align="right"
+      triggerTitle="Profile and settings"
+      triggerClassName={(open) =>
+        cn(
           "rounded-full transition-opacity",
-          open ? "ring-2 ring-violet-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-950" : "hover:opacity-90"
-        )}
-        aria-label="Profile and settings"
-        aria-expanded={open}
-      >
-        <UserAvatar initials={initials} size="md" bordered />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl z-50 overflow-hidden">
+          open
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-white dark:ring-offset-slate-950"
+            : "hover:opacity-90"
+        )
+      }
+      label={<UserAvatar initials={initials} size="md" bordered />}
+      panelClassName="overflow-hidden"
+    >
+      {(close) => (
+        <>
           <div className="px-4 py-4 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-3">
               <UserAvatar initials={initials} size="lg" />
@@ -78,23 +67,26 @@ export function ProfileMenu() {
           <div className="border-t border-slate-200 dark:border-slate-800 p-2">
             <button
               type="button"
-              onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+              onClick={() => {
+                close();
+                handleLogout();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
             >
               <LogOut className="w-4 h-4" />
               Log out
             </button>
           </div>
-        </div>
+        </>
       )}
-    </div>
+    </Popover>
   );
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-600">
+      <p className="eyebrow-muted">
         {label}
       </p>
       <p className="text-slate-700 dark:text-slate-300 truncate">{value}</p>

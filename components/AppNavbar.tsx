@@ -19,7 +19,7 @@ export function AppNavbar({
   return (
     <header
       className={cn(
-        "h-14 shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-5 sm:px-6",
+        "h-14 shrink-0 border-b border-slate-200 dark:border-slate-800 float-pane px-5 sm:px-6",
         sticky && "sticky top-0 z-30",
         center
           ? "grid grid-cols-[1fr_auto_1fr] items-center gap-3"

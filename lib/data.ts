@@ -13,6 +13,8 @@ export const STUDENTS: Student[] = [
 
 export {
   UNIT,
+  DEMO_SECTIONS,
+  DEMO_CHECKPOINTS,
   DEMO_PROGRESS,
   DEMO_UNITS,
   DEMO_CLASS_NAME,

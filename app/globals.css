@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 248 250 252;
+    --background: 249 250 251;
     --foreground: 15 23 42;
     --surface: 255 255 255;
     --surface-2: 241 245 249;
@@ -13,7 +13,7 @@
   }
 
   .dark {
-    --background: 10 10 14;
+    --background: 6 10 18;
     --foreground: 241 245 249;
     --surface: 17 24 39;
     --surface-2: 30 41 59;
@@ -22,20 +22,196 @@
   }
 
   * {
-    @apply border-slate-200 dark:border-slate-700;
+    @apply border-slate-200 dark:border-slate-800;
   }
 
+  /* Flat by design: the page is white and separation comes from 1px borders,
+     never from a drop shadow. Only true overlays (modals, dropdowns) lift. */
   body {
-    @apply bg-slate-50 dark:bg-[#0a0a0e] text-slate-900 dark:text-slate-100 antialiased;
+    @apply bg-white dark:bg-[#0b0f16] text-slate-900 dark:text-slate-100 antialiased;
+    font-family: var(--font-eb-garamond), Georgia, serif;
+  }
+
+  /* Garamond runs small and light — nudge size and weight so UI text at 11–14px
+     stays as readable as the sans stack it replaced. */
+  body {
+    font-size: 1.0625rem;
+  }
+
+  /* One visible focus treatment everywhere, brand-coloured. */
+  :focus-visible {
+    outline: 2px solid theme("colors.primary.DEFAULT");
+    outline-offset: 2px;
+  }
+  .dark :focus-visible {
+    outline-color: theme("colors.primary.glow");
+  }
+}
+
+@layer components {
+  /**
+   * Standard surface. Elevation comes from the z-shadow, not from a
+   * translucent background — solid fills keep text crisp in both modes.
+   */
+  .card {
+    @apply rounded-2xl border border-slate-200 dark:border-slate-800
+           bg-white dark:bg-slate-900;
+  }
+
+  .card-interactive {
+    @apply card transition-colors hover:border-slate-300 dark:hover:border-slate-700;
+  }
+
+  /** Recessed panel inside a card — grouping without another border box. */
+  .panel-inset {
+    @apply rounded-xl border border-slate-200 dark:border-slate-800
+           bg-slate-50/60 dark:bg-slate-800/30;
+  }
+
+  /** Small brand-coloured label that sits above a heading or section. */
+  .eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.08em] leading-[1.25]
+           text-primary dark:text-primary-glow;
+  }
+
+  /** Same shape, neutral — for labels that aren't the brand's own voice. */
+  .eyebrow-muted {
+    @apply text-[11px] font-bold uppercase tracking-[0.08em] leading-[1.25]
+           text-slate-400 dark:text-slate-500;
+  }
+
+  /**
+   * Anything that floats over scrolling content — navbars, the class strip,
+   * sticky table columns, popovers — sits on a translucent pane so what passes
+   * underneath stays visible as a blur instead of vanishing behind a hard edge.
+   */
+  .float-pane {
+    @apply bg-white/[0.85] dark:bg-slate-950/[0.85] backdrop-blur-md;
+  }
+
+  /**
+   * Overlay motion. The backdrop's blur is animated, not just its opacity — a
+   * blur that snaps to full strength reads as a jump cut however smoothly the
+   * layer above it fades. One easing curve (a soft ease-out) for every overlay,
+   * so the modal, the phone sheet and the popovers all move the same way.
+   */
+  /*
+   * The page blur lives on the app root, not on the overlay. `backdrop-filter`
+   * only samples content composited into the same layer, so a sticky navbar or
+   * class strip stayed sharp behind the popup — blurring the whole app subtree
+   * is the only way to blur the chrome along with everything else. Overlays
+   * portal out to <body>, so they sit outside what gets blurred.
+   */
+  #app-root {
+    transition: filter 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  body.overlay-open #app-root {
+    filter: blur(10px);
+  }
+
+  /* Just a click-catcher now — the blur is the app root's job. */
+  .overlay-backdrop {
+    opacity: 0;
+    transition: opacity 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .overlay-backdrop.is-shown {
+    opacity: 1;
+  }
+
+  .overlay-panel {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+    transition:
+      opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .overlay-panel.is-shown {
+    opacity: 1;
+    transform: none;
+  }
+
+  .overlay-sheet {
+    transform: translateY(100%);
+    transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .overlay-sheet.is-shown {
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #app-root,
+    .overlay-backdrop,
+    .overlay-panel,
+    .overlay-sheet {
+      transition-duration: 1ms;
+    }
+  }
+
+  /** Same idea one step up the surface scale, for panes over a white page. */
+  .float-pane-raised {
+    @apply bg-white/[0.85] dark:bg-slate-900/[0.85] backdrop-blur-md;
+  }
+
+  /**
+   * For a pane that content slides *under* rather than past — the progress
+   * table's student column. Thinner and blurred harder, so the columns
+   * disappearing beneath it read as depth instead of a hard wall.
+   */
+  .float-pane-sticky {
+    @apply bg-white/[0.45] dark:bg-slate-900/[0.45] backdrop-blur-xl;
+  }
+
+  /*
+   * The divider is drawn inside the cell, not with a border or a shadow.
+   * A collapsed table border does not travel with a sticky cell, and Chrome
+   * does not paint `box-shadow` on cells in a collapsed-border table at all —
+   * both leave the column with no edge as the grid scrolls under it.
+   */
+  .float-pane-sticky::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: theme("colors.slate.300");
+  }
+
+  .dark .float-pane-sticky::after {
+    background-color: theme("colors.slate.700");
   }
 }
 
 @layer utilities {
+  /* Grade cells are number fields for the keyboard's sake, not for the spinner. */
+  .no-spinner::-webkit-outer-spin-button,
+  .no-spinner::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  /*
+   * Only overlays carry depth. In dark mode an ambient drop reads as mud, so
+   * the overlay gets a specular top edge instead.
+   */
+  .dark .shadow-z5 {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 12px 40px rgba(0, 0, 0, 0.56),
+      0 4px 12px rgba(0, 0, 0, 0.3);
   }
 }

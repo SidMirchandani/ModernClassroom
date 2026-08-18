@@ -8,8 +8,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { AppNavbar } from "@/components/AppNavbar";
 import { SectionView } from "@/components/student/SectionView";
-import { SubunitContentEditor } from "@/components/teacher/SubunitContentEditor";
+import { SubunitTracksEditor } from "@/components/teacher/SubunitTracksEditor";
 import { SubunitObjectivesEditor } from "@/components/teacher/SubunitObjectivesEditor";
+import { SubunitScheduleEditor } from "@/components/teacher/SubunitScheduleEditor";
 import {
   SubunitViewToggle,
   type SubunitViewMode,
@@ -18,13 +19,9 @@ import type { Section, SectionActivityStatus } from "@/lib/types";
 import type { DbClass } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth-client";
 import { getClassDetail, updateClass } from "@/lib/db/client";
-import { normalizeSection } from "@/lib/section-blocks";
+import { normalizeSection } from "@/lib/section-tracks";
 
-const PREVIEW_PROGRESS: SectionActivityStatus = {
-  learn: "available",
-  practice: "available",
-  extra: "available",
-};
+const PREVIEW_PROGRESS: SectionActivityStatus = { tracks: {} };
 
 interface SubunitEditorProps {
   classId: string;
@@ -105,7 +102,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0a0e]">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0b0f16]">
       <AppNavbar
         left={
           <Link
@@ -125,9 +122,9 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
       />
 
       <main className="max-w-3xl mx-auto w-full px-5 py-8 space-y-8">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col-reverse sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
           <div className="min-w-0 flex-1">
-            <span className="text-xs font-bold text-violet-600 uppercase tracking-widest">
+            <span className="text-xs font-bold text-primary uppercase tracking-widest">
               {section.id}
             </span>
             {viewMode === "edit" ? (
@@ -137,7 +134,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
                   value={section.title}
                   onChange={(e) => setSection({ ...section, title: e.target.value })}
                   onBlur={() => saveSection(section)}
-                  className="block w-full text-2xl font-bold bg-transparent border-b border-transparent hover:border-slate-300 focus:border-violet-500 focus:outline-none mt-1"
+                  className="block w-full text-2xl font-bold bg-transparent border-b border-transparent hover:border-slate-300 focus:border-primary focus:outline-none mt-1"
                 />
                 {saving && <p className="text-xs text-slate-400 mt-1">Saving…</p>}
               </>
@@ -147,7 +144,9 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
               </h1>
             )}
           </div>
-          <SubunitViewToggle mode={viewMode} onChange={setViewMode} />
+          <div className="self-start shrink-0">
+            <SubunitViewToggle mode={viewMode} onChange={setViewMode} />
+          </div>
         </div>
 
         {viewMode === "student" ? (
@@ -166,13 +165,19 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
           </>
         ) : (
           <>
+            <SubunitScheduleEditor
+              section={section}
+              onChange={setSection}
+              onSave={saveSection}
+            />
+
             <SubunitObjectivesEditor
               section={section}
               onChange={setSection}
               onSave={saveSection}
             />
 
-            <SubunitContentEditor
+            <SubunitTracksEditor
               section={section}
               onChange={setSection}
               onSave={saveSection}

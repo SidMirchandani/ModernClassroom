@@ -16,9 +16,10 @@ interface DashboardShellProps {
 
 export function DashboardShell({ mode, onModeChange, children }: DashboardShellProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0a0e]">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0b0f16]">
       <AppNavbar
-        left={<Logo href="/dashboard" textClassName="text-sm" />}
+        // Wordmark hides on a phone — with the capsule beside it, it wraps.
+        left={<Logo href="/dashboard" textClassName="text-sm hidden sm:inline" />}
         center={
           <NavCapsule
             tabs={[
@@ -43,7 +44,9 @@ export function DashboardShell({ mode, onModeChange, children }: DashboardShellP
           </>
         }
       />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-10">{children}</main>
+      <main className="flex-1 max-w-4xl mx-auto w-full px-5 sm:px-6 py-6 sm:py-10">
+        {children}
+      </main>
     </div>
   );
 }

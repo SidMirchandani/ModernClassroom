@@ -1,5 +1,4 @@
 import type { CurriculumUnit } from "./db/types";
-import type { StudentProgress } from "./types";
 
 export type UnitPhase = "finished" | "active" | "upcoming";
 
@@ -17,9 +16,9 @@ export const UNIT_PHASE_LABEL: Record<UnitPhase, string> = {
 
 export const UNIT_PHASE_CLASSES: Record<UnitPhase, string> = {
   finished:
-    "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800",
+    "bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800",
   active:
-    "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800",
+    "bg-white dark:bg-slate-900 border border-primary/30 text-primary dark:text-primary-glow border border-primary/25",
   upcoming:
     "bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800",
 };
@@ -53,26 +52,4 @@ export function getCurrentUnitIndex(
   }
 
   return lastUnit;
-}
-
-export function allCompleteProgress(
-  studentIds: string[],
-  sectionIds: string[],
-  unitId = 1
-): StudentProgress[] {
-  return studentIds.map((studentId) => ({
-    studentId,
-    unitId,
-    sections: Object.fromEntries(
-      sectionIds.map((id) => [
-        id,
-        {
-          learn: "done" as const,
-          practice: "done" as const,
-          extra: "done" as const,
-          practiceApproved: true,
-        },
-      ])
-    ),
-  }));
 }

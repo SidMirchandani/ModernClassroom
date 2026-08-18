@@ -11,6 +11,8 @@ interface Props {
   containerRef: RefObject<HTMLDivElement | null>;
   columnRefs: RefObject<(HTMLTableCellElement | null)[]>;
   sectionIds?: string[];
+  /** The line stops here — the invite row is not part of anyone's progress. */
+  endRef?: RefObject<HTMLTableRowElement | null>;
 }
 
 export function TableProgressGate({
@@ -19,10 +21,12 @@ export function TableProgressGate({
   containerRef,
   columnRefs,
   sectionIds: sectionIdsProp,
+  endRef,
 }: Props) {
   const sectionIds = sectionIdsProp ?? UNIT.sections.map((s) => s.id);
   const [dragging, setDragging] = useState(false);
   const [lineLeft, setLineLeft] = useState<number | null>(null);
+  const [lineHeight, setLineHeight] = useState<number | null>(null);
 
   const blockIndex = sectionIds.indexOf(blockSectionId);
   const safeIndex = blockIndex >= 0 ? blockIndex : sectionIds.length - 1;
@@ -34,7 +38,10 @@ export function TableProgressGate({
     const containerRect = container.getBoundingClientRect();
     const colRect = col.getBoundingClientRect();
     setLineLeft(colRect.right - containerRect.left + container.scrollLeft);
-  }, [containerRef, columnRefs, safeIndex]);
+
+    const end = endRef?.current;
+    setLineHeight(end ? end.getBoundingClientRect().top - containerRect.top : null);
+  }, [containerRef, columnRefs, safeIndex, endRef]);
 
   useEffect(() => {
     updateLinePosition();
@@ -95,10 +102,10 @@ export function TableProgressGate({
 
   return (
     <div
-      className="absolute top-0 bottom-0 z-[1] pointer-events-none"
-      style={{ left: lineLeft }}
+      className="absolute top-0 z-[1] pointer-events-none"
+      style={{ left: lineLeft, ...(lineHeight === null ? { bottom: 0 } : { height: lineHeight }) }}
     >
-      <div className="absolute inset-y-0 -translate-x-1/2 w-0.5 bg-red-500" />
+      <div className="absolute inset-y-0 -translate-x-1/2 w-0.5 bg-rose-500" />
 
       <button
         type="button"
@@ -110,8 +117,8 @@ export function TableProgressGate({
           snapFromClientX(e.clientX);
         }}
         className={cn(
-          "pointer-events-auto absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-4 h-12 rounded bg-red-500 hover:bg-red-600 text-white cursor-ew-resize touch-none",
-          dragging && "ring-2 ring-red-300 dark:ring-red-700"
+          "pointer-events-auto absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-4 h-12 rounded bg-rose-500 hover:bg-rose-600 text-white cursor-ew-resize touch-none",
+          dragging && "ring-2 ring-rose-300 dark:ring-rose-700"
         )}
       >
         <GripVertical className="w-3 h-3" />

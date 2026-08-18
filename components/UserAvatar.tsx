@@ -25,7 +25,7 @@ export function UserAvatar({
   return (
     <div
       className={cn(
-        "rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center font-bold text-violet-700 dark:text-violet-300 shrink-0",
+        "rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center font-bold text-primary dark:text-primary-glow shrink-0",
         SIZE_CLASSES[size],
         bordered && "border border-slate-200 dark:border-slate-700",
         className

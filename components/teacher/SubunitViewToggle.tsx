@@ -19,7 +19,7 @@ export function SubunitViewToggle({ mode, onChange }: SubunitViewToggleProps) {
         className={cn(
           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
           mode === "edit"
-            ? "bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300"
+            ? "bg-white dark:bg-slate-900 border border-primary/30 text-primary dark:text-primary-glow"
             : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
         )}
       >
@@ -32,7 +32,7 @@ export function SubunitViewToggle({ mode, onChange }: SubunitViewToggleProps) {
         className={cn(
           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
           mode === "student"
-            ? "bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300"
+            ? "bg-white dark:bg-slate-900 border border-primary/30 text-primary dark:text-primary-glow"
             : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
         )}
       >

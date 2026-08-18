@@ -67,10 +67,10 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
 
   const heading =
     mode === "login"
-      ? { title: "Welcome back", subtitle: "Log in with your email or username." }
+      ? { title: "Welcome Back", subtitle: "Log in with your email or username." }
       : {
-          title: "Create your account",
-          subtitle: "One account for every class you teach or join.",
+          title: "Create Your Account",
+          subtitle: "Use an email that is not already registered — one account per email.",
         };
 
   return (
@@ -80,7 +80,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
       </h2>
       <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">{heading.subtitle}</p>
 
-      <div className="flex rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 p-1 mb-6">
+      <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/50 p-1 mb-6">
         {(["login", "signup"] as const).map((m) => (
           <button
             key={m}
@@ -92,18 +92,18 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
             className={cn(
               "flex-1 py-2 text-sm font-medium rounded-lg transition-colors",
               mode === m
-                ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm"
+                ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
             )}
           >
-            {m === "login" ? "Log in" : "Sign up"}
+            {m === "login" ? "Log In" : "Sign Up"}
           </button>
         ))}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {mode === "login" ? (
-          <Field label="Email or username">
+          <Field label="Email or Username">
             <input
               type="text"
               value={identifier}
@@ -117,7 +117,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="First name">
+              <Field label="First Name">
                 <input
                   type="text"
                   value={firstName}
@@ -128,7 +128,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
                   autoComplete="given-name"
                 />
               </Field>
-              <Field label="Last name">
+              <Field label="Last Name">
                 <input
                   type="text"
                   value={lastName}
@@ -168,7 +168,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
         </Field>
 
         {error && (
-          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2">
+          <p className="text-sm text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 rounded-lg px-3 py-2">
             {error}
           </p>
         )}
@@ -176,27 +176,20 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
         <button
           type="submit"
           disabled={loading}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-60"
+          className="w-full flex items-center justify-center gap-2 h-11 rounded-lg bg-primary hover:bg-primary-dark text-white font-semibold text-sm transition-colors disabled:opacity-60"
         >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-          {mode === "login" ? "Log in" : "Create account"}
+          {mode === "login" ? "Log In" : "Create Account"}
         </button>
       </form>
 
       <p className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400">
         Just browsing?{" "}
         <Link
-          href="/demo/student"
-          className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+          href="/demo"
+          className="text-primary dark:text-primary-glow hover:underline font-medium"
         >
-          Student demo
-        </Link>
-        {" · "}
-        <Link
-          href="/demo/teacher"
-          className="text-violet-600 dark:text-violet-400 hover:underline font-medium"
-        >
-          Teacher demo
+          Open the Demo Classroom
         </Link>
       </p>
     </div>
@@ -215,5 +208,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputClass =
-  "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400";
+  "w-full px-3 h-11 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm transition-colors focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
 

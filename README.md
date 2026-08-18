@@ -2,15 +2,16 @@
 
 A modern, self-paced learning dashboard for students and teachers. Built with Next.js, TypeScript, and Tailwind CSS.
 
-Students work through unit sections at their own pace — completing Learn, Practice, and Extra Material in order, uploading proof of work, and updating their status as they go. Teachers get a live progress grid, a draggable progress gate to control how far the class can move, and review workflows for submitted screenshots.
+Students work through unit sections at their own pace. Each section is split by **resource** — the textbook, AP Classroom, a guided-notes series — because the three cover the same objectives in different orders. Each resource is its own button that opens onto its own Learn material and Practice deliverable, with its own status. Teachers get a live progress grid showing which resource each student is stuck on, a draggable progress gate to control how far the class can move, and review workflows for submitted screenshots.
 
-**Demo mode** — no backend or login required. Progress and the teacher progress gate are stored in the browser via `localStorage`.
+**Demo** — open `/demo` and the app seeds itself with a teacher, eight students and three real courses (Algebra II, AP Precalculus, AP Statistics), then drops you into the product. A "Viewing as" switcher lets you look at the same classroom as the teacher or any student. Everything is stored in the browser via `localStorage`.
 
 ## Features
 
 ### Student view
 - Unit banner and section navigation (sidebar on desktop, bottom sheet on mobile)
-- Sequential unlock: Learn → Practice → Extra Material
+- Course overview dashboard: whole curriculum, soft due dates and upcoming checkpoints
+- Resource tracks run in parallel; inside each one, Learn unlocks Practice
 - Status badge on each activity card (top-right dropdown): **In Progress**, **Done**, **Help Requested**, or **Locked**
 - Practice requires a screenshot upload before marking Done
 - Help requests do not block moving to the next activity or section

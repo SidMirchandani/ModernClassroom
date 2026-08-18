@@ -19,7 +19,7 @@ export function NavCapsule({ tabs, activeId, className }: NavCapsuleProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center p-0.5 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50",
+        "inline-flex items-center p-0.5 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900",
         className
       )}
     >
@@ -39,7 +39,7 @@ export function NavCapsule({ tabs, activeId, className }: NavCapsuleProps) {
         const tabClass = cn(
           "relative px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap",
           isActive
-            ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm"
+            ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm dark:shadow-none dark:ring-1 dark:ring-slate-600"
             : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
         );
 
