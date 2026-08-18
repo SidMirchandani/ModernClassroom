@@ -294,7 +294,32 @@
    * portal out to <body>, so they sit outside what gets blurred.
    */
   #app-root {
-    transition: filter 280ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition:
+      filter 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* The tour pressing a control: a ripple out of the point being clicked, so
+     the click is something you see happen rather than infer afterwards. */
+  @keyframes tour-tap {
+    from {
+      transform: scale(0.4);
+      opacity: 0.75;
+    }
+    to {
+      transform: scale(2.6);
+      opacity: 0;
+    }
+  }
+
+  .tour-tap {
+    animation: tour-tap 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  /* The tour changing screens. A short dip is the whole point: it turns a jump
+     cut into a move you can see, so you know the page under you changed. */
+  body.tour-moving #app-root {
+    opacity: 0.35;
   }
 
   body.overlay-open #app-root {

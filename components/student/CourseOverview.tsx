@@ -119,7 +119,10 @@ export function CourseOverview({
       </div>
 
       {upNext && (
-        <div className="rounded-2xl border border-2 border-primary/40 bg-white dark:bg-slate-900 p-5">
+        <div
+          data-tour="up-next"
+          className="rounded-2xl border border-2 border-primary/40 bg-white dark:bg-slate-900 p-5"
+        >
           <p className="eyebrow">
             Up Next
           </p>

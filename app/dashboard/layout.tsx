@@ -1,4 +1,5 @@
 import { DemoNotice } from "@/components/demo/DemoNotice";
+import { DemoTour } from "@/components/tour/DemoTour";
 
 export default function DashboardLayout({
   children,
@@ -8,6 +9,7 @@ export default function DashboardLayout({
   return (
     <>
       <DemoNotice />
+      <DemoTour />
       {children}
     </>
   );

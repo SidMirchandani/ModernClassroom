@@ -21,21 +21,25 @@ export function DashboardShell({ mode, onModeChange, children }: DashboardShellP
         // Wordmark hides on a phone — with the capsule beside it, it wraps.
         left={<Logo href="/dashboard" textClassName="text-sm hidden sm:inline" />}
         center={
+          <span data-tour="mode-switch" className="inline-flex">
           <NavCapsule
             tabs={[
               {
                 id: "teaching",
                 label: "Teaching",
+                tourId: "mode-teaching",
                 onClick: () => onModeChange("teaching"),
               },
               {
                 id: "enrolled",
                 label: "Enrolled",
+                tourId: "mode-enrolled",
                 onClick: () => onModeChange("enrolled"),
               },
             ]}
             activeId={mode}
           />
+          </span>
         }
         right={
           <>

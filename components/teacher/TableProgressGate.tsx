@@ -109,6 +109,7 @@ export function TableProgressGate({
 
       <button
         type="button"
+        data-tour="progress-gate"
         aria-label="Drag progress gate"
         onPointerDown={(e) => {
           e.preventDefault();
