@@ -42,6 +42,29 @@
     --muted: 148 163 184;
   }
 
+  /*
+   * Blue needs a block of its own even though `:root` already carries it: an
+   * element that says `data-accent="blue"` inside a class wearing another
+   * colour must re-assert the house blue, and with no rule to match it would
+   * simply inherit the class's palette instead.
+   */
+  [data-accent="blue"] {
+    --primary: 37 99 234;
+    --primary-dark: 29 79 196;
+    --primary-glow: 122 168 245;
+    --primary-light: 234 241 254;
+    --primary-50: 242 246 254;
+    --primary-100: 219 232 253;
+    --primary-200: 191 212 251;
+    --primary-300: 147 183 248;
+    --primary-400: 91 142 241;
+    --primary-500: 58 117 238;
+    --primary-600: 37 99 234;
+    --primary-700: 29 79 196;
+    --primary-800: 26 64 156;
+    --primary-900: 22 48 111;
+  }
+
   [data-accent="indigo"] {
     --primary: 79 70 229;
     --primary-dark: 67 56 202;

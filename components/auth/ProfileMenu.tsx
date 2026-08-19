@@ -1,24 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getUserInitials } from "@/lib/avatar";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Popover } from "@/components/Popover";
-import { getCurrentUser, logoutUser } from "@/lib/auth-client";
+import { logoutUser } from "@/lib/auth-client";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { setUserAccent } from "@/lib/db/client";
 import { ACCENT_LIST, personAccent, type AccentId } from "@/lib/class-appearance";
-import type { PublicUser } from "@/lib/db/types";
 
 export function ProfileMenu() {
   const router = useRouter();
-  const [user, setUser] = useState<PublicUser | null>(null);
-
-  useEffect(() => {
-    setUser(getCurrentUser());
-  }, []);
+  const user = useCurrentUser();
 
   function handleLogout() {
     logoutUser();
@@ -27,8 +23,9 @@ export function ProfileMenu() {
 
   function chooseAccent(accent: AccentId) {
     if (!user) return;
+    // No local copy to keep in step: the write announces itself and every
+    // place showing this user — here, the name in the navbar — re-reads.
     setUserAccent(user.id, accent);
-    setUser({ ...user, accent });
   }
 
   if (!user) return null;

@@ -7,8 +7,8 @@ import { personAccent } from "@/lib/class-appearance";
 import { ClassTeacherView } from "@/components/teacher/ClassTeacherView";
 import { ClassStudentView } from "@/components/student/ClassStudentView";
 import { Loader2 } from "lucide-react";
-import type { PublicUser } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth-client";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { getClassDetail } from "@/lib/db/client";
 
 export function ClassPageClient({ classId }: { classId: string }) {
@@ -17,7 +17,9 @@ export function ClassPageClient({ classId }: { classId: string }) {
   // A user can teach a class and sit in it. `?as=student` is how the Enrolled
   // tab asks for the student side of one they also teach.
   const requestedRole = searchParams.get("as") === "student" ? "student" : undefined;
-  const [user, setUser] = useState<PublicUser | null>(null);
+  // Live, so changing your colour in the profile menu repaints your name in
+  // the strip behind it. Access is still judged once, below.
+  const user = useCurrentUser();
   const [role, setRole] = useState<"teacher" | "student" | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -27,8 +29,6 @@ export function ClassPageClient({ classId }: { classId: string }) {
       router.replace("/?auth=login");
       return;
     }
-    setUser(currentUser);
-
     const detail = getClassDetail(classId, currentUser.id, requestedRole);
     if (!detail) {
       router.replace("/dashboard");

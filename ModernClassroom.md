@@ -221,6 +221,7 @@ lib/
   todos.ts                    ⭐ due-date parsing + the three to-do buckets
   course-templates.ts         ⭐ Algebra II / AP Precalc / AP Stats skeletons
   class-appearance.ts         ⭐ the eight accents and twelve class glyphs
+  use-current-user.ts         The signed-in user, re-read on every store write
   curriculum.ts               Empty section factory + `shortUnitLabel`
   demo-units.ts               Seeded Algebra II Unit 3 with real objectives + dates
   demo-seed.ts                ⭐ the whole demo world, and its pinned clock
@@ -328,7 +329,12 @@ rather than asked to choose; accounts made before the setting (and the seeded
 classmates) fall back to one derived from the user id, which is effectively
 random but stable across renders. It rides on the same `data-accent` attribute,
 set on the avatar itself, so your initials stay yours on a page wearing a
-different colour. That is why the attribute is `data-accent` and not
+different colour. Blue therefore needs its own `[data-accent="blue"]` block even
+though `:root` already carries it — with no rule to match, an avatar asking for
+blue inherits the class's palette instead of overriding it. And because the
+choice is made in a menu floating over a page that also shows your name,
+`useCurrentUser()` re-reads the store on `DB_WRITE_EVENT` rather than reading
+once on mount; otherwise the name behind the menu keeps its old colour. That is why the attribute is `data-accent` and not
 `data-class-color`: two different things can carry one.
 
 Two colours are tuned rather than taken straight from Tailwind: **amber** runs a
