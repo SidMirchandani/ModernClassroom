@@ -2,7 +2,7 @@
 
 > **Master doc — the north star for this project.** Everything else (README, comments, code) should agree with this. Where code and doc conflict, the code wins and this doc gets fixed.
 >
-> Repo: [SidMirchandani/modernclassroom](https://github.com/SidMirchandani/modernclassroom) (public) · Last commit: `ModernClassroom v1.3: Update: Add master doc` · Last reviewed: 2026-08-17
+> Repo: [SidMirchandani/ModernClassroom](https://github.com/SidMirchandani/ModernClassroom) (public) · Last commit: `ModernClassroom v1.3: Update: Add master doc` · Last reviewed: 2026-08-17
 
 ## What it is
 
@@ -193,6 +193,7 @@ app/
 components/
   AppNavbar.tsx / NavCapsule.tsx   Fixed h-14 bar · the segmented tab pill
   Select.tsx / Popover.tsx    ⭐ portal-rendered dropdown · portal-rendered panel
+  ConfirmDialog.tsx           The second ask, before anything irreversible
   TodoButton.tsx              ⭐ past due / this week / next week
   AttachmentList.tsx          Shared link/file chips
   CheckpointRow.tsx           Shared dated quiz/test/project row
@@ -293,6 +294,28 @@ Three rules make the list mean something:
 3. **A checkpoint inherits the section it follows.** Quizzes carry no progress of
    their own, so once the section before a quiz is signed off, the quiz drops
    off the list — otherwise "Unit 1 Test" stays overdue all year.
+
+### Leaving, removing and deleting
+
+Three ways a class or a roster seat ends, and they are not equally destructive:
+
+- **A student leaves** a class from the `···` on its dashboard card.
+- **A teacher removes a student** from the `···` beside their name in the
+  progress table.
+- **A teacher deletes a class** from the `···` on its dashboard card. The class,
+  its curriculum, its roster, its invites and everyone's work go with it.
+
+The first two are the *same* store operation — `unenrollStudent()` drops the
+enrolment row and nothing else. **The progress row is deliberately left
+behind:** it is invisible to everyone while that person is off the roster (the
+teacher's grid reads progress against the roster, and `saveAllClassProgress`
+merges rather than sweeps), and rejoining with the class code brings the year's
+work back. A removal made in error is not a year lost — which is why the dialog
+says so.
+
+`deleteClass()` is the one that cannot be taken back, so it names the class and
+its student count before it asks. Every one of the three goes through
+`ConfirmDialog`, and in all three the cancel is the neutral button.
 
 ### Customize — how a class presents itself — `lib/class-appearance.ts`
 

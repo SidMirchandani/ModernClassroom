@@ -35,11 +35,13 @@ import { NavCapsule } from "@/components/NavCapsule";
 import { UserAvatar } from "@/components/UserAvatar";
 import { AppNavbar } from "@/components/AppNavbar";
 import { Modal } from "@/components/Modal";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getCurrentUser } from "@/lib/auth-client";
 import {
   getClassDetail,
   inviteToClass,
   saveAllClassProgress,
+  unenrollStudent,
   updateClass,
 } from "@/lib/db/client";
 import type { DbClass, DbInvite } from "@/lib/db/types";
@@ -64,7 +66,9 @@ import {
   Users,
   Eye,
   Loader2,
+  MoreHorizontal,
   UserPlus,
+  UserMinus,
   RotateCcw,
 } from "lucide-react";
 import {
@@ -313,6 +317,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     },
     [classId]
   );
+
+  // The student a removal is being confirmed for, if any.
+  const [pendingRemoval, setPendingRemoval] = useState<Student | null>(null);
 
   useClassTheme(cls?.color);
 
@@ -884,9 +891,40 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                       return (
                         <tr key={student.id} className={cn("border-b border-slate-100 dark:border-slate-800/50", idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/30")}>
                           <td className="px-4 py-3 sticky left-0 z-10 float-pane-sticky">
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2">
                               <UserAvatar initials={student.avatar} size="sm" />
-                              <span className="font-medium text-sm">{student.name}</span>
+                              <span className="flex-1 min-w-0 font-medium text-sm">
+                                {student.name}
+                              </span>
+                              <Popover
+                                width={208}
+                                align="left"
+                                triggerTitle={`Options for ${student.name}`}
+                                triggerClassName={(open) =>
+                                  cn(
+                                    "shrink-0 w-6 h-6 rounded-md flex items-center justify-center transition-colors",
+                                    open
+                                      ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                      : "text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                  )
+                                }
+                                label={<MoreHorizontal className="w-4 h-4" />}
+                                panelClassName="p-1.5"
+                              >
+                                {(close) => (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      close();
+                                      setPendingRemoval(student);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                                  >
+                                    <UserMinus className="w-4 h-4" />
+                                    Remove from class
+                                  </button>
+                                )}
+                              </Popover>
                             </div>
                           </td>
                           {columns.map((column) => {
@@ -1084,6 +1122,26 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         )}
 
       </div>
+
+      <ConfirmDialog
+        open={pendingRemoval !== null}
+        onClose={() => setPendingRemoval(null)}
+        onConfirm={() => {
+          if (!pendingRemoval) return;
+          unenrollStudent(classId, pendingRemoval.id);
+          loadData();
+        }}
+        danger
+        title="Remove this student?"
+        confirmLabel="Remove student"
+        body={
+          <>
+            <strong>{pendingRemoval?.name}</strong> comes off the roster and stops seeing
+            this class. Their work is kept, so joining again with the class code brings it
+            back.
+          </>
+        }
+      />
 
       <Modal open={reviewTarget !== null} onClose={() => setReviewTarget(null)} title="Review Submission" className="max-w-xl">
         {reviewStudent && reviewSection && (

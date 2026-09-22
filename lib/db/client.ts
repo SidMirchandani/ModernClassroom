@@ -304,6 +304,42 @@ export function enrollStudent(classId: string, studentId: string): boolean {
   });
 }
 
+/**
+ * Delete a class and everything hanging off it — roster, invites and every
+ * student's work. Only its own teacher can, and there is no undo, so the
+ * caller is expected to have asked twice.
+ */
+export function deleteClass(classId: string, teacherId: string): boolean {
+  return withWrite((db) => {
+    const cls = db.classes.find((c) => c.id === classId);
+    if (!cls || cls.teacherId !== teacherId) return false;
+
+    db.classes = db.classes.filter((c) => c.id !== classId);
+    db.enrollments = db.enrollments.filter((e) => e.classId !== classId);
+    db.invites = db.invites.filter((i) => i.classId !== classId);
+    db.progress = db.progress.filter((p) => p.classId !== classId);
+    return true;
+  });
+}
+
+/**
+ * Take someone off a class roster — the same operation whether a teacher
+ * removes a student or a student leaves of their own accord.
+ *
+ * Their progress row is deliberately left behind. It is invisible to everyone
+ * while they are off the roster, and rejoining with the class code brings the
+ * year's work back, so a removal made in error is not a year lost.
+ */
+export function unenrollStudent(classId: string, studentId: string): boolean {
+  return withWrite((db) => {
+    const before = db.enrollments.length;
+    db.enrollments = db.enrollments.filter(
+      (e) => !(e.classId === classId && e.studentId === studentId)
+    );
+    return db.enrollments.length < before;
+  });
+}
+
 export function joinClassByCode(studentId: string, code: string): DbClass | null {
   return withWrite((db) => {
     const cls = db.classes.find((c) => c.code === code.trim());

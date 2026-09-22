@@ -43,8 +43,8 @@ Students work through unit sections at their own pace. Each section is split by 
 ### Install and run
 
 ```bash
-git clone https://github.com/sidmirchandani/modernclassroom.git
-cd modernclassroom
+git clone https://github.com/SidMirchandani/ModernClassroom.git
+cd ModernClassroom
 npm install
 npm run dev
 ```

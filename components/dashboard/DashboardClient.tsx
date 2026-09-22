@@ -6,22 +6,30 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell, type DashboardMode } from "./DashboardShell";
 import { getCurrentUser } from "@/lib/auth-client";
 import {
+  deleteClass,
   duplicateClass,
   getClassDetail,
   joinClassWithCode,
   listClassSummaries,
+  unenrollStudent,
 } from "@/lib/db/client";
 import { buildTodosForClasses, type TodoItem } from "@/lib/todos";
 import { referenceToday } from "@/lib/demo-seed";
 import { classIcon } from "@/lib/class-appearance";
+import { cn } from "@/lib/utils";
 import { TodoButton } from "@/components/TodoButton";
+import { Popover } from "@/components/Popover";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   Check,
   Copy,
   CopyPlus,
   Hash,
   Loader2,
+  LogOut,
+  MoreHorizontal,
   Plus,
+  Trash2,
 } from "lucide-react";
 
 export function DashboardClient() {
@@ -44,6 +52,9 @@ export function DashboardClient() {
   const [joinError, setJoinError] = useState("");
   const [joining, setJoining] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // The class a confirm dialog is currently asking about, if any.
+  const [pendingRemoval, setPendingRemoval] =
+    useState<ReturnType<typeof listClassSummaries>[number] | null>(null);
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -102,6 +113,23 @@ export function DashboardClient() {
     navigator.clipboard?.writeText(code);
     setCopiedId(classId);
     setTimeout(() => setCopiedId((id) => (id === classId ? null : id)), 1500);
+  }
+
+  function refreshClasses() {
+    const user = getCurrentUser();
+    if (user) setClasses(listClassSummaries(user.id));
+  }
+
+  /** Deleting a class you teach, or leaving one you are in. Same button. */
+  function confirmRemoval() {
+    const user = getCurrentUser();
+    if (!user || !pendingRemoval) return;
+    if (pendingRemoval.role === "teacher") {
+      deleteClass(pendingRemoval.id, user.id);
+    } else {
+      unenrollStudent(pendingRemoval.id, user.id);
+    }
+    refreshClasses();
   }
 
   function handleDuplicate(classId: string) {
@@ -242,13 +270,18 @@ export function DashboardClient() {
                   </div>
                   {/* Room for the code and the buttons, which sit outside the
                       link so clicking them cannot navigate. */}
-                  {cls.role === "teacher" && (
-                    <span className="hidden sm:block w-[15.5rem] shrink-0" aria-hidden />
-                  )}
+                  <span
+                    className={cn(
+                      "hidden sm:block shrink-0",
+                      cls.role === "teacher" ? "w-[18rem]" : "w-10"
+                    )}
+                    aria-hidden
+                  />
                 </Link>
 
-                {cls.role === "teacher" && (
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-3">
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2">
+                  {cls.role === "teacher" && (
+                    <div className="flex items-center gap-3">
                     <div className="text-right">
                       <div className="eyebrow-muted">Class Code</div>
                       <div className="flex items-center gap-1">
@@ -280,13 +313,87 @@ export function DashboardClient() {
                       <CopyPlus className="w-3.5 h-3.5" />
                       Duplicate
                     </button>
-                  </div>
-                )}
+                    </div>
+                  )}
+
+                  {/* One quiet menu per card. The destructive item lives in
+                      here rather than on the surface, where a mis-click on the
+                      way to opening a class would find it. */}
+                  <Popover
+                    width={224}
+                    align="right"
+                    triggerTitle={
+                      cls.role === "teacher" ? "Class options" : "Enrolment options"
+                    }
+                    triggerClassName={(open) =>
+                      cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
+                        open
+                          ? "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                          : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      )
+                    }
+                    label={<MoreHorizontal className="w-4 h-4" />}
+                    panelClassName="p-1.5"
+                  >
+                    {(close) => (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          close();
+                          setPendingRemoval(cls);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                      >
+                        {cls.role === "teacher" ? (
+                          <>
+                            <Trash2 className="w-4 h-4" />
+                            Delete class
+                          </>
+                        ) : (
+                          <>
+                            <LogOut className="w-4 h-4" />
+                            Leave class
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </Popover>
+                </div>
               </div>
             );
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingRemoval !== null}
+        onClose={() => setPendingRemoval(null)}
+        onConfirm={confirmRemoval}
+        danger
+        title={
+          pendingRemoval?.role === "teacher" ? "Delete this class?" : "Leave this class?"
+        }
+        confirmLabel={
+          pendingRemoval?.role === "teacher" ? "Delete class" : "Leave class"
+        }
+        body={
+          pendingRemoval?.role === "teacher" ? (
+            <>
+              <strong>{pendingRemoval?.name}</strong> and everything in it — the
+              curriculum, the {pendingRemoval?.studentCount} student
+              {pendingRemoval?.studentCount === 1 ? "" : "s"} on the roster, and all of
+              their work — will be deleted for everyone. This cannot be undone.
+            </>
+          ) : (
+            <>
+              You will come off the roster for <strong>{pendingRemoval?.name}</strong> and
+              stop seeing it here. Your work is kept, so joining again with the class code
+              brings it back.
+            </>
+          )
+        }
+      />
     </DashboardShell>
   );
 }
