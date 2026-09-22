@@ -5,14 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell, type DashboardMode } from "./DashboardShell";
 import { getCurrentUser } from "@/lib/auth-client";
-import {
-  deleteClass,
-  duplicateClass,
-  getClassDetail,
-  joinClassWithCode,
-  listClassSummaries,
-  unenrollStudent,
-} from "@/lib/db/client";
+import { store } from "@/lib/store";
+import type { ClassSummary } from "@/lib/db/types";
 import { buildTodosForClasses, type TodoItem } from "@/lib/todos";
 import { referenceToday } from "@/lib/demo-seed";
 import { classIcon } from "@/lib/class-appearance";
@@ -43,9 +37,7 @@ export function DashboardClient() {
         ? "teaching"
         : null;
   const [mode, setMode] = useState<DashboardMode>(requestedTab ?? "teaching");
-  const [classes, setClasses] = useState<
-    ReturnType<typeof listClassSummaries>
-  >([]);
+  const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [joinCode, setJoinCode] = useState("");
@@ -53,26 +45,31 @@ export function DashboardClient() {
   const [joining, setJoining] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   // The class a confirm dialog is currently asking about, if any.
-  const [pendingRemoval, setPendingRemoval] =
-    useState<ReturnType<typeof listClassSummaries>[number] | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<ClassSummary | null>(null);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    if (!user) {
-      router.replace("/?auth=login");
-      return;
-    }
-    const summaries = listClassSummaries(user.id);
-    setClasses(summaries);
+    let alive = true;
+    (async () => {
+      const user = await getCurrentUser();
+      if (!user) {
+        router.replace("/?auth=login");
+        return;
+      }
+      const summaries = await store.listClassSummaries(user.id);
+      if (!alive) return;
+      setClasses(summaries);
 
-    // The dashboard's To-Do spans every class you sit in, so each one's
-    // curriculum and your own progress row have to be read here.
-    setTodos(
-      buildTodosForClasses(
-        summaries
-          .filter((c) => c.role === "student")
-          .flatMap((summary) => {
-            const detail = getClassDetail(summary.id, user.id, "student");
+      // The dashboard's To-Do spans every class you sit in, so each one's
+      // curriculum and your own progress row have to be read here.
+      const enrolled = summaries.filter((c) => c.role === "student");
+      const details = await Promise.all(
+        enrolled.map((summary) => store.getClassDetail(summary.id, user.id, "student"))
+      );
+      if (!alive) return;
+      setTodos(
+        buildTodosForClasses(
+          enrolled.flatMap((summary, i) => {
+            const detail = details[i];
             if (!detail) return [];
             const mine = detail.progress.find((p) => p.studentId === user.id);
             return [
@@ -89,20 +86,25 @@ export function DashboardClient() {
               },
             ];
           }),
-        referenceToday()
-      )
-    );
+          referenceToday()
+        )
+      );
 
-    // With no explicit tab, land on the side the user actually has classes on —
-    // a student opening "Teaching" to an empty state reads as a broken account.
-    if (
-      !requestedTab &&
-      !summaries.some((c) => c.role === "teacher") &&
-      summaries.some((c) => c.role === "student")
-    ) {
-      setMode("enrolled");
-    }
-    setLoading(false);
+      // With no explicit tab, land on the side the user actually has classes
+      // on — a student opening "Teaching" to an empty state reads as a broken
+      // account.
+      if (
+        !requestedTab &&
+        !summaries.some((c) => c.role === "teacher") &&
+        summaries.some((c) => c.role === "student")
+      ) {
+        setMode("enrolled");
+      }
+      setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
   }, [router, requestedTab]);
 
   const filteredClasses = classes.filter((cls) =>
@@ -115,27 +117,27 @@ export function DashboardClient() {
     setTimeout(() => setCopiedId((id) => (id === classId ? null : id)), 1500);
   }
 
-  function refreshClasses() {
-    const user = getCurrentUser();
-    if (user) setClasses(listClassSummaries(user.id));
+  async function refreshClasses() {
+    const user = await getCurrentUser();
+    if (user) setClasses(await store.listClassSummaries(user.id));
   }
 
   /** Deleting a class you teach, or leaving one you are in. Same button. */
-  function confirmRemoval() {
-    const user = getCurrentUser();
+  async function confirmRemoval() {
+    const user = await getCurrentUser();
     if (!user || !pendingRemoval) return;
     if (pendingRemoval.role === "teacher") {
-      deleteClass(pendingRemoval.id, user.id);
+      await store.deleteClass(pendingRemoval.id, user.id);
     } else {
-      unenrollStudent(pendingRemoval.id, user.id);
+      await store.unenrollStudent(pendingRemoval.id, user.id);
     }
-    refreshClasses();
+    await refreshClasses();
   }
 
-  function handleDuplicate(classId: string) {
-    const user = getCurrentUser();
+  async function handleDuplicate(classId: string) {
+    const user = await getCurrentUser();
     if (!user) return;
-    const copy = duplicateClass(classId, user.id);
+    const copy = await store.duplicateClass(classId, user.id);
     if (copy) router.push(`/dashboard/class/${copy.id}`);
   }
 
@@ -144,10 +146,10 @@ export function DashboardClient() {
     setJoinError("");
     setJoining(true);
     try {
-      const user = getCurrentUser();
+      const user = await getCurrentUser();
       if (!user) throw new Error("Not logged in");
-      const cls = joinClassWithCode(user.id, joinCode);
-      router.push(`/dashboard/class/${cls.id}`);
+      const cls = await store.joinClassWithCode(user.id, joinCode);
+      router.push(`/dashboard/class/${cls.id}?as=student`);
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : "Failed to join");
     } finally {
@@ -369,7 +371,7 @@ export function DashboardClient() {
       <ConfirmDialog
         open={pendingRemoval !== null}
         onClose={() => setPendingRemoval(null)}
-        onConfirm={confirmRemoval}
+        onConfirm={() => void confirmRemoval()}
         danger
         title={
           pendingRemoval?.role === "teacher" ? "Delete this class?" : "Leave this class?"

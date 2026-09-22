@@ -1,69 +1,47 @@
-import bcrypt from "bcryptjs";
+"use client";
+
 import type { PublicUser } from "./db/types";
-import {
-  acceptPendingInvites,
-  createUser,
-  findUserByEmailOrUsername,
-  findUserById,
-  generateUsername,
-  getDb,
-} from "./db/client";
+import { randomAccent } from "./class-appearance";
+import { isDemoMode, exitDemoMode } from "./demo-seed";
+import { supabase } from "./supabase/client";
+import { acceptInvites } from "./store/remote";
+import { store, syncedStoreIfActive } from "./store";
 
-export const SESSION_STORAGE_KEY = "modern-classroom-session";
+/**
+ * Accounts are Supabase Auth. The demo has no account — it is a local session
+ * over a local store — so the two never meet: signing in leaves the demo, and
+ * the demo never calls the server.
+ */
 
-export function toPublicUser(user: {
-  id: string;
-  email: string;
-  username: string;
-  role: PublicUser["role"];
-  firstName: string;
-  lastName: string;
-  accent?: PublicUser["accent"];
-}): PublicUser {
-  return {
-    id: user.id,
-    email: user.email,
-    username: user.username,
-    role: user.role,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    accent: user.accent,
-  };
+function describe(err: { message: string } | null, fallback: string): string {
+  const m = err?.message ?? "";
+  if (/invalid login credentials/i.test(m)) return "Wrong email or password";
+  if (/already registered|already exists/i.test(m)) return "That email already has an account";
+  if (/password/i.test(m) && /6|short|weak/i.test(m)) return "Password must be at least 6 characters";
+  if (/rate limit/i.test(m)) return "Too many attempts — wait a minute and try again";
+  return m || fallback;
 }
 
-export function getSessionUserId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(SESSION_STORAGE_KEY);
+export async function getCurrentUser(): Promise<PublicUser | null> {
+  return store.getCurrentUser();
 }
 
-export function setSession(userId: string): void {
-  localStorage.setItem(SESSION_STORAGE_KEY, userId);
-}
+export async function loginUser(identifier: string, password: string): Promise<PublicUser> {
+  const email = identifier.trim().toLowerCase();
+  if (!email.includes("@")) {
+    throw new Error("Sign in with your email address");
+  }
+  if (isDemoMode()) exitDemoMode();
 
-export function clearSession(): void {
-  localStorage.removeItem(SESSION_STORAGE_KEY);
-}
+  const { error } = await supabase().auth.signInWithPassword({ email, password });
+  if (error) throw new Error(describe(error, "Could not sign in"));
 
-export function getCurrentUser(): PublicUser | null {
-  const userId = getSessionUserId();
-  if (!userId) return null;
-  const user = findUserById(userId);
-  return user ? toPublicUser(user) : null;
-}
+  // Seats held for this address since before the account existed.
+  await acceptInvites().catch(() => undefined);
 
-export async function loginUser(
-  identifier: string,
-  password: string
-): Promise<PublicUser> {
-  const user = findUserByEmailOrUsername(identifier.trim());
-  if (!user) throw new Error("Invalid email/username or password");
-
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) throw new Error("Invalid email/username or password");
-
-  acceptPendingInvites(user.id);
-  setSession(user.id);
-  return toPublicUser(user);
+  const user = await store.getCurrentUser();
+  if (!user) throw new Error("Signed in, but the profile could not be loaded");
+  return user;
 }
 
 export async function signupUser(data: {
@@ -75,25 +53,39 @@ export async function signupUser(data: {
   if (data.password.length < 6) {
     throw new Error("Password must be at least 6 characters");
   }
+  if (isDemoMode()) exitDemoMode();
 
-  const db = getDb();
-  const username = generateUsername(db, data.firstName.trim(), data.lastName.trim());
-  const passwordHash = await bcrypt.hash(data.password, 10);
-
-  const user = createUser({
+  const { data: result, error } = await supabase().auth.signUp({
     email: data.email.trim().toLowerCase(),
-    username,
-    passwordHash,
-    role: "member",
-    firstName: data.firstName.trim(),
-    lastName: data.lastName.trim(),
+    password: data.password,
+    options: {
+      // The profile row is built from this by a database trigger. The colour
+      // is assigned here so a new account arrives already wearing one.
+      data: {
+        first_name: data.firstName.trim(),
+        last_name: data.lastName.trim(),
+        accent: randomAccent(),
+      },
+    },
   });
+  if (error) throw new Error(describe(error, "Could not create the account"));
+  if (!result.session) {
+    // Only happens if email confirmation was turned back on in the dashboard.
+    throw new Error("Check your email to confirm the account, then sign in");
+  }
 
-  acceptPendingInvites(user.id);
-  setSession(user.id);
-  return toPublicUser(user);
+  await acceptInvites().catch(() => undefined);
+
+  const user = await store.getCurrentUser();
+  if (!user) throw new Error("Account created, but the profile could not be loaded");
+  return user;
 }
 
-export function logoutUser(): void {
-  clearSession();
+export async function logoutUser(): Promise<void> {
+  if (isDemoMode()) {
+    exitDemoMode();
+    return;
+  }
+  await syncedStoreIfActive()?.forget();
+  await supabase().auth.signOut();
 }

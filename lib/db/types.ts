@@ -40,6 +40,10 @@ export interface DbClass {
   /** Teacher's Customize choices. Absent means the house default. */
   color?: AccentId;
   icon?: ClassIconId;
+  /** Standing guidance for the AI curriculum import, kept between runs. */
+  importInstructions?: string;
+  /** Bumped by the server on every curriculum write. Absent in the demo. */
+  version?: number;
   createdAt: string;
 }
 

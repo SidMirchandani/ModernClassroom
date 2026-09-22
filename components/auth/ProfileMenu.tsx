@@ -9,15 +9,15 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { Popover } from "@/components/Popover";
 import { logoutUser } from "@/lib/auth-client";
 import { useCurrentUser } from "@/lib/use-current-user";
-import { setUserAccent } from "@/lib/db/client";
+import { store } from "@/lib/store";
 import { ACCENT_LIST, personAccent, type AccentId } from "@/lib/class-appearance";
 
 export function ProfileMenu() {
   const router = useRouter();
   const user = useCurrentUser();
 
-  function handleLogout() {
-    logoutUser();
+  async function handleLogout() {
+    await logoutUser();
     router.push("/");
   }
 
@@ -25,7 +25,7 @@ export function ProfileMenu() {
     if (!user) return;
     // No local copy to keep in step: the write announces itself and every
     // place showing this user — here, the name in the navbar — re-reads.
-    setUserAccent(user.id, accent);
+    void store.setUserAccent(user.id, accent);
   }
 
   if (!user) return null;
@@ -103,7 +103,7 @@ export function ProfileMenu() {
               type="button"
               onClick={() => {
                 close();
-                handleLogout();
+                void handleLogout();
               }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
             >

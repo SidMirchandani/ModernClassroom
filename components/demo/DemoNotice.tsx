@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DB_WRITE_EVENT } from "@/lib/db/client";
+import { STORE_CHANGED_EVENT } from "@/lib/store";
 import {
   dismissDemoNotice,
   exitDemoMode,
@@ -32,8 +32,8 @@ export function DemoNotice() {
       requestAnimationFrame(() => setShown(true));
     };
 
-    window.addEventListener(DB_WRITE_EVENT, onWrite, { once: true });
-    return () => window.removeEventListener(DB_WRITE_EVENT, onWrite);
+    window.addEventListener(STORE_CHANGED_EVENT, onWrite, { once: true });
+    return () => window.removeEventListener(STORE_CHANGED_EVENT, onWrite);
   }, []);
 
   if (!mounted) return null;

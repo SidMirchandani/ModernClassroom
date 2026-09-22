@@ -1,8 +1,7 @@
 import type { Database, DbClass, DbStudentProgress } from "./db/types";
 import type { CheckpointGrade, Section, StudentProgress } from "./types";
 import { checkpointMax } from "./grades";
-import { DB_STORAGE_KEY } from "./db/client";
-import { SESSION_STORAGE_KEY } from "./auth-client";
+import { DEMO_DB_KEY, DEMO_SESSION_KEY } from "./store/local";
 import { getCourseTemplate, instantiateTemplate } from "./course-templates";
 import { DEMO_PROGRESS, UNIT } from "./demo-units";
 
@@ -35,8 +34,8 @@ export function exitDemoMode(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(DEMO_FLAG_KEY);
   localStorage.removeItem(DEMO_NOTICE_KEY);
-  localStorage.removeItem(DB_STORAGE_KEY);
-  localStorage.removeItem(SESSION_STORAGE_KEY);
+  localStorage.removeItem(DEMO_DB_KEY);
+  localStorage.removeItem(DEMO_SESSION_KEY);
 }
 
 /** The "nothing is saved" line is a one-time explanation, not a permanent banner. */
@@ -339,8 +338,8 @@ export function seedDemo(): void {
     ]),
   };
 
-  localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(db));
-  localStorage.setItem(SESSION_STORAGE_KEY, DEMO_USER_ID);
+  localStorage.setItem(DEMO_DB_KEY, JSON.stringify(db));
+  localStorage.setItem(DEMO_SESSION_KEY, DEMO_USER_ID);
   localStorage.setItem(DEMO_FLAG_KEY, "1");
   localStorage.removeItem(DEMO_NOTICE_KEY);
 }

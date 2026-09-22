@@ -9,7 +9,7 @@ import { ClassStudentView } from "@/components/student/ClassStudentView";
 import { Loader2 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth-client";
 import { useCurrentUser } from "@/lib/use-current-user";
-import { getClassDetail } from "@/lib/db/client";
+import { store } from "@/lib/store";
 
 export function ClassPageClient({ classId }: { classId: string }) {
   const router = useRouter();
@@ -24,18 +24,25 @@ export function ClassPageClient({ classId }: { classId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const currentUser = getCurrentUser();
-    if (!currentUser) {
-      router.replace("/?auth=login");
-      return;
-    }
-    const detail = getClassDetail(classId, currentUser.id, requestedRole);
-    if (!detail) {
-      router.replace("/dashboard");
-      return;
-    }
-    setRole(detail.role);
-    setLoading(false);
+    let alive = true;
+    (async () => {
+      const currentUser = await getCurrentUser();
+      if (!currentUser) {
+        router.replace("/?auth=login");
+        return;
+      }
+      const detail = await store.getClassDetail(classId, currentUser.id, requestedRole);
+      if (!alive) return;
+      if (!detail) {
+        router.replace("/dashboard");
+        return;
+      }
+      setRole(detail.role);
+      setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
   }, [classId, router, requestedRole]);
 
   if (loading || !user || !role) {

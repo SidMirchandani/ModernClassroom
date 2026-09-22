@@ -10,7 +10,7 @@ import type {
   StudentProgress,
   TrackStep,
 } from "@/lib/types";
-import { getClassDetail, saveStudentProgress } from "@/lib/db/client";
+import { store } from "@/lib/store";
 import type { DbClass } from "@/lib/db/types";
 import {
   applyStepStatus,
@@ -116,10 +116,13 @@ export function ClassStudentView({
   );
 
   useEffect(() => {
+    let alive = true;
+    (async () => {
     // Ask for the student role explicitly: a teacher enrolled in their own
     // class would otherwise get the teacher payload, which strips their own
     // progress row.
-    const data = getClassDetail(classId, studentId, "student");
+    const data = await store.getClassDetail(classId, studentId, "student");
+    if (!alive) return;
     if (!data) {
       router.replace("/dashboard");
       return;
@@ -156,13 +159,17 @@ export function ClassStudentView({
       ),
     );
     setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
   }, [classId, studentId, router]);
 
   const saveProgress = useCallback(
     (updated: StudentProgress) => {
       // The whole row is replaced, so the teacher's checkpoint grades have to
       // ride along or marking a step done would wipe them.
-      saveStudentProgress({
+      void store.saveStudentProgress({
         classId,
         studentId,
         sections: updated.sections,

@@ -37,13 +37,7 @@ import { AppNavbar } from "@/components/AppNavbar";
 import { Modal } from "@/components/Modal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getCurrentUser } from "@/lib/auth-client";
-import {
-  getClassDetail,
-  inviteToClass,
-  saveAllClassProgress,
-  unenrollStudent,
-  updateClass,
-} from "@/lib/db/client";
+import { store } from "@/lib/store";
 import type { DbClass, DbInvite } from "@/lib/db/types";
 import type {
   Checkpoint,
@@ -189,6 +183,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const [pointsDrafts, setPointsDrafts] = useState<Record<string, string>>({});
   const [inviteInput, setInviteInput] = useState("");
   const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState("");
   const [blockSectionId, setBlockSectionId] = useState<string | null>(null);
   const [activeUnitIndex, setActiveUnitIndex] = useState(0);
   // The tab lives in the URL as well as in state, so a link can land on
@@ -270,13 +265,13 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     }
   }
 
-  const loadData = useCallback(() => {
-    const user = getCurrentUser();
+  const loadData = useCallback(async () => {
+    const user = await getCurrentUser();
     if (!user) {
       router.replace("/?auth=login");
       return;
     }
-    const data = getClassDetail(classId, user.id);
+    const data = await store.getClassDetail(classId, user.id);
     if (!data) {
       router.replace("/dashboard");
       return;
@@ -299,12 +294,12 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   }, [classId, router]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   const saveProgress = useCallback(
     (all: StudentProgress[]) => {
-      saveAllClassProgress(
+      void store.saveAllClassProgress(
         classId,
         all.map((p) => ({
           classId,
@@ -324,8 +319,8 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   useClassTheme(cls?.color);
 
   const saveClass = useCallback(
-    (patch: Partial<DbClass>) => {
-      const updated = updateClass(classId, patch);
+    async (patch: Partial<DbClass>) => {
+      const updated = await store.updateClass(classId, patch);
       if (updated) setCls(updated);
     },
     [classId]
@@ -434,18 +429,21 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     [classProgress, saveClass, saveProgress, units]
   );
 
-  const handleInvite = (e: React.FormEvent) => {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteInput.trim()) return;
     setInviting(true);
+    setInviteError("");
     try {
-      const user = getCurrentUser();
+      const user = await getCurrentUser();
       if (!user) return;
-      const data = inviteToClass(classId, user.id, inviteInput.trim());
+      const data = await store.inviteToClass(classId, user.id, inviteInput.trim());
       setStudents(data.students);
       setInvites(data.invites);
       setInviteInput("");
-      loadData();
+      await loadData();
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Could not invite");
     } finally {
       setInviting(false);
     }
@@ -1035,6 +1033,11 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                             {inviting ? "Inviting…" : "Invite"}
                           </button>
                         </form>
+                        {inviteError && (
+                          <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 ml-7">
+                            {inviteError}
+                          </p>
+                        )}
                         {invites.length > 0 && (
                           <p className="text-xs text-slate-400 mt-2 ml-7">
                             Pending: {invites.map((i) => i.emailOrUsername).join(", ")}
@@ -1128,8 +1131,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         onClose={() => setPendingRemoval(null)}
         onConfirm={() => {
           if (!pendingRemoval) return;
-          unenrollStudent(classId, pendingRemoval.id);
-          loadData();
+          void store.unenrollStudent(classId, pendingRemoval.id).then(() => loadData());
         }}
         danger
         title="Remove this student?"

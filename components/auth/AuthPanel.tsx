@@ -67,7 +67,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
 
   const heading =
     mode === "login"
-      ? { title: "Welcome Back", subtitle: "Log in with your email or username." }
+      ? { title: "Welcome Back", subtitle: "Log in with your email." }
       : {
           title: "Create Your Account",
           subtitle: "Use an email that is not already registered — one account per email.",
@@ -103,15 +103,15 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {mode === "login" ? (
-          <Field label="Email or Username">
+          <Field label="Email">
             <input
-              type="text"
+              type="email"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               className={inputClass}
-              placeholder="Email or username"
+              placeholder="Email"
               required
-              autoComplete="username"
+              autoComplete="email"
             />
           </Field>
         ) : (

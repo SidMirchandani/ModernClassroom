@@ -18,7 +18,7 @@ import {
 import type { Section, SectionActivityStatus } from "@/lib/types";
 import type { DbClass } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth-client";
-import { getClassDetail, updateClass } from "@/lib/db/client";
+import { store } from "@/lib/store";
 import { normalizeSection } from "@/lib/section-tracks";
 import { useClassTheme } from "@/lib/use-class-theme";
 
@@ -37,13 +37,13 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<SubunitViewMode>("edit");
 
-  const loadData = useCallback(() => {
-    const user = getCurrentUser();
+  const loadData = useCallback(async () => {
+    const user = await getCurrentUser();
     if (!user) {
       router.replace("/?auth=login");
       return;
     }
-    const data = getClassDetail(classId, user.id);
+    const data = await store.getClassDetail(classId, user.id);
     if (!data) {
       router.replace("/dashboard");
       return;
@@ -61,13 +61,13 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   }, [classId, subunitId, router]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   useClassTheme(cls?.color);
 
   const saveSection = useCallback(
-    (updated: Section) => {
+    async (updated: Section) => {
       if (!cls) return;
       setSaving(true);
       const normalized = normalizeSection(updated);
@@ -75,7 +75,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
         ...u,
         subunits: u.subunits.map((s) => (s.id === normalized.id ? normalized : s)),
       }));
-      const updatedClass = updateClass(classId, { units });
+      const updatedClass = await store.updateClass(classId, { units });
       if (updatedClass) {
         setCls(updatedClass);
         const found = updatedClass.units

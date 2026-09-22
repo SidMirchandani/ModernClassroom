@@ -130,21 +130,62 @@ carries the Exit link that clears the seeded data.
 > stores — all deleted. The duplication they carried was the repo's oldest
 > known issue.
 
-### Data layer — everything lives in the browser
+### Data layer — Supabase, with the browser as a cache
 
-There is **no server persistence**. All reads and writes go through
-`lib/db/client.ts`, a synchronous `localStorage` store keyed on
-`modern-classroom-db`. `lib/auth-client.ts` layers accounts on top: signup
-hashes with bcrypt *in the browser*, and the "session" is a user id in
-`localStorage`.
+Everything goes through **`lib/store/`**, one async `Store` interface with two
+implementations and a router:
 
-| Key | Written by | Holds |
-|---|---|---|
-| `modern-classroom-db` | `lib/db/client.ts` | Users, classes, enrollments, invites, progress |
-| `modern-classroom-session` | `lib/auth-client.ts` | Logged-in user id |
-| `modern-classroom-demo` | `lib/demo-seed.ts` | Flag: this store holds seeded demo data |
+| File | What it is |
+|---|---|
+| `store/types.ts` | The `Store` interface, and the two events the app listens on |
+| `store/local.ts` | The localStorage document. **The demo** (complete, offline, no account) *and* the cache for a signed-in user |
+| `store/remote.ts` | Every call that touches Supabase. Row shapes go in, app shapes come out |
+| `store/outbox.ts` | Writes that have not reached the server yet |
+| `store/synced.ts` | Cache + remote + outbox, wired together |
+| `store/index.ts` | `store` — what components import. Routes each call to whichever store is live |
 
-> ⚠️ **The server stack is orphaned.** `app/api/**` (11 routes), `lib/db/index.ts`, `lib/auth.ts` and `data/db.json` still compile and ship, but **nothing calls them**. See [Known issues](#known-issues--decisions-to-make).
+**Reads are answered from the cache**, refreshed from Supabase first whenever
+the server can be reached. **Writes land in the cache immediately** and are
+queued; the queue is pushed at once if there is a connection and on the
+`online` event or a 30-second timer if there is not. So every screen renders
+the same way online and off, and the only difference is the pill in the navbar
+(`components/SyncStatus.tsx`).
+
+**The outbox is a map of intentions, not a log of keystrokes.** Each pending
+write is keyed by the row it touches, so two offline edits to the same track
+collapse into the latest and the queue cannot outgrow the number of rows a
+person can touch. Tabs take a Web Lock before draining it. A write the server
+*refuses* is dropped with a console error rather than retried forever — it
+would never succeed, and one bad row must not block the rest.
+
+| Key | Holds |
+|---|---|
+| `modern-classroom-db` | The demo's whole world |
+| `modern-classroom-session` | The demo's "signed-in" user id |
+| `modern-classroom-demo` | Flag: the demo is running |
+| `modern-classroom-cache` | A signed-in user's offline copy |
+| `modern-classroom-outbox` | Writes still to be pushed |
+| `mc-force-offline` | Set to `"1"` in devtools to rehearse losing the connection |
+
+**Accounts are Supabase Auth** (`lib/auth-client.ts`): email and password, no
+confirmation step, sign-in **by email**. The username stays as a display and
+invite handle — signing in by username would need a lookup that lets anyone
+test whether an address has an account. A database trigger builds the profile
+row from the signup metadata, minting the username by the app's own scheme
+(last name + first initial, then a number if taken).
+
+The demo never touches the server and has no account. Signing in leaves it.
+
+> ⚠️ **Progress is stored per track, not per student.** One row per
+> `(class, student, section, track)`. A student marking their guided notes and
+> the teacher approving their textbook practice in the *same section* write
+> different rows, so neither can overwrite the other. Grouping back into the
+> one-row-per-student shape the grid reads happens in `store/remote.ts`.
+
+> ⚠️ **Only meaningful progress is sent.** Locked/available is derived from the
+> gate on every load, so a track nobody has touched carries nothing worth a
+> row. Without that filter a student's first click wrote two hundred rows of
+> `{"learn":"locked"}`.
 
 > ⚠️ **`saveAllClassProgress` replaces only the rows it is given.** It used to
 > clear every row for the class first. The teacher grid builds its list from the
@@ -152,6 +193,47 @@ hashes with bcrypt *in the browser*, and the "session" is a user id in
 > teacher enrolled in their own class lost all their student progress the first
 > time they approved a submission. Any writer that touches "all" of something
 > should merge, not sweep.
+
+### The database — `supabase/migrations/`
+
+Seven tables, all behind row-level security, and a small set of RPCs that are
+the only way anything is written.
+
+| Table | Notes |
+|---|---|
+| `profiles` | One per account. **No email column** — it lives in `auth.users`, so a classmate cannot read yours |
+| `classes` | `units` as `jsonb`; `version` bumps on every curriculum write |
+| `enrollments` | `(class, student)` |
+| `invites` | A handle held until that person has an account |
+| `progress` | `(class, student, section, track)` → state |
+| `checkpoint_grades` | Teacher-authoritative |
+| `section_aliases` | Where a renumbered section went |
+
+RPCs: `create_class`, `join_class`, `invite_to_class`, `accept_invites`,
+`upsert_track_progress`, `set_checkpoint_grade`, `apply_curriculum`,
+`class_summaries`. All `security definer`, all refuse an anonymous caller, each
+checks its own permission. Access helpers (`is_class_teacher`, `is_enrolled`,
+`shares_class_with`) are `security definer` too — an inline subquery in a
+policy has to evaluate the *other* table's policies, which is how RLS turns
+recursive and slow.
+
+**Verified by role** rather than by reading the policies: an account with no
+seat in a class sees 0 classes, 0 progress rows and only its own profile; an
+enrolled student sees their class, their own progress, their own grades, no
+invites, and the profiles of people they share a class with.
+
+**Renumbering a section moves its history.** `apply_curriculum` takes the new
+units and a list of `{from, to}`, and in one transaction rewrites every
+affected `progress.section_id`, moves the gate, records an alias, and bumps
+`version`. Nothing is deleted: a section that goes away leaves its rows behind,
+invisible but intact. `upsert_track_progress` resolves through the aliases, so
+a write queued offline under `3.3` still lands after `3.3` became `3.4`.
+
+> ⚠️ **Track ids are derived from the section id** — `stableTrackId` is
+> literally `"3.3" + "::" + kind`, and that is how the templates mint them. A
+> renumber must therefore **keep each matched section's existing `tracks[]`
+> objects**, ids and all, and never re-derive them. Re-deriving orphans every
+> student's work on that section, silently: it just renders as "not started".
 
 ### Course templates — `lib/course-templates.ts`
 
@@ -189,11 +271,11 @@ app/
   dashboard/                  The app — class list, class view, subunit editor
     new/                      Start a class from a template (its own page, not a dialog)
   demo/                       Asks tour-or-no-tour, seeds the store, then enters
-  api/                        ⚠️ orphaned server routes
 components/
   AppNavbar.tsx / NavCapsule.tsx   Fixed h-14 bar · the segmented tab pill
   Select.tsx / Popover.tsx    ⭐ portal-rendered dropdown · portal-rendered panel
   ConfirmDialog.tsx           The second ask, before anything irreversible
+  SyncStatus.tsx              ⭐ offline / syncing / couldn't sync, in every navbar
   TodoButton.tsx              ⭐ past due / this week / next week
   AttachmentList.tsx          Shared link/file chips
   CheckpointRow.tsx           Shared dated quiz/test/project row
@@ -227,8 +309,9 @@ lib/
   demo-units.ts               Seeded Algebra II Unit 3 with real objectives + dates
   demo-seed.ts                ⭐ the whole demo world, and its pinned clock
   tour.ts                     ⭐ the tour's stops, in order
-  db/client.ts                ⭐ localStorage store (create-from-template, duplicate)
-  db/index.ts, auth.ts        ⚠️ orphaned server data layer
+  store/                      ⭐ the data layer: local · remote · outbox · synced
+  supabase/client.ts          The browser Supabase client (cookie session)
+  db/types.ts                 Row and DTO shapes (the store speaks these)
 ```
 
 ### The teacher's progress table
@@ -467,19 +550,35 @@ with everything past the gate locked and unclickable.
 ## Running it
 
 ```bash
+npm install
+cp .env.example .env.local   # then fill in the two Supabase values
 npm run dev
 ```
 
 Then open http://localhost:3000. Scripts: `dev`, `build`, `start`, `lint` (broken — see below), `fix-logo`.
 
-**Verified 2026-08-17:** `npm run build` passes (compiles, typechecks, 16 static pages).
-`npx eslint app components lib --ext .ts,.tsx` is clean. Manually exercised in the
-browser: demo student overview + three-button section, demo teacher per-track grid
-and help resolution, subunit track editor, class creation from the AP Statistics
-and AP Precalculus templates, class duplication, and a real student marking a
-track's Learn step done (progress persists under stable track ids).
+### Environment
 
-Checked at 375px, 768px and 1280px, in light and dark, with no horizontal overflow on any route.
+| Variable | Where it is used |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Browser. Project settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser. The publishable key — safe there, every table is behind RLS |
+| `GEMINI_API_KEY` | **Server only.** The curriculum import route. Never `NEXT_PUBLIC_` |
+| `GEMINI_MODEL` | Optional, defaults to `gemini-2.5-flash` |
+
+`.env.local` is gitignored; `.env.example` is the template. **`/demo` needs none
+of them** — it is entirely local, which is also what makes it the fallback when
+Supabase is not configured.
+
+**Verified 2026-09-22** (v4.0): `npm run build` passes. Exercised across two
+sessions against the live project — signed up a teacher and a student, created
+a class from the Algebra II template, joined it by code, marked tracks from the
+student side and watched them appear in the teacher's grid, set a checkpoint
+grade, renamed a subunit, changed the class colour. Rehearsed the connection
+dropping with `mc-force-offline`: the write queued, the pill read
+*"Offline — 1 change saved on this device"*, and clearing the flag flushed it
+to Postgres. `/demo` still runs with no account and no network. RLS checked by
+querying as each role rather than by reading the policies.
 
 ### Design system — Open* house theme
 
@@ -520,21 +619,21 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 
 ## Known issues / decisions to make
 
-1. **Orphaned server stack (biggest one).** `app/api/**`, `lib/db/index.ts`, `lib/auth.ts`, `data/db.json` are dead weight that still compiles and ships as 11 live routes. The track refactor had to keep `lib/db/index.ts` compiling for no benefit. Either **delete it** (recoverable from git) or **wire it back up**.
+1. **`npm run lint` is broken.** The script still calls `next lint`, removed in Next 16. Use `npx eslint app components lib --ext .ts,.tsx` until the script is repointed.
 
-2. **Client-side auth is not security.** Password hashes and every user record sit in `localStorage`, readable and writable from the console. Fine for a demo; **not deployable with real student data**. This decision drives #1.
+2. **Uploaded files are still base64 in the row.** Student proof screenshots and teacher attachments are data URLs inside `progress.state` / `classes.units`. They work, but they bloat rows and Postgres is the wrong place for a megabyte of PNG. Supabase Storage is the fix; deliberately deferred.
 
-3. **`npm run lint` is broken.** The script still calls `next lint`, removed in Next 16. Use `npx eslint app components lib --ext .ts,.tsx` until the script is repointed.
+3. **Leaked-password protection is off.** A Supabase dashboard toggle (Auth → Passwords) that checks new passwords against HaveIBeenPwned. Worth turning on before real students sign up.
 
-4. **README understates the app.** It documents only the demo mode and never mentions accounts, classes, resource tracks, templates, or `/dashboard`.
+4. **One conflict is not resolved, by choice.** The same *track* edited offline by a student and online by their teacher is last-write-wins. Per-track rows make this rare — it needs two people on the same resource of the same subunit within one offline window — and the alternative is merge UI nobody would read.
 
-5. **`AUTH_SECRET` has a hardcoded dev fallback** in `lib/auth.ts:9`. Moot while orphaned.
+5. **A class created offline shows `······` as its code** until it syncs. The server mints the code, and it cannot do that while unreachable.
 
 6. **6 high-severity npm advisories** at install; `eslint@8` and `glob@7` are EOL.
 
-7. **`ClassTeacherView.tsx` is large** (~950 lines: grid, gate, review modal, help modal, invites, stat modals). Its former near-duplicate `TeacherDashboard.tsx` is gone; splitting out a `ProgressGrid` is the next worthwhile cut.
+7. **`ClassTeacherView.tsx` is large** (~1,150 lines: grid, gate, review modal, help modal, invites, stat modals). Splitting out a `ProgressGrid` is the next worthwhile cut.
 
-8. **No tests.** `class-progress.ts` and `section-tracks.ts` are pure, well-factored, and the highest-value thing in the repo to cover — especially the legacy-migration determinism, which silently loses student progress if it ever breaks.
+8. **Thin test coverage.** `class-progress.ts` and `section-tracks.ts` are pure and are the highest-value things to cover — especially the legacy-migration determinism, which silently loses student progress if it ever breaks.
 
 9. **Templates carry structure, not materials.** Unit/section/date/checkpoint/reference data is transcribed from the timeline sheet; the actual documents, answer keys and videos still have to be attached per section.
 
@@ -542,10 +641,14 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 
 ## Version history
 
-House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). The tracked `package.json` version moves only on a Release, and only its major digit — it sits at `2.0.0`; its minor and patch digits are intentionally stale.
+House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). The tracked `package.json` version moves only on a Release, and only its major digit — it sits at `4.0.0`; its minor and patch digits are intentionally stale.
 
 | Label | Date | What |
 |---|---|---|
+| `4.0` | 2026-09-22 | Supabase: real accounts, shared classes, per-track progress behind row-level security — with the browser kept as an offline cache that queues writes and syncs on reconnect. The orphaned server stack deleted |
+| `3.2` | 2026-09-21 | Classes can be deleted or left; students removed from the roster |
+| `3.1` | 2026-09-21 | A personal colour stays personal inside a class |
+| `3.0` | 2026-09-21 | Customize tab (name, icon, colour) with per-class theming, personal accent colours, and the guided demo tour |
 | `2.0` | 2026-08-18 | Curriculum rebuilt around resource tracks: per-source Learn/Practice paths, dates and checkpoints, the student Class Dashboard, course templates, the To-Do, checkpoint grading, and one seeded demo in place of the parallel demo app |
 | `2.0` | 2026-08-17 | Removed the committed database file (history rewritten to purge it) |
 | `1.3` | 2026-08-17 | Added this master doc |

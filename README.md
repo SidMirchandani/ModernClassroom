@@ -46,8 +46,12 @@ Students work through unit sections at their own pace. Each section is split by 
 git clone https://github.com/SidMirchandani/ModernClassroom.git
 cd ModernClassroom
 npm install
+cp .env.example .env.local   # fill in your Supabase URL and publishable key
 npm run dev
 ```
+
+The demo at `/demo` runs with no configuration at all — it never touches the
+network. The env file is only needed for real accounts.
 
 Open [http://localhost:3000](http://localhost:3000).
 

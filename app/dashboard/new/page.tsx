@@ -8,7 +8,7 @@ import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { getCurrentUser } from "@/lib/auth-client";
-import { createClassForTeacher } from "@/lib/db/client";
+import { store } from "@/lib/store";
 import { COURSE_TEMPLATES } from "@/lib/course-templates";
 import { ArrowLeft, ArrowRight, Loader2, Plus } from "lucide-react";
 
@@ -21,17 +21,19 @@ export default function NewClassPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!getCurrentUser()) {
-      router.replace("/?auth=login");
-      return;
-    }
-    setReady(true);
+    getCurrentUser().then((user) => {
+      if (!user) {
+        router.replace("/?auth=login");
+        return;
+      }
+      setReady(true);
+    });
   }, [router]);
 
-  function createClass(templateId?: string) {
-    const user = getCurrentUser();
+  async function createClass(templateId?: string) {
+    const user = await getCurrentUser();
     if (!user) return;
-    const cls = createClassForTeacher(user.id, templateId);
+    const cls = await store.createClassForTeacher(user.id, templateId);
     router.push(`/dashboard/class/${cls.id}`);
   }
 
