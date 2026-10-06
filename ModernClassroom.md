@@ -297,11 +297,29 @@ the only way anything is written.
 
 RPCs: `create_class`, `join_class`, `invite_to_class`, `accept_invites`,
 `upsert_track_progress`, `set_checkpoint_grade`, `apply_curriculum`,
-`class_summaries`. All `security definer`, all refuse an anonymous caller, each
-checks its own permission. Access helpers (`is_class_teacher`, `is_enrolled`,
-`shares_class_with`) are `security definer` too — an inline subquery in a
-policy has to evaluate the *other* table's policies, which is how RLS turns
-recursive and slow.
+`class_summaries`, `delete_account`. All `security definer`, all refuse an
+anonymous caller, each checks its own permission. The security advisor lists
+these under *"signed-in users can execute SECURITY DEFINER function"* — that is
+intended: they are the app's whole write API, and the tables have no direct
+write policies precisely so every write goes through a body that checks.
+
+The access helpers (`is_class_teacher`, `is_enrolled`, `shares_class_with`) are
+`security definer` too — an inline subquery in a policy has to evaluate the
+*other* table's policies, which is how RLS turns recursive and slow. They live
+in the **`private`** schema (migration `0008`), not `public`.
+
+> ⚠️ **Policy helpers must not live in an exposed schema.** A policy runs as
+> the caller, so the caller has to be able to execute its helpers — and
+> PostgREST publishes anything a role can execute in `public` at
+> `/rest/v1/rpc/<name>`. Left in `public`, `shares_class_with(uid)` let any
+> signed-in user probe whether they share a class with an arbitrary account.
+> `private` is not exposed, so the helpers still work inside policies while
+> answering 404 as endpoints.
+
+`public.ping()` (migration `0007`) is the one function an anonymous caller may
+run: `security invoker`, empty `search_path`, touches no table. It exists for
+the keep-awake workflow, because the obvious ping — an anonymous read of a real
+table — is correctly refused.
 
 **Verified by role** rather than by reading the policies: an account with no
 seat in a class sees 0 classes, 0 progress rows and only its own profile; an
@@ -860,6 +878,8 @@ House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). Th
 
 | Label | Date | What |
 |---|---|---|
+| `5.2` | 2026-10-06 | The RLS helpers moved out of the exposed API, so a signed-in user can no longer probe other accounts' class memberships |
+| `5.1` | 2026-10-06 | Keep-awake workflow working: repo secrets set, and an anonymous heartbeat to ping, since real tables correctly refuse anonymous reads |
 | `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |
 | `4.0` | 2026-09-22 | Supabase: real accounts, shared classes, per-track progress behind row-level security — with the browser kept as an offline cache that queues writes and syncs on reconnect. The orphaned server stack deleted |
 | `3.2` | 2026-09-21 | Classes can be deleted or left; students removed from the roster |
