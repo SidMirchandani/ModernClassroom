@@ -82,6 +82,12 @@ export interface Store {
   saveAllClassProgress(classId: string, all: DbStudentProgress[]): Promise<void>;
 
   setUserAccent(userId: string, accent: AccentId): Promise<void>;
+
+  /**
+   * Erase the signed-in account and everything that cannot outlive it. Never
+   * queued: this one needs the server to actually confirm it happened.
+   */
+  deleteAccount(): Promise<void>;
 }
 
 /** Fired after any change lands, locally or otherwise. Re-read on it. */

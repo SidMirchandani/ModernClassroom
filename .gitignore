@@ -36,3 +36,6 @@ yarn-error.log*
 
 # local file-backed db — never commit (contains password hashes)
 /data
+
+# Verification builds (see next.config.ts)
+.next-build

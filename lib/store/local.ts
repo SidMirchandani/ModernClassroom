@@ -424,6 +424,11 @@ export class LocalStore implements Store {
     });
   }
 
+  /** The demo has no account. Nothing here outlives closing the tab. */
+  async deleteAccount(): Promise<void> {
+    throw new Error("The demo has no account to delete");
+  }
+
   // ── roster ───────────────────────────────────────────────────────────────
 
   /**

@@ -31,7 +31,7 @@ export function Logo({
       {showText && (
         <span
           className={cn(
-            "font-semibold text-slate-900 dark:text-slate-100 tracking-tight",
+            "font-semibold text-slate-900 dark:text-slate-100 tracking-tight whitespace-nowrap",
             textClassName
           )}
         >

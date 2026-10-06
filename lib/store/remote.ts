@@ -277,6 +277,16 @@ export async function deleteClass(classId: string): Promise<void> {
   if (error) fail(error, "Could not delete the class");
 }
 
+/**
+ * Erase the signed-in account. Done in one server transaction rather than a
+ * series of deletes from here, so a connection lost halfway cannot leave
+ * somebody half-deleted.
+ */
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase().rpc("delete_account");
+  if (error) fail(error, "Could not delete the account");
+}
+
 export async function unenroll(classId: string, studentId: string): Promise<void> {
   const { error } = await supabase()
     .from("enrollments")

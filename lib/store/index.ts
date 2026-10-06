@@ -66,4 +66,5 @@ export const store: Store = {
   saveStudentProgress: (progress) => activeStore().saveStudentProgress(progress),
   saveAllClassProgress: (classId, all) => activeStore().saveAllClassProgress(classId, all),
   setUserAccent: (userId, accent) => activeStore().setUserAccent(userId, accent),
+  deleteAccount: () => activeStore().deleteAccount(),
 };

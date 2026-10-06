@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getUserInitials } from "@/lib/avatar";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Popover } from "@/components/Popover";
 import { logoutUser } from "@/lib/auth-client";
+import { DeleteAccountDialog } from "./DeleteAccountDialog";
+import { isDemoMode } from "@/lib/demo-seed";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { store } from "@/lib/store";
 import { ACCENT_LIST, personAccent, type AccentId } from "@/lib/class-appearance";
@@ -15,6 +17,10 @@ import { ACCENT_LIST, personAccent, type AccentId } from "@/lib/class-appearance
 export function ProfileMenu() {
   const router = useRouter();
   const user = useCurrentUser();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [demo, setDemo] = useState(false);
+
+  useEffect(() => setDemo(isDemoMode()), []);
 
   async function handleLogout() {
     await logoutUser();
@@ -34,6 +40,7 @@ export function ProfileMenu() {
   const accent = personAccent(user.id, user.accent);
 
   return (
+    <>
     <Popover
       width={288}
       align="right"
@@ -110,10 +117,36 @@ export function ProfileMenu() {
               <LogOut className="w-4 h-4" />
               Log out
             </button>
+
+            {/* The demo has no account to close. */}
+            {!demo && (
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  setConfirmingDelete(true);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete account
+              </button>
+            )}
           </div>
         </>
       )}
     </Popover>
+
+    <DeleteAccountDialog
+      open={confirmingDelete}
+      onClose={() => setConfirmingDelete(false)}
+      userId={user.id}
+      onDeleted={() => {
+        setConfirmingDelete(false);
+        router.push("/");
+      }}
+    />
+    </>
   );
 }
 

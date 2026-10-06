@@ -31,7 +31,7 @@ export function SyncStatus() {
         : "Offline — changes will be saved on this device"
       : state.status === "pending"
         ? `Syncing ${state.pending} change${state.pending === 1 ? "" : "s"}…`
-        : "Couldn't sync — will keep trying";
+        : "Some changes couldn't be saved";
 
   const Icon =
     state.status === "offline" ? CloudOff : state.status === "pending" ? Loader2 : TriangleAlert;

@@ -194,6 +194,92 @@ The demo never touches the server and has no account. Signing in leaves it.
 > time they approved a submission. Any writer that touches "all" of something
 > should merge, not sweep.
 
+### Importing a curriculum — `lib/curriculum-diff.ts`, `app/api/curriculum/import/`
+
+Teachers already keep their year in a spreadsheet. The Curriculum tab takes
+those files — `.xlsx`, `.csv`, PDFs, photos of a printed plan — and proposes
+the curriculum they describe. It only ever *proposes*: nothing is written until
+the teacher has said yes to it, cell by cell if they want to.
+
+The panel is teacher-only and curriculum-only by construction: it lives inside
+`ClassTeacherView`, which `ClassPageClient` renders only when the class role is
+teacher, and the route re-checks `classes.teacher_id` server-side so a crafted
+POST from a student is refused rather than trusted.
+
+**The route** (`app/api/curriculum/import/route.ts`) is where the Gemini key
+lives and the only place it lives. It reads the class from the database rather
+than trusting the browser's copy, turns spreadsheets into text with SheetJS
+(the model reads tables far better than binaries) and passes PDFs and images
+inline. The reply is constrained by a `responseSchema`, so it is parsed, not
+guessed at. Busy models are retried with backoff — Google returns 503 under
+load often enough that one attempt would make the feature look broken.
+
+**The diff engine** (`lib/curriculum-diff.ts`) is the part that matters, and the
+one place in the repo with tests, because its failure mode is silent loss of
+student work. Two rules it exists to keep:
+
+> ⚠️ **A matched section keeps its own `tracks[]` objects, ids and all.** Track
+> ids are opaque keys into `progress`; re-deriving one from a section's new
+> number would orphan every mark filed under it. After a renumber a track id
+> still reads `3.3::textbook` on section `3.4` — that is correct, and it is why
+> history survives.
+
+> ⚠️ **Silence is not a change.** A field the proposal leaves null keeps the
+> teacher's existing wording. Only substance they can see is ever offered, so
+> re-importing an unchanged sheet yields zero changes rather than a wall of
+> re-phrasings.
+
+Matching runs in passes over the whole proposal — every explicit id first, then
+exact titles, then numbers — so a newly inserted `3.3` cannot claim the real
+`3.3` before that section's own id has been read. Renumbers come back as an
+ordered `SectionRemap[]`: a shift of `3.3→3.4→3.5` is emitted far-end-first so
+no move ever lands on a key another move has yet to vacate, and a genuine swap
+is broken with a scratch id.
+
+**The review** replaces the curriculum table with the same table, marked up:
+each changed cell shows `old → new` with its own ✓/✗, additions in emerald,
+removals in rose and flagged as destructive, and a sticky bar with Approve all
+· Deny all · Discard · Apply *n*. Nothing is pre-approved. Applying goes
+through `store.applyCurriculum` with the version the teacher was looking at, so
+a class edited elsewhere mid-review is refused rather than overwritten.
+
+The demo can run it. The reading is real — a real call, a real diff — and only
+the class it changes is local. It ships with **Try it with a sample**, which
+builds a CSV out of the class's own timeline with a few deliberate edits, so a
+visitor with no spreadsheet of their own still sees the honest result: on a
+72-subunit class, four suggestions and sixty-eight rows left alone.
+
+### Live updates — `lib/store/live.ts`, `lib/use-class-sync.ts`
+
+A class is two people looking at the same thing from opposite sides, so both
+sides move on their own. A student marking a step appears in the teacher's grid;
+a teacher moving a date appears on the student's list. Supabase Realtime carries
+the signal for `progress`, `checkpoint_grades`, `enrollments` and `classes`
+(migration `0005`).
+
+> ⚠️ **An event is only ever a nudge to re-read.** No payload from the socket is
+> trusted as data; the re-read goes back through the store, the cache and
+> row-level security like any other. A duplicate nudge therefore costs nothing.
+
+> ⚠️ **Realtime must be handed the session token before subscribing.** The
+> socket starts out holding the anon key, and RLS decides which changes are even
+> visible — subscribe first and the stream comes back empty *and silent*, which
+> is the worst of both worlds.
+
+Re-reads never move the person: `settled` guards mean only the first read
+chooses which unit is shown or which subunit a student lands on, and a teacher
+halfway through typing a class name keeps what they have typed. `watchForeground`
+is the backstop — returning to the window, or coming back online, re-reads too,
+which is what makes the offline path finish honestly.
+
+**What's new for a student** (`lib/curriculum-news.ts`) is a reading mark, not a
+record: a per-person fingerprint of every subunit and checkpoint in
+localStorage. On load it yields "new" or "updated" per item, shown as a small
+badge in the sidebar and the Class Dashboard, a count on each collapsed unit,
+and one banner with a *Got it*. Opening a subunit clears its own flag and
+nothing else. The first time a class is ever opened, everything would be new —
+so the snapshot is taken silently and nothing is flagged.
+
 ### The database — `supabase/migrations/`
 
 Seven tables, all behind row-level security, and a small set of RPCs that are
@@ -564,11 +650,39 @@ Then open http://localhost:3000. Scripts: `dev`, `build`, `start`, `lint` (broke
 | `NEXT_PUBLIC_SUPABASE_URL` | Browser. Project settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser. The publishable key — safe there, every table is behind RLS |
 | `GEMINI_API_KEY` | **Server only.** The curriculum import route. Never `NEXT_PUBLIC_` |
-| `GEMINI_MODEL` | Optional, defaults to `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Optional, defaults to `gemini-3.6-flash`. Google retires model names; a 404 from the import route usually means this needs moving on |
 
 `.env.local` is gitignored; `.env.example` is the template. **`/demo` needs none
 of them** — it is entirely local, which is also what makes it the fallback when
 Supabase is not configured.
+
+**Verified 2026-10-04** (v4.3): `npm run build` and `npm test` (18 specs) pass.
+Supabase was found **paused** and restored — see known issue 1. Against the
+live project: signup lands straight in the dashboard (no email confirmation),
+sign-in works, and the authenticated curriculum import ran end to end — version
+4→5, titles and a date applied, a subunit added, the other ten units untouched,
+and the student's progress rows still on their original track ids.
+Account deletion driven through the real UI, not just the RPC: the dialog
+counted and named the class and its student, the confirm button stayed disabled
+on load and on a near-miss word and only enabled on `DELETE`, clicking it while
+disabled did nothing, and confirming redirected to `/`, emptied localStorage and
+bounced a later `/dashboard` visit back to the login form. In the database the
+account, its identity, its class, that class's progress and the enrolment were
+all gone, while the **student's own account survived** and another teacher's
+class and its two progress rows were untouched — every count back to baseline. Checked at 375px: no horizontal overflow on the
+landing, the class page or the policies.
+
+**Verified 2026-09-22** (v4.1): `npm run build` and `npm test` (17 specs) pass.
+The import exercised in the demo against the live Gemini API: a sample built
+from a 72-subunit class came back with **four** suggestions and every other row
+untouched, ids and all; approving one cell moved exactly that cell and left the
+denied title, date and new subunit alone. Live updates checked across the real
+project — a `progress` write straight into Postgres flipped the teacher's grid
+from *Active* to *Help!* with no reload, and a `classes` write refreshed the
+cached curriculum to the new version the same way. A student's first visit to a
+class recorded its curriculum silently and flagged nothing; a later change
+raised *"Your teacher changed 2 things"* with `Upd` on the moved date and `New`
+on the added subunit, and opening one cleared only its own flag.
 
 **Verified 2026-09-22** (v4.0): `npm run build` passes. Exercised across two
 sessions against the live project — signed up a teacher and a student, created
@@ -580,15 +694,98 @@ dropping with `mc-force-offline`: the write queued, the pill read
 to Postgres. `/demo` still runs with no account and no network. RLS checked by
 querying as each role rather than by reading the policies.
 
+### Public pages — landing, privacy, terms
+
+`/` is two pages at one address. With `?auth=login` or `?auth=signup` it is the
+sign-in card and nothing else — a returning user came here to get in, not to
+read a pitch — and every in-app redirect (`router.replace("/?auth=login")`)
+still lands exactly where it did. Without it, `/` is the marketing page: what
+the thing is, the resource-track idea, the import, and what makes it safe to
+put a class in.
+
+The pitch shows the product rather than describing it, and it moves — an
+aurora of brand colour drifting behind the hero on three different clocks, a
+plotting grid masked out before it reaches the text, the headline set a word at
+a time, sections rising as they come into view, and the grid mock filling in on
+a diagonal so it reads as a class working rather than a static table.
+
+> ⚠️ **Motion is opt-in at the CSS layer, not the JS layer.** Every rule that
+> hides or moves anything lives inside `@media (prefers-reduced-motion:
+> no-preference)`. Nothing outside that guard sets `opacity: 0`, so a reader who
+> asks for less motion gets the finished page immediately — verified by walking
+> the live stylesheet for ungated hiding rules, not by reading the source.
+
+> ⚠️ **`.reveal` needs a `<noscript>` escape hatch.** It starts hidden and waits
+> for an IntersectionObserver to say otherwise, so with JS disabled everything
+> below the hero would never appear. The landing page ships a `<noscript>` style
+> that forces it visible. Any future JS-driven reveal needs the same.
+
+The pitch shows the product rather than describing it. `components/landing/Mocks.tsx`
+draws three miniatures — the teacher's grid, one subunit split by resource, and
+the import's review — out of the app's own tokens, importing the real
+`STATUS_CHIP` / `STATUS_DOT` vocabulary so the colours on the landing page can
+never drift from the colours in the app. They are `aria-hidden` and nothing in
+them is clickable; the prose beside each carries the meaning.
+
+`/privacy` and `/terms` are real documents written against what the code
+actually does, not a template. Both are worth re-reading whenever behaviour
+changes, because they make specific claims:
+
+- no analytics, no third-party scripts, nothing sold or shared — **verified**: the only outbound hosts in the codebase are curriculum resource links (Desmos, DeltaMath, Khan, YouTube);
+- **no student data is ever sent to the AI** — the import posts curriculum structure and the teacher's own files, and nothing else;
+- access is enforced by row-level security, not by the interface.
+
+`lib/site.ts` holds the contact address, product name and policy date so prose
+never hard-codes them. `app/robots.ts` keeps `/dashboard` and `/demo` out of
+search results (tidiness, not security — RLS is the security), and
+`app/sitemap.ts` lists the three public routes. Both read
+`NEXT_PUBLIC_SITE_URL`, which should be set in production.
+
+> ⚠️ **Seeding an auth user by hand needs the legacy token columns set to `''`.**
+> `confirmation_token`, `recovery_token`, `email_change`, `email_change_token_new`
+> and friends default to NULL on a manual insert, and GoTrue reads them into
+> non-nullable strings — so sign-in fails with the useless *"Database error
+> querying schema"* while the row looks perfectly fine. Signing up through the
+> app never hits this; only hand-seeded test accounts do.
+
+> ⚠️ **Deleting an account takes the classes you teach with it.**
+> `delete_account()` (migration `0006`) removes them, and every student's work
+> in them, because a class with no teacher is unreachable and leaving the
+> records behind would be keeping data we were just asked to erase. The dialog
+> counts and names exactly what will be lost and makes you type `DELETE` — but
+> there is no export first, which is the next honest thing to build.
+
 ### Design system — Open* house theme
 
 One brand blue, one status vocabulary, one radius scale. Tokens live in
 `tailwind.config.ts` and `app/globals.css`; components never invent a colour.
 
+- **Two typefaces, one voice.** **Inter** carries every piece of interface text — it was drawn for screens at exactly the 11–14px this app lives at — and **Archivo** is the display cut, used on `h1`–`h3` and anything wearing `font-display`. Both are flat grotesques, so a heading reads as the same family speaking louder rather than as a second design. Body is `0.9375rem` with `-0.006em` tracking; headings tighten to `-0.02em`, because a grotesque at display size looks loose without it. Tables and `.tabular-nums` get lining figures so grades and dates line up in columns.
+
+> ⚠️ **The model catalogue is not the truth.** Google keeps listing
+> `gemini-2.5-flash` in ListModels long after calling it returns *"no longer
+> available to new users"*. So discovery alone is not enough: the route asks the
+> catalogue what exists, ranks it (newer > older, stable > preview, full > lite,
+> with `*-latest` aliases trusted most), **and** strikes off any name it watches
+> 404 so no later import spends a request on it. With a deliberately retired
+> `GEMINI_MODEL` the first import still succeeded in 10.9s and the next took
+> 2.6s — the difference is the dead name being remembered.
+
+> ⚠️ **Name the model that actually failed.** The import tries the configured
+> model twice, then siblings. Reporting the *configured* name when a fallback
+> was the one that errored produced the worst possible message — *"gemini-3.6-flash
+> is not available to this key"* while that model was working perfectly and a
+> retired fallback had 404'd. A 404 now also falls through to the next model
+> instead of killing the request: model names are retired on Google's schedule,
+> and a retired default should degrade rather than take the feature down.
+
+> ⚠️ **A font change is a layout change.** `titleColumnWidth()` in the teacher grid sizes each subunit column from a measured per-character width. That constant was `4.6` for Garamond; Inter at 10px semibold measures **5.05**, and every column came out a tenth too narrow until it was re-measured in the browser rather than guessed at.
+
 - **`primary` is the only accent** — nav, links, CTAs, focus rings, eyebrows, the current-section highlight. The teacher side used to run on violet; it does not any more. It defaults to the house blue `#2563ea` but **is not a fixed hex**: inside a class it becomes that class's colour (see *Customize*). `bg-brand` is the one fixed blue, for the colour picker's own swatch.
 - **Colour sits on white, never on colour.** Chips are the card's own surface with a tinted border and tinted text; checkpoint rows are white with a thin coloured left stripe; the beyond-the-gate column is dimmed rather than tinted. Stacked tints were what made the page read as noise.
 - **Status is one vocabulary** — `lib/status-styles.ts` holds the tonal chips every surface reads from: slate `Not Started` · sky `In Progress` · amber `Submitted` · rose `Help!` · emerald `Done`, plus `STATUS_DOT` for the bar/dot form. The student badges, the step chips, the teacher grid chips, the section-breakdown bars and the section pills all import it, so a colour never means two things. **Status colours never follow the class colour** — a step that is in progress is sky in a rose class too, or "in progress" and "done" would collide in a green one.
 - **Resource hues are category identity only** — indigo textbook · violet AP Classroom · teal guided notes · amber extra · slate custom. They appear on the icon tile, the editor badge and the objective dot, never on chrome and never on a status. Attachments share one neutral treatment (`ATTACHMENT_CLASS`).
+- **Buttons are three weights and nothing else** — `.btn-primary` (filled, no border) for the one action a screen is for, `.btn-secondary` (1px border, no fill) for an equal alternative, `.btn-ghost` for minor actions, plus `.btn-danger`. Size is `.btn-sm` / `.btn-md` / `.btn-lg`, so height and radius are decided once. **A filled button never also carries a border, and an outlined one never carries a fill** — mixing the two is what made the app read as half-designed.
 - **Flat by design.** The page is white (`#0b0f16` in dark) and every surface sits on it with a 1px border and no shadow. Only true overlays — modals, dropdowns, the demo notice — carry `shadow-z5`. `shadow-z1`–`z3` are no longer used on cards.
 - **No native `<select>`.** `components/Select.tsx` draws the option list, because the browser's own popup ignores the app's font and highlight colour. It renders through a **portal**: these sit inside `overflow-x-auto` tables and `overflow-hidden` cards that would clip an absolutely-positioned menu.
 - **One scrollbar, everywhere**: `scrollbar-width: thin` with a transparent track, and matching `::-webkit-scrollbar` rules for the engines that ignore it (8px track, 4px thumb via a transparent border and `background-clip: content-box`). The native Windows bar is a 17px grey gutter with arrow buttons — a piece of the OS sitting on the page.
@@ -619,32 +816,51 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 
 ## Known issues / decisions to make
 
-1. **`npm run lint` is broken.** The script still calls `next lint`, removed in Next 16. Use `npx eslint app components lib --ext .ts,.tsx` until the script is repointed.
+1. **The Supabase project pauses when idle.** Free tier suspends after about a week with no traffic, and a paused project means the whole app is down — signup, sign-in, every class. Restoring it from the dashboard brings the data back, but the restore is **asynchronous**: the REST endpoint answers before the data is back, so a project mid-restore looks like an empty database. Do not conclude data is lost, and do not re-run migrations against it, until `list_tables` shows the real tables. A paid plan, or any traffic at all, avoids the pause.
 
-2. **Uploaded files are still base64 in the row.** Student proof screenshots and teacher attachments are data URLs inside `progress.state` / `classes.units`. They work, but they bloat rows and Postgres is the wrong place for a megabyte of PNG. Supabase Storage is the fix; deliberately deferred.
+2. **Deleting an account deletes the classes you teach.** `delete_account()` removes them along with every student's work in them, because a class with no teacher is unreachable. The dialog counts and names what will be lost and makes you type DELETE, but there is no export first — building one is the honest next step.
 
-3. **Leaked-password protection is off.** A Supabase dashboard toggle (Auth → Passwords) that checks new passwords against HaveIBeenPwned. Worth turning on before real students sign up.
+3. **Never run `npm run build` while the dev server is up.** They share `.next`,
+and rebuilding or deleting it under a live dev server leaves it serving a bare
+*Internal Server Error* until it is restarted — which looks exactly like an app
+bug and is not one. Use **`npm run build:check`** to verify a build; it writes
+`.next-build` instead and leaves the dev server alone. (`npm run build` is still
+the real deploy build, because that is what hosts expect to find.) One wrinkle:
+`build:check` rewrites the generated `next-env.d.ts` to point at `.next-build`.
+That file is committed pointing at `.next`, which is what a deploy produces, so
+`git checkout next-env.d.ts` after a check build if it shows up as changed.
 
-4. **One conflict is not resolved, by choice.** The same *track* edited offline by a student and online by their teacher is last-write-wins. Per-track rows make this rare — it needs two people on the same resource of the same subunit within one offline window — and the alternative is merge UI nobody would read.
+4. **`npm run lint` is broken.** The script still calls `next lint`, removed in Next 16. Use `npx eslint app components lib --ext .ts,.tsx` until the script is repointed.
 
-5. **A class created offline shows `······` as its code** until it syncs. The server mints the code, and it cannot do that while unreachable.
+5. **Uploaded files are still base64 in the row.** Student proof screenshots and teacher attachments are data URLs inside `progress.state` / `classes.units`. They work, but they bloat rows and Postgres is the wrong place for a megabyte of PNG. Supabase Storage is the fix; deliberately deferred.
 
-6. **6 high-severity npm advisories** at install; `eslint@8` and `glob@7` are EOL.
+6. **Leaked-password protection is off.** A Supabase dashboard toggle (Auth → Passwords) that checks new passwords against HaveIBeenPwned. Worth turning on before real students sign up.
 
-7. **`ClassTeacherView.tsx` is large** (~1,150 lines: grid, gate, review modal, help modal, invites, stat modals). Splitting out a `ProgressGrid` is the next worthwhile cut.
+7. **One conflict is not resolved, by choice.** The same *track* edited offline by a student and online by their teacher is last-write-wins. Per-track rows make this rare — it needs two people on the same resource of the same subunit within one offline window — and the alternative is merge UI nobody would read.
 
-8. **Thin test coverage.** `class-progress.ts` and `section-tracks.ts` are pure and are the highest-value things to cover — especially the legacy-migration determinism, which silently loses student progress if it ever breaks.
+8. **A class created offline shows `······` as its code** until it syncs. The server mints the code, and it cannot do that while unreachable.
 
-9. **Templates carry structure, not materials.** Unit/section/date/checkpoint/reference data is transcribed from the timeline sheet; the actual documents, answer keys and videos still have to be attached per section.
+9. **8 npm advisories** at install (1 critical, 6 high, 1 moderate) — all in transitive dependencies of `next`, `browserslist` and `eslint@8`, none from the Gemini or SheetJS additions. `eslint@8` and `glob@7` are EOL.
+
+10. **`ClassTeacherView.tsx` is large** (~1,150 lines: grid, gate, review modal, help modal, invites, stat modals). Splitting out a `ProgressGrid` is the next worthwhile cut.
+
+11. **Test coverage is one module deep.** `lib/curriculum-diff.ts` has 17 vitest specs (`npm test`) because its failure loses student work silently. `class-progress.ts` and `section-tracks.ts` are pure and are the next highest-value things to cover — especially the legacy-migration determinism, which has the same failure mode.
+
+12. **The import's demo rate limit is per-process and in-memory.** Eight runs an hour per IP, held in a `Map` that resets whenever the server does. Fine for one host; wrong the moment it runs on more than one.
+
+13. **A student's "new since you were last here" marks are per-device.** They live in that browser's localStorage, so the same student on a phone and a laptop is told twice. That is the right trade for a reading mark — it costs a row per person per class to do otherwise — but it is a choice, not an oversight.
+
+14. **Templates carry structure, not materials.** Unit/section/date/checkpoint/reference data is transcribed from the timeline sheet; the actual documents, answer keys and videos still have to be attached per section.
 
 ---
 
 ## Version history
 
-House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). The tracked `package.json` version moves only on a Release, and only its major digit — it sits at `4.0.0`; its minor and patch digits are intentionally stale.
+House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). The tracked `package.json` version moves only on a Release, and only its major digit — it sits at `5.0.0`; its minor and patch digits are intentionally stale.
 
 | Label | Date | What |
 |---|---|---|
+| `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |
 | `4.0` | 2026-09-22 | Supabase: real accounts, shared classes, per-track progress behind row-level security — with the browser kept as an offline cache that queues writes and syncs on reconnect. The orphaned server stack deleted |
 | `3.2` | 2026-09-21 | Classes can be deleted or left; students removed from the roster |
 | `3.1` | 2026-09-21 | A personal colour stays personal inside a class |

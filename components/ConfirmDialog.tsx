@@ -40,7 +40,7 @@ export function ConfirmDialog({
         <button
           type="button"
           onClick={onClose}
-          className="h-9 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+          className="btn btn-md btn-secondary"
         >
           Cancel
         </button>
@@ -51,8 +51,10 @@ export function ConfirmDialog({
             onClose();
           }}
           className={cn(
-            "h-9 px-4 rounded-xl text-sm font-semibold text-white transition-colors",
-            danger ? "bg-rose-600 hover:bg-rose-700" : "bg-primary hover:bg-primary-dark"
+            "btn btn-md",
+            danger
+              ? "bg-rose-600 hover:bg-rose-700 text-white border-0"
+              : "btn-primary"
           )}
         >
           {confirmLabel}

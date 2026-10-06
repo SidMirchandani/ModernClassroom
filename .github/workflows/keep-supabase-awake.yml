@@ -1,0 +1,47 @@
+# Supabase's free tier suspends a project after about a week with no traffic,
+# and a suspended project means the whole app is down — nobody can even sign
+# in. One cheap request every few days is enough to count as activity.
+#
+# This is a workaround, not a fix. A class in daily use keeps itself awake; a
+# class on summer break does not. If this app matters, the real answer is a
+# paid plan, where projects never pause.
+#
+# Needs one repository secret:
+#   SUPABASE_URL  — https://<project-ref>.supabase.co
+#   SUPABASE_ANON_KEY — the publishable key (safe: every table is behind RLS)
+
+name: Keep Supabase awake
+
+on:
+  schedule:
+    # 09:00 UTC, Mondays and Thursdays. Well inside the ~7-day window even if
+    # one run is skipped, and GitHub drops scheduled runs on idle repos after
+    # 60 days — so this needs a commit now and then to stay alive itself.
+    - cron: "0 9 * * 1,4"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Touch the database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_URL and SUPABASE_ANON_KEY must be set as repository secrets"
+            exit 1
+          fi
+          # An unauthenticated read of a table behind RLS. It returns an empty
+          # list, which is the point: it proves the database answered without
+          # exposing a single row.
+          code=$(curl -s -o /tmp/body -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/classes?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY")
+          echo "HTTP $code"
+          cat /tmp/body
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase did not answer normally (HTTP $code) — it may be paused"
+            exit 1
+          fi

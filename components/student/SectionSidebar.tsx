@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { CurriculumUnit } from "@/lib/db/types";
 import type { Checkpoint, Section, StudentProgress } from "@/lib/types";
+import type { CurriculumNews, NewsKind } from "@/lib/curriculum-news";
 import {
   canAccessSection,
   getStudentSectionStatus,
@@ -19,6 +20,27 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * A quiet flag on anything the teacher has touched since this student last
+ * opened it. It says which of the two it is, because "your teacher moved this
+ * date" and "there is a new subunit" are not the same news.
+ */
+function NewsBadge({ kind }: { kind?: NewsKind }) {
+  if (!kind) return null;
+  return (
+    <span
+      className="inline-flex items-center px-1 h-4 rounded text-[9px] font-bold uppercase tracking-wide bg-primary text-white shrink-0"
+      title={
+        kind === "new"
+          ? "Added since you were last here"
+          : "Changed since you were last here"
+      }
+    >
+      {kind === "new" ? "New" : "Upd"}
+    </span>
+  );
+}
+
 interface Props {
   units: CurriculumUnit[];
   /** Only this unit is listed — the strip's navigator moves between them. */
@@ -28,6 +50,8 @@ interface Props {
   onSelect: (id: string) => void;
   onTeacherBlocked?: () => void;
   blockSectionId?: string | null;
+  /** What the teacher has changed since this student last looked. */
+  news?: CurriculumNews;
   /** Renders a Class Dashboard row above the list — the phone sheet uses it. */
   onSelectOverview?: () => void;
   overviewActive?: boolean;
@@ -42,6 +66,7 @@ export function SectionSidebarContent({
   onSelect,
   onTeacherBlocked,
   blockSectionId = null,
+  news,
   onSelectOverview,
   overviewActive = false,
 }: Omit<Props, "className">) {
@@ -143,6 +168,7 @@ export function SectionSidebarContent({
                         {section.date}
                       </div>
                     )}
+                    <NewsBadge kind={news?.get(section.id)} />
                     {needsRevision && (
                       <span
                         className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 text-amber-600 dark:text-amber-400 shrink-0"

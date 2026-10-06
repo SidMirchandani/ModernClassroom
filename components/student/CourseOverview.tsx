@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { CurriculumUnit } from "@/lib/db/types";
+import type { CurriculumNews } from "@/lib/curriculum-news";
 import type { Checkpoint, Section, StudentProgress } from "@/lib/types";
 import {
   canAccessSection,
@@ -23,6 +24,8 @@ import {
 import { cn } from "@/lib/utils";
 
 interface Props {
+  /** What the teacher has changed since this student last looked. */
+  news?: CurriculumNews;
   className: string;
   units: CurriculumUnit[];
   progress: StudentProgress;
@@ -47,6 +50,7 @@ export function CourseOverview({
   progress,
   blockSectionId,
   onOpenSection,
+  news,
 }: Props) {
   // Access is a whole-course question: a later unit's first section is only
   // open once everything before it is finished AND the gate has moved past it.
@@ -183,6 +187,10 @@ export function CourseOverview({
             const unitComplete = unit.subunits.filter((s) =>
               isSectionComplete(s, progress.sections[s.id])
             ).length;
+            const unitNews = news
+              ? unit.subunits.filter((s) => news.has(s.id)).length +
+                (unit.checkpoints ?? []).filter((c) => news.has(c.id)).length
+              : 0;
 
             return (
               <div
@@ -205,6 +213,17 @@ export function CourseOverview({
                       {unitComplete} of {unit.subunits.length} sections complete
                     </div>
                   </div>
+                  {/* A collapsed unit would hide its flags, so it carries the
+                      count itself — otherwise the banner sends the student
+                      hunting through units for what changed. */}
+                  {unitNews > 0 && (
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary text-white shrink-0"
+                      title="Changed since you were last here"
+                    >
+                      {unitNews} new
+                    </span>
+                  )}
                   <span
                     className={cn(
                       "text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0",
@@ -277,7 +296,19 @@ export function CourseOverview({
                                 </span>{" "}
                                 <span className="text-slate-500 dark:text-slate-400">
                                   {section.title}
-                                </span>
+                                </span>{" "}
+                                {news?.get(section.id) && (
+                                  <span
+                                    className="inline-flex items-center align-middle px-1 h-4 rounded text-[9px] font-bold uppercase tracking-wide bg-primary text-white"
+                                    title={
+                                      news.get(section.id) === "new"
+                                        ? "Added since you were last here"
+                                        : "Changed since you were last here"
+                                    }
+                                  >
+                                    {news.get(section.id) === "new" ? "New" : "Upd"}
+                                  </span>
+                                )}
                               </p>
                               {section.date && (
                                 <div className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-600 mt-0.5">

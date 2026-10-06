@@ -355,6 +355,22 @@ export class SyncedStore implements Store {
 
   // ── session ──────────────────────────────────────────────────────────────
 
+  /**
+   * Erase the account. This is the one write that never goes near the outbox:
+   * queueing an irreversible deletion would mean telling someone their account
+   * was gone while it still existed, so it needs a live connection and a real
+   * answer from the server. Only once that comes back is the local copy wiped.
+   */
+  async deleteAccount(): Promise<void> {
+    if (connectionDown()) {
+      throw new Error("You need a connection to delete your account");
+    }
+    await remote.deleteAccount();
+    outbox.clear();
+    this.cache.clear();
+    this.announce();
+  }
+
   /** Signing out. Whatever is still queued is pushed first if it can be. */
   async forget(): Promise<void> {
     await outbox.flush();

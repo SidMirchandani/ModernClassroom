@@ -196,13 +196,22 @@
      never from a drop shadow. Only true overlays (modals, dropdowns) lift. */
   body {
     @apply bg-white dark:bg-[#0b0f16] text-slate-900 dark:text-slate-100 antialiased;
-    font-family: var(--font-eb-garamond), Georgia, serif;
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.9375rem;
+    letter-spacing: -0.006em;
   }
 
-  /* Garamond runs small and light — nudge size and weight so UI text at 11–14px
-     stays as readable as the sans stack it replaced. */
-  body {
-    font-size: 1.0625rem;
+  /* Headings are the display cut, set tight. At large sizes a grotesque needs
+     negative tracking to stop looking loose; at small sizes it does not, which
+     is why this is scoped to headings and not the body. */
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display), var(--font-sans), sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* Numbers that sit in columns — grades, counts, dates — line up. */
+  .tabular-nums, table {
+    font-variant-numeric: tabular-nums;
   }
 
   /**
@@ -263,6 +272,198 @@
 }
 
 @layer components {
+  /**
+   * The landing page's motion.
+   *
+   * One rule holds all of it together: nothing moves that the reader is trying
+   * to read. The aurora drifts behind the words at a speed you notice only if
+   * you look for it, the grid fills in once as you arrive at it, and sections
+   * rise a few pixels as they come into view. Everything is transform and
+   * opacity — no layout animates — and every one of these is a no-op under
+   * `prefers-reduced-motion`, where the page simply arrives finished.
+   */
+
+  /* A slow wash of brand colour behind the hero. Three blobs on different
+     clocks, so the shape never repeats in a way the eye can latch onto. */
+  .aurora {
+    @apply pointer-events-none absolute inset-0 overflow-hidden;
+    mask-image: radial-gradient(ellipse 75% 70% at 50% 25%, #000 35%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 25%, #000 35%, transparent 75%);
+  }
+
+  .aurora-blob {
+    @apply absolute rounded-full;
+    filter: blur(72px);
+    opacity: 0.5;
+    will-change: transform;
+  }
+
+  .dark .aurora-blob {
+    opacity: 0.32;
+  }
+
+  .aurora-blob-1 {
+    width: 46rem;
+    height: 34rem;
+    top: -14rem;
+    left: -8rem;
+    background: radial-gradient(circle, rgb(var(--primary-400) / 0.55), transparent 68%);
+  }
+
+  .aurora-blob-2 {
+    width: 40rem;
+    height: 32rem;
+    top: -10rem;
+    right: -10rem;
+    background: radial-gradient(circle, rgb(var(--primary-300) / 0.5), transparent 68%);
+  }
+
+  .aurora-blob-3 {
+    width: 34rem;
+    height: 26rem;
+    top: 8rem;
+    left: 32%;
+    background: radial-gradient(circle, rgb(var(--primary-200) / 0.55), transparent 70%);
+  }
+
+  /* A faint plotting grid, fading out before it reaches the text. */
+  .hero-grid {
+    @apply pointer-events-none absolute inset-0;
+    background-image:
+      linear-gradient(to right, rgb(var(--primary-500) / 0.07) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(var(--primary-500) / 0.07) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000, transparent 70%);
+  }
+
+  /* Rise-into-view, driven by an IntersectionObserver adding `.is-in`. */
+  .reveal {
+    opacity: 1;
+  }
+
+  /* Staggered children, used for the headline's words and the grid's chips. */
+  .stagger > * {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .aurora-blob-1 {
+      animation: drift-a 19s ease-in-out infinite;
+    }
+    .aurora-blob-2 {
+      animation: drift-b 23s ease-in-out infinite;
+    }
+    .aurora-blob-3 {
+      animation: drift-c 27s ease-in-out infinite;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(18px);
+      transition:
+        opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .reveal.is-in {
+      opacity: 1;
+      transform: none;
+    }
+
+    .stagger > * {
+      opacity: 0;
+      animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation-delay: calc(var(--i, 0) * 70ms);
+    }
+
+    /* The grid mock's chips, lighting up like a class working through a unit. */
+    .reveal.is-in .chip-in {
+      opacity: 0;
+      animation: chip-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation-delay: calc(260ms + var(--i, 0) * 45ms);
+    }
+  }
+
+  @keyframes drift-a {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(6%, 8%, 0) scale(1.14); }
+  }
+
+  @keyframes drift-b {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1.08); }
+    50% { transform: translate3d(-7%, 6%, 0) scale(1); }
+  }
+
+  @keyframes drift-c {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(-5%, -9%, 0) scale(1.18); }
+  }
+
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @keyframes chip-in {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /**
+   * Buttons. Three weights and nothing else, because "sometimes outlined,
+   * sometimes not" is how an interface stops looking designed.
+   *
+   *   .btn-primary    the one action this screen is for — filled, no border
+   *   .btn-secondary  an equal alternative beside it — 1px border, no fill
+   *   .btn-ghost      a minor action — no border, no fill until hovered
+   *
+   * A filled button never also carries a border, and an outlined one never
+   * carries a fill. Size comes from .btn-sm / .btn-md / .btn-lg, so height and
+   * radius are decided here once rather than per call site.
+   */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 font-semibold
+           whitespace-nowrap transition-colors
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none;
+  }
+
+  .btn-sm {
+    @apply h-8 px-3 rounded-lg text-xs;
+  }
+
+  .btn-md {
+    @apply h-9 px-3.5 rounded-lg text-sm;
+  }
+
+  .btn-lg {
+    @apply h-11 px-5 rounded-xl text-sm;
+  }
+
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-dark text-white border-0;
+  }
+
+  .btn-secondary {
+    @apply border border-slate-200 dark:border-slate-700
+           bg-white dark:bg-slate-900
+           text-slate-700 dark:text-slate-200
+           hover:border-primary/60 hover:text-primary dark:hover:text-primary-glow;
+  }
+
+  .btn-ghost {
+    @apply text-slate-600 dark:text-slate-300
+           hover:text-primary dark:hover:text-primary-glow
+           hover:bg-slate-50 dark:hover:bg-slate-800/60;
+  }
+
+  /** Destructive, and it should look it — but only once it is reached for. */
+  .btn-danger {
+    @apply border border-rose-200 dark:border-rose-900
+           bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400
+           hover:bg-rose-500 hover:border-rose-500 hover:text-white;
+  }
+
   /**
    * Standard surface. Elevation comes from the z-shadow, not from a
    * translucent background — solid fills keep text crisp in both modes.

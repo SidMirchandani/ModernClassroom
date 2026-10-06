@@ -26,7 +26,7 @@ import { trackAbbr, TRACK_KIND_COLORS } from "@/lib/section-tracks";
 import { getCurrentUnitIndex, getUnitPhase, type UnitPhase } from "@/lib/unit-phase";
 import { UnitPhaseBadge } from "./UnitPhaseBadge";
 import { TableProgressGate } from "./TableProgressGate";
-import { CurriculumTable } from "./CurriculumTable";
+import { CurriculumPanel } from "./CurriculumPanel";
 import { ClassCustomize } from "./ClassCustomize";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
@@ -37,8 +37,9 @@ import { AppNavbar } from "@/components/AppNavbar";
 import { Modal } from "@/components/Modal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getCurrentUser } from "@/lib/auth-client";
-import { store } from "@/lib/store";
-import type { DbClass, DbInvite } from "@/lib/db/types";
+import { store, type SectionRemap } from "@/lib/store";
+import { useClassSync } from "@/lib/use-class-sync";
+import type { CurriculumUnit, DbClass, DbInvite } from "@/lib/db/types";
 import type {
   Checkpoint,
   CheckpointKind,
@@ -113,13 +114,15 @@ const STATUS_CONFIG: Record<OverallStatus, { label: string; classes: string; ico
 };
 
 /**
- * Wide enough for a column title to wrap in **two lines at most**. Garamond at
- * 10px runs about 4.6px a character, so two lines hold half the string — and a
- * single long word still has to fit on one line whatever the total. Clamped so
- * one wordy subunit cannot push the grid off the screen.
+ * Wide enough for a column title to wrap in **two lines at most**. Inter at
+ * 10px semibold measures about 5.05px a character, so two lines hold half the
+ * string — and a single long word still has to fit on one line whatever the
+ * total. Clamped so one wordy subunit cannot push the grid off the screen.
+ * (Measured, not guessed: this was 4.6 for Garamond and every column came out
+ * a tenth too narrow when the face changed.)
  */
 function titleColumnWidth(title: string): number {
-  const CHAR = 4.6;
+  const CHAR = 5.05;
   const PADDING = 22;
   const longestWord = title
     .split(/\s+/)
@@ -207,6 +210,11 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     },
     [router, pathname]
   );
+  // Guards against a live re-read stealing the teacher's place on screen.
+  const settled = useRef(false);
+  const editingNameRef = useRef(false);
+  editingNameRef.current = editingName;
+
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const sectionColumnRefs = useRef<(HTMLTableCellElement | null)[]>([]);
   const inviteRowRef = useRef<HTMLTableRowElement>(null);
@@ -277,11 +285,18 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
       return;
     }
     setCls(data.class);
-    setClassName(data.class.name);
     setStudents(data.students);
     setInvites(data.invites);
     setBlockSectionId(data.class.blockSectionId);
-    setActiveUnitIndex(getCurrentUnitIndex(data.class.units, data.class.blockSectionId));
+
+    // A re-read can arrive at any moment — a student marking a step is enough
+    // to cause one. It must never move the teacher: not off the unit they are
+    // looking at, and not out of the name they are halfway through typing.
+    if (!settled.current) {
+      setActiveUnitIndex(getCurrentUnitIndex(data.class.units, data.class.blockSectionId));
+      settled.current = true;
+    }
+    if (!editingNameRef.current) setClassName(data.class.name);
 
     const progress: StudentProgress[] = (data.progress ?? []).map((p) => ({
       studentId: p.studentId,
@@ -296,6 +311,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // The student side of this class, arriving as it happens.
+  useClassSync(classId, loadData);
 
   const saveProgress = useCallback(
     (all: StudentProgress[]) => {
@@ -324,6 +342,20 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
       if (updated) setCls(updated);
     },
     [classId]
+  );
+
+  /**
+   * An approved import. It goes through `applyCurriculum` rather than a plain
+   * save because renumbering a section has to move every mark filed under it
+   * in the same breath — and then the whole class is re-read, since those
+   * marks are now under different keys than the ones on screen.
+   */
+  const applyCurriculum = useCallback(
+    async (units: CurriculumUnit[], remaps: SectionRemap[]) => {
+      await store.applyCurriculum(classId, units, remaps, cls?.version ?? null);
+      await loadData();
+    },
+    [classId, cls?.version, loadData]
   );
 
   const handleNameSave = async () => {
@@ -733,10 +765,10 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
         {activeView === "classroom" && (
           <>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <StatCard label="Students" value={totalStudents} sub="enrolled" icon={<Users className="w-4 h-4 text-primary" />} color="blue" onClick={() => setOpenModal("students")} />
           <StatCard label="Avg Progress" value={`${Math.round(avgProgress * 100)}%`} sub="complete" icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} color="green" onClick={() => setOpenModal("progress")} />
-          <StatCard label="Sections" value={sections.length} sub="subunits" icon={<LayoutGrid className="w-4 h-4 text-primary" />} color="violet" onClick={() => setOpenModal("sections")} />
+          <StatCard className="col-span-2 sm:col-span-1" label="Sections" value={sections.length} sub="subunits" icon={<LayoutGrid className="w-4 h-4 text-primary" />} color="violet" onClick={() => setOpenModal("sections")} />
         </div>
 
         {sections.length > 0 && (
@@ -1103,10 +1135,13 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
         {activeView === "curriculum" && (
           <div data-tour="curriculum">
-          <CurriculumTable
+          <CurriculumPanel
             classId={classId}
             units={cls.units}
+            importInstructions={cls.importInstructions}
             onUpdate={(units) => saveClass({ units })}
+            onSaveInstructions={(importInstructions) => saveClass({ importInstructions })}
+            onApply={applyCurriculum}
           />
           </div>
         )}
@@ -1471,13 +1506,20 @@ function KeyRow({ swatch, label }: { swatch: React.ReactNode; label: string }) {
   );
 }
 
-function StatCard({ label, value, sub, icon, color, onClick }: {
+function StatCard({ label, value, sub, icon, color, onClick, className }: {
   label: string; value: string | number; sub: string; icon: React.ReactNode;
-  color: "blue" | "red" | "green" | "violet"; onClick: () => void;
+  color: "blue" | "red" | "green" | "violet"; onClick: () => void; className?: string;
 }) {
   const bg = { blue: "bg-white dark:bg-slate-900 border border-primary/30", red: "bg-rose-50 dark:bg-rose-950", green: "bg-emerald-50 dark:bg-emerald-950", violet: "bg-white dark:bg-slate-900 border border-primary/30" }[color];
   return (
-    <button type="button" onClick={onClick} className="rounded-xl border bg-white dark:bg-slate-900 p-4 text-left hover:border-primary/50 transition-colors">
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-xl border bg-white dark:bg-slate-900 p-4 text-left hover:border-primary/50 transition-colors",
+        className
+      )}
+    >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-medium text-slate-500">{label}</span>
         <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", bg)}>{icon}</div>

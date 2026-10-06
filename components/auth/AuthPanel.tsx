@@ -176,7 +176,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
         <button
           type="submit"
           disabled={loading}
-          className="w-full flex items-center justify-center gap-2 h-11 rounded-lg bg-primary hover:bg-primary-dark text-white font-semibold text-sm transition-colors disabled:opacity-60"
+          className="btn btn-lg btn-primary w-full"
         >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
           {mode === "login" ? "Log In" : "Create Account"}

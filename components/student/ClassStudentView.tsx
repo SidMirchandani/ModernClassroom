@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,13 @@ import type {
   TrackStep,
 } from "@/lib/types";
 import { store } from "@/lib/store";
+import { useClassSync } from "@/lib/use-class-sync";
+import {
+  markAllSeen,
+  markSeen,
+  readNews,
+  type CurriculumNews,
+} from "@/lib/curriculum-news";
 import type { DbClass } from "@/lib/db/types";
 import {
   applyStepStatus,
@@ -45,6 +52,7 @@ import {
   ChevronUp,
   LayoutGrid,
   List,
+  Sparkles,
   X,
   Loader2,
 } from "lucide-react";
@@ -104,6 +112,11 @@ export function ClassStudentView({
   }, [sheet.shown]);
   const [blockSectionId, setBlockSectionId] = useState<string | null>(null);
   const [teacherLockAlert, setTeacherLockAlert] = useState(false);
+  // What the teacher has changed since this student last looked here.
+  const [news, setNews] = useState<CurriculumNews>(new Map());
+  const aliveRef = useRef(true);
+  // The first read places the student; later ones must leave them where they are.
+  const settled = useRef(false);
 
   const units = useMemo(() => cls?.units ?? [], [cls]);
   const sections: Section[] = useMemo(
@@ -115,14 +128,12 @@ export function ClassStudentView({
     [units],
   );
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
+  const load = useCallback(async () => {
     // Ask for the student role explicitly: a teacher enrolled in their own
     // class would otherwise get the teacher payload, which strips their own
     // progress row.
     const data = await store.getClassDetail(classId, studentId, "student");
-    if (!alive) return;
+    if (!aliveRef.current) return;
     if (!data) {
       router.replace("/dashboard");
       return;
@@ -144,26 +155,43 @@ export function ClassStudentView({
       data.class.blockSectionId,
     );
     setProgress(normalized);
-    const startSection = firstAccessibleSection(
-      normalized,
-      allSections,
-      data.class.blockSectionId,
-    );
-    setActiveSectionId(startSection);
-    setUnitIndex(
-      Math.max(
-        0,
-        data.class.units.findIndex((u) =>
-          u.subunits.some((s) => s.id === startSection),
+
+    // What the teacher has changed since this student last looked. Read before
+    // anything is marked seen, so opening a subunit is what clears its flag.
+    setNews(readNews(classId, studentId, data.class.units));
+
+    // Only the first read chooses where the student is standing. Later ones
+    // arrive because someone else changed something, and must not move them.
+    if (!settled.current) {
+      const startSection = firstAccessibleSection(
+        normalized,
+        allSections,
+        data.class.blockSectionId,
+      );
+      setActiveSectionId(startSection);
+      setUnitIndex(
+        Math.max(
+          0,
+          data.class.units.findIndex((u) =>
+            u.subunits.some((s) => s.id === startSection),
+          ),
         ),
-      ),
-    );
+      );
+      settled.current = true;
+    }
     setLoading(false);
-    })();
-    return () => {
-      alive = false;
-    };
   }, [classId, studentId, router]);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    void load();
+    return () => {
+      aliveRef.current = false;
+    };
+  }, [load]);
+
+  // The teacher's side of this class, arriving as it happens.
+  useClassSync(classId, load);
 
   const saveProgress = useCallback(
     (updated: StudentProgress) => {
@@ -196,9 +224,19 @@ export function ClassStudentView({
           u.subunits.some((s) => s.id === sectionId),
         );
         if (owner >= 0) setUnitIndex(owner);
+
+        // Opening it is reading it. The flag clears here and nowhere else.
+        if (news.has(sectionId)) {
+          markSeen(classId, studentId, sectionId, units);
+          setNews((current) => {
+            const next = new Map(current);
+            next.delete(sectionId);
+            return next;
+          });
+        }
       }
     },
-    [progress, sections, blockSectionId, units],
+    [progress, sections, blockSectionId, units, news, classId, studentId],
   );
 
   const updateActivity = useCallback(
@@ -290,6 +328,7 @@ export function ClassStudentView({
     onSelect: handleSectionSelect,
     onTeacherBlocked: () => setTeacherLockAlert(true),
     blockSectionId,
+    news,
   };
 
   const todos = buildClassTodos(
@@ -512,6 +551,27 @@ export function ClassStudentView({
 
         <main className="flex-1 min-w-0 flex justify-center px-4 sm:px-6 py-6">
           <div className="w-full max-w-3xl">
+            {news.size > 0 && (
+              <div className="mb-4 flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-primary/30 bg-primary/5">
+                <Sparkles className="w-4 h-4 text-primary shrink-0" />
+                <p className="flex-1 min-w-0 text-sm text-slate-700 dark:text-slate-200">
+                  Your teacher changed {news.size}{" "}
+                  {news.size === 1 ? "thing" : "things"} since you were last
+                  here. They are flagged in the list.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    markAllSeen(classId, studentId, units);
+                    setNews(new Map());
+                  }}
+                  className="shrink-0 text-xs font-medium text-primary dark:text-primary-glow hover:underline"
+                >
+                  Got it
+                </button>
+              </div>
+            )}
+
             {view === "overview" ? (
               <CourseOverview
                 className={cls.name}
@@ -519,6 +579,7 @@ export function ClassStudentView({
                 progress={progress}
                 blockSectionId={blockSectionId}
                 onOpenSection={handleSectionSelect}
+                news={news}
               />
             ) : !activeSection ? (
               <div className="rounded-2xl border bg-white dark:bg-slate-900 p-8 text-center">

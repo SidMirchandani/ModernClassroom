@@ -17,8 +17,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-eb-garamond)", "Georgia", "serif"],
-        serif: ["var(--font-eb-garamond)", "Georgia", "serif"],
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-sans)", "sans-serif"],
       },
       colors: {
         // The house blue, fixed. `primary` moves with the class you are in, so

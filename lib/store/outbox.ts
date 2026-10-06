@@ -201,6 +201,11 @@ class Outbox {
       // sign-in can fail while the session token is still being attached, and
       // a banner saying "offline" on a perfectly good connection is a lie.
       let retried = false;
+      // A write the server refuses outright is dropped — it will never succeed,
+      // and retrying it forever would block everything behind it. But dropping
+      // it silently is worse: the person made a change that is now gone. This
+      // survives to the end of the flush so the status pill still says so.
+      let refused = 0;
 
       while (entries.length > 0) {
         const head = entries[0];
@@ -235,11 +240,11 @@ class Outbox {
           console.error("[sync] write refused and dropped", head.op.kind, err);
           entries = entries.slice(1);
           writeEntries(entries);
-          this.emit({ status: "error" });
+          refused += 1;
         }
       }
-      this.emit({ status: "synced" });
-      return true;
+      this.emit(refused > 0 ? { status: "error" } : { status: "synced" });
+      return refused === 0;
     });
   }
 

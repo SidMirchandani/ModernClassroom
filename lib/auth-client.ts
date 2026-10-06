@@ -81,6 +81,20 @@ export async function signupUser(data: {
   return user;
 }
 
+/**
+ * Close the account for good. The server erases everything in one transaction;
+ * this then drops the local session so the app cannot keep rendering from a
+ * cache of things that no longer exist.
+ */
+export async function deleteAccount(): Promise<void> {
+  if (isDemoMode()) {
+    exitDemoMode();
+    return;
+  }
+  await store.deleteAccount();
+  await supabase().auth.signOut();
+}
+
 export async function logoutUser(): Promise<void> {
   if (isDemoMode()) {
     exitDemoMode();

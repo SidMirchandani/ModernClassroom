@@ -1,17 +1,51 @@
 import type { Metadata } from "next";
-import { EB_Garamond } from "next/font/google";
+import { Archivo, Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { SITE } from "@/lib/site";
 import "./globals.css";
 
-const ebGaramond = EB_Garamond({
+/**
+ * Two faces, one voice. Inter carries every piece of interface text — it was
+ * drawn for screens at exactly the 11–14px this app lives at. Archivo is the
+ * display cut: tighter, heavier, used only where something is announcing
+ * itself. Both are flat grotesques, so headings read as the same family
+ * speaking louder rather than as a second design.
+ */
+const inter = Inter({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-eb-garamond",
+  variable: "--font-sans",
+});
+
+const archivo = Archivo({
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["600", "700", "800"],
+  variable: "--font-display",
 });
 
 export const metadata: Metadata = {
-  title: "Modern Classroom",
-  description: "A modern learning management system for students and teachers",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
+  ),
+  title: {
+    default: "Modern Classroom — self-paced learning, teacher oversight",
+    template: "%s · Modern Classroom",
+  },
+  description: SITE.description,
+  applicationName: SITE.name,
+  openGraph: {
+    type: "website",
+    siteName: SITE.name,
+    title: "Modern Classroom — self-paced learning, teacher oversight",
+    description: SITE.description,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Modern Classroom",
+    description: SITE.description,
+  },
+  robots: { index: true, follow: true },
   icons: {
     icon: [
       { url: "/favicon-32.png", type: "image/png", sizes: "32x32" },
@@ -27,7 +61,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={ebGaramond.variable} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${inter.variable} ${archivo.variable}`}
+      suppressHydrationWarning
+    >
       <body suppressHydrationWarning>
         <script
           dangerouslySetInnerHTML={{
