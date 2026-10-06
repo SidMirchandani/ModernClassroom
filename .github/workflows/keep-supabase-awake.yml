@@ -33,12 +33,15 @@ jobs:
             echo "::error::SUPABASE_URL and SUPABASE_ANON_KEY must be set as repository secrets"
             exit 1
           fi
-          # An unauthenticated read of a table behind RLS. It returns an empty
-          # list, which is the point: it proves the database answered without
-          # exposing a single row.
-          code=$(curl -s -o /tmp/body -w "%{http_code}" \
-            "$SUPABASE_URL/rest/v1/classes?select=id&limit=1" \
-            -H "apikey: $SUPABASE_ANON_KEY")
+          # Calls public.ping() (migration 0007): a function that returns the
+          # time and touches no table. It is the one thing an anonymous caller
+          # may run, which is why it is used instead of reading a real table —
+          # those correctly refuse anyone who is not signed in.
+          code=$(curl -s -o /tmp/body -w "%{http_code}" -X POST \
+            "$SUPABASE_URL/rest/v1/rpc/ping" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{}')
           echo "HTTP $code"
           cat /tmp/body
           if [ "$code" != "200" ]; then
