@@ -56,8 +56,7 @@ export function DemoNotice() {
     >
       <div className="pointer-events-auto flex items-start gap-3 w-[min(92vw,34rem)] px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 float-pane-raised shadow-z5">
         <p className="text-sm text-slate-600 dark:text-slate-300 flex-1">
-          This is a demo — you can explore freely, but nothing you change here will be
-          saved.{" "}
+          Demo — nothing here is saved.{" "}
           <button
             type="button"
             onClick={() => {

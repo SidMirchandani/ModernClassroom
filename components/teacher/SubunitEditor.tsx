@@ -43,7 +43,12 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
       router.replace("/?auth=login");
       return;
     }
-    const data = await store.getClassDetail(classId, user.id);
+    // As on the class page: a class that cannot be loaded sends the teacher
+    // back to the dashboard, not to an error screen.
+    const data = await store.getClassDetail(classId, user.id).catch((err) => {
+      console.warn("Could not open this class", err);
+      return null;
+    });
     if (!data) {
       router.replace("/dashboard");
       return;
@@ -105,7 +110,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0b0f16]">
+    <div className="min-h-screen flex flex-col">
       <AppNavbar
         left={
           <Link
@@ -124,7 +129,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
         }
       />
 
-      <main className="max-w-3xl mx-auto w-full px-5 py-8 space-y-8">
+      <main className="page-in max-w-3xl mx-auto w-full px-5 py-8 space-y-8">
         <div className="flex flex-col-reverse sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
           <div className="min-w-0 flex-1">
             <span className="text-xs font-bold text-primary uppercase tracking-widest">

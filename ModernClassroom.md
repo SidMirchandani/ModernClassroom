@@ -211,8 +211,38 @@ lives and the only place it lives. It reads the class from the database rather
 than trusting the browser's copy, turns spreadsheets into text with SheetJS
 (the model reads tables far better than binaries) and passes PDFs and images
 inline. The reply is constrained by a `responseSchema`, so it is parsed, not
-guessed at. Busy models are retried with backoff — Google returns 503 under
-load often enough that one attempt would make the feature look broken.
+guessed at. When Google is busy the route moves to a *different* model rather
+than waiting on the same one, and it **hedges**: if the model it is waiting on
+has not answered in 14s, it starts the next one alongside and takes whichever
+finishes first, aborting the other. Up to seven distinct models per import,
+each capped at 40s, at most two in flight, and no new attempt within 12s of the
+function's `maxDuration` — so a teacher gets a real answer, never a platform
+timeout. A model that came back busy is **cooled** for five minutes (moved to
+the back of the queue, never removed), so the next import goes straight to one
+that is working: on 2026-10-06 that took repeat imports from ~45s to ~1s. Every
+failed attempt logs one line (`[import] gemini-3.8-flash failed (HTTP 503) after
+3282ms`), which is what to read in the Vercel logs when an import fails.
+
+Every import spends the operator's Gemini quota, so every caller is limited:
+the demo to 8 an hour per address, a signed-in teacher to 30 an hour per
+account. Files are parsed *before* either counter runs, so a wrong file type
+costs a correction, not an import. The demo's curriculum arrives from the
+browser and is shape-checked (and capped at 200k characters) before anything
+walks it.
+
+> ⚠️ **Uploads are capped at 4 MB because Vercel is.** A serverless function's
+> request body tops out at 4.5 MB, and anything bigger gets the platform's own
+> non-JSON 413 before the route runs. The old 15 MB limit was a promise the
+> platform broke, and the browser then tried to parse an HTML error page as
+> JSON. The import card now checks the size before sending, and the panel reads
+> a non-JSON 413/504 into a sentence a teacher can act on.
+
+> ⚠️ **Overload is per model, so never retry the same one.** The first version
+> tried the configured model twice, then one sibling, then gave up — and on
+> 2026-10-06 `gemini-3.8-flash` and `3.7-flash` were both returning 503 while
+> `3.6` answered at once. Teachers saw *"Google's models are busy"* for an outage
+> that never touched most of the catalogue. Walking down distinct models turned
+> the same morning into 5–9s imports.
 
 **The diff engine** (`lib/curriculum-diff.ts`) is the part that matters, and the
 one place in the repo with tests, because its failure mode is silent loss of
@@ -339,33 +369,53 @@ a write queued offline under `3.3` still lands after `3.3` became `3.4`.
 > objects**, ids and all, and never re-derive them. Re-deriving orphans every
 > student's work on that section, silently: it just renders as "not started".
 
-### Course templates — `lib/course-templates.ts`
+### Starting a class — `app/dashboard/new/`, `lib/pending-import.ts`
 
-Three courses transcribed from the *Class Time Lines 2026* sheet, so a new class
-arrives with the year already laid out:
+A class starts from what the teacher already has. The new-class page asks for a
+name, the teacher's materials (time line, syllabus, a photo of a printed plan)
+and anything we should know — then **Create class**. There are no
+ready-made courses to pick from any more; "Start with an empty class" is the
+only other door.
 
-| Template | Units | Subunits | Checkpoints | Resources |
-|---|---|---|---|---|
-| Algebra II, Honors | 11 | 72 | 30 | Next-Gen Textbook · Discovery Activity · eMath Guided Notes |
-| AP Precalculus | 4 | 58 | 19 | Textbook · AP Classroom · Guided Notes (The Algebros) |
-| AP Statistics | 5 | 55 | 24 | Stats: Modeling the World · AP Classroom · Guided Notes (Goldie's) |
+The draft is made in the new class's own Curriculum tab, not on the new-class
+page: the import route only reads for a class that exists and that the caller
+teaches, and the Curriculum tab is where every proposal is reviewed anyway. So
+the page creates the class **blank** (`createClassForTeacher(id, { name, blank:
+true })` — no units at all), parks the files in `setPendingImport(classId, …)`
+and moves to `?view=curriculum`, where `CurriculumPanel` takes them on arrival
+and starts the read. The teacher's first sight of their new class is the AI's
+draft forming; nothing reaches the class until they approve it.
 
-Each subunit carries its due date and a per-resource
-`reference` (textbook chapter, CED topic, guided lesson). Learn/Practice slots
-come in **empty** — the teacher attaches documents, keys and videos as the year
-runs, which is the stated workflow.
+> ⚠️ **A class address that is not a UUID is a missing class, not an error.** Leaving the demo switches the browser to the real store while a tab can still be on `/dashboard/class/demo-algebra-2`; Postgres answered that id with *"invalid input syntax for type uuid"*, and the student view's background reload threw it as a runtime crash. `remote.pullClass` now returns `null` for anything that is not a UUID without asking the server; the class page and subunit editor send any load failure back to the dashboard; and the class views' background reloads (every live nudge, every return to the tab) keep what is on screen when one fails, instead of throwing.
 
-**A subunit is numbered by the class unit it sits in, never by the textbook.**
-`9.1` is the first subunit of Unit 9 whatever chapter covers it; the chapter
-lives in that resource's `reference` (`Ch 8.1`), which is the whole point of
-tracks. Algebra II shipped four units transcribed straight off the textbook
-spine — Unit 9 opening at "8.1" — and they are renumbered. The curriculum
-editor already numbers new subunits `${unit}.${n}`, so this is the rule
-everywhere.
+> ⚠️ **An AI-built class must start with no units.** The import never deletes
+> a unit the files do not mention — that is what keeps a partial upload from
+> wiping the rest of the year. So the old placeholder "Unit 1 / Subunit 1.1"
+> would survive beside every unit the AI proposed. `blank` exists for exactly
+> this; an empty class started by hand still gets the placeholder.
 
-`instantiateTemplate()` builds `CurriculumUnit[]`; `createDefaultClass()` sets
-the initial gate to the **last subunit of Unit 1** so a fresh template class
-opens on Unit 1 rather than the end of the year.
+> ⚠️ **The hand-off is module memory, on purpose.** `File` objects cannot go
+> into storage or survive a reload, and do not need to: it is a client-side
+> navigation of a second or two. `takePendingImport` reads and forgets, and the
+> panel checks once (a ref, so React's double-run of effects in development
+> cannot start two reads). And the panel asks `isDemoMode()` directly when it
+> builds the request — an import started on arrival runs before the effect
+> that sets the `demo` state has.
+
+`MaterialsPicker` is the one component for "attach files and say what matters",
+shared by the new-class page and the Curriculum tab, so creating a class and
+updating one ask the same thing the same way. It is a **composer**, the shape
+people know from chat apps: one field for the notes, attached files as chips
+inside it, attach on the left of its bottom bar and the send button on the
+right, and the whole thing a drop target. An earlier open layout — a separate
+attach button, file rows and an underlined text field — did not read as
+somewhere to type, and its pieces drifted apart.
+
+`lib/course-templates.ts` remains only as the source of the demo's three seeded
+classes (see *Demo data*). Its subunits are numbered by the class unit, never
+by the textbook — `9.1` is the first subunit of Unit 9 whatever chapter covers
+it; the chapter lives in that resource's `reference` — which is the rule the
+AI is told to follow as well.
 
 ### Layout
 
@@ -373,7 +423,7 @@ opens on Unit 1 rather than the end of the year.
 app/
   page.tsx                    Landing + AuthPanel
   dashboard/                  The app — class list, class view, subunit editor
-    new/                      Start a class from a template (its own page, not a dialog)
+    new/                      Start a class: name, materials, notes → AI draft (or empty)
   demo/                       Asks tour-or-no-tour, seeds the store, then enters
 components/
   AppNavbar.tsx / NavCapsule.tsx   Fixed h-14 bar · the segmented tab pill
@@ -406,7 +456,8 @@ lib/
   section-tracks.ts           ⭐ track helpers + legacy migration (deterministic ids)
   class-progress.ts           ⭐ unlock / status / review logic — the only copy
   todos.ts                    ⭐ due-date parsing + the three to-do buckets
-  course-templates.ts         ⭐ Algebra II / AP Precalc / AP Stats skeletons
+  course-templates.ts         The demo's three seeded courses (not offered to teachers)
+  pending-import.ts           Hands a new class's files to its Curriculum tab
   class-appearance.ts         ⭐ the eight accents and twelve class glyphs
   use-current-user.ts         The signed-in user, re-read on every store write
   curriculum.ts               Empty section factory + `shortUnitLabel`
@@ -668,7 +719,7 @@ Then open http://localhost:3000. Scripts: `dev`, `build`, `start`, `lint` (broke
 | `NEXT_PUBLIC_SUPABASE_URL` | Browser. Project settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser. The publishable key — safe there, every table is behind RLS |
 | `GEMINI_API_KEY` | **Server only.** The curriculum import route. Never `NEXT_PUBLIC_` |
-| `GEMINI_MODEL` | Optional, defaults to `gemini-3.6-flash`. Google retires model names; a 404 from the import route usually means this needs moving on |
+| `GEMINI_MODEL` | Optional, and best left unset. It is only the *first* model tried — the route reads Google's catalogue and falls through to whatever is current — so it defaults to the `gemini-flash-latest` alias. A retired name here degrades to "used a different model", not to a broken import |
 
 `.env.local` is gitignored; `.env.example` is the template. **`/demo` needs none
 of them** — it is entirely local, which is also what makes it the fallback when
@@ -721,11 +772,26 @@ still lands exactly where it did. Without it, `/` is the marketing page: what
 the thing is, the resource-track idea, the import, and what makes it safe to
 put a class in.
 
-The pitch shows the product rather than describing it, and it moves — an
-aurora of brand colour drifting behind the hero on three different clocks, a
-plotting grid masked out before it reaches the text, the headline set a word at
-a time, sections rising as they come into view, and the grid mock filling in on
-a diagonal so it reads as a class working rather than a static table.
+The pitch leads with how a class starts — attach your materials and the AI
+drafts the curriculum (there are no ready-made courses on offer) — and shows
+the product rather than describing it, in Supabase's language, minus the
+boxes: one flat page colour, the brand blue used only for the primary
+action and the second line of the hero, 1px borders instead of shadows,
+medium-weight two-tone headings (the claim in ink, its tail in grey), and
+almost no frames: the product miniatures sit on the page with hairlines between
+rows, the feature vignettes stand on a grey plotting grid that fades into the
+page, the steps are bare numbers, and the FAQ is rows split by rules. Only the
+hero's grid keeps a window frame, because it is a picture of a window. Sections
+rise a few pixels as they come into view, the grid mock fills in on a diagonal,
+and two tiles loop between real states (offline → saved, active → done).
+Nothing else moves.
+
+> ⚠️ **Colour was tried and taken out.** An earlier pass on 2026-10-06 put a
+> drifting colour field behind every screen, frosted cards, light beams, a
+> gradient headline and cursor-following glows. It read as busy and generic, and
+> was reverted the same day in favour of the flat system above. The lesson for
+> next time: in this app restraint is the brand — reach for a border before a
+> shadow, and grey before a second colour.
 
 > ⚠️ **Motion is opt-in at the CSS layer, not the JS layer.** Every rule that
 > hides or moves anything lives inside `@media (prefers-reduced-motion:
@@ -778,7 +844,7 @@ search results (tidiness, not security — RLS is the security), and
 One brand blue, one status vocabulary, one radius scale. Tokens live in
 `tailwind.config.ts` and `app/globals.css`; components never invent a colour.
 
-- **Two typefaces, one voice.** **Inter** carries every piece of interface text — it was drawn for screens at exactly the 11–14px this app lives at — and **Archivo** is the display cut, used on `h1`–`h3` and anything wearing `font-display`. Both are flat grotesques, so a heading reads as the same family speaking louder rather than as a second design. Body is `0.9375rem` with `-0.006em` tracking; headings tighten to `-0.02em`, because a grotesque at display size looks loose without it. Tables and `.tabular-nums` get lining figures so grades and dates line up in columns.
+- **One typeface: Poppins, everywhere.** Headings, body, labels, numbers, class codes and code samples alike — hierarchy comes from size, weight and grey, never from switching families. Tailwind's `sans`, `display` *and* `mono` all point at it, and `pre`/`code` inherit, so no class anywhere can quietly bring a second face back. **Nothing is heavier than medium:** Poppins at 600–700 read chunky at every size, so `tailwind.config.ts` maps `font-semibold`/`font-bold` (and heavier) to 500, `b`/`strong`/`th` are 500 in the base layer, and `layout.tsx` loads only 400 and 500. Hierarchy is size and grey, not weight. Body is `0.9375rem`; headings tighten to `-0.02em`.
 
 > ⚠️ **The model catalogue is not the truth.** Google keeps listing
 > `gemini-2.5-flash` in ListModels long after calling it returns *"no longer
@@ -790,21 +856,29 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 > 2.6s — the difference is the dead name being remembered.
 
 > ⚠️ **Name the model that actually failed.** The import tries the configured
-> model twice, then siblings. Reporting the *configured* name when a fallback
+> model, then siblings. Reporting the *configured* name when a fallback
 > was the one that errored produced the worst possible message — *"gemini-3.6-flash
 > is not available to this key"* while that model was working perfectly and a
 > retired fallback had 404'd. A 404 now also falls through to the next model
 > instead of killing the request: model names are retired on Google's schedule,
 > and a retired default should degrade rather than take the feature down.
 
-> ⚠️ **A font change is a layout change.** `titleColumnWidth()` in the teacher grid sizes each subunit column from a measured per-character width. That constant was `4.6` for Garamond; Inter at 10px semibold measures **5.05**, and every column came out a tenth too narrow until it was re-measured in the browser rather than guessed at.
+> ⚠️ **A font change is a layout change.** `titleColumnWidth()` in the teacher grid sizes each subunit column from a measured per-character width. That constant was `4.6` for Garamond and `5.05` for Inter; Poppins at the header's 10px measures **5.1** — measured in the browser across the real column titles, not guessed. Poppins is also wider at every size: the class code beside the tab capsule overran it at tablet width until the "Dashboard" label was held back to `lg`.
 
 - **`primary` is the only accent** — nav, links, CTAs, focus rings, eyebrows, the current-section highlight. The teacher side used to run on violet; it does not any more. It defaults to the house blue `#2563ea` but **is not a fixed hex**: inside a class it becomes that class's colour (see *Customize*). `bg-brand` is the one fixed blue, for the colour picker's own swatch.
 - **Colour sits on white, never on colour.** Chips are the card's own surface with a tinted border and tinted text; checkpoint rows are white with a thin coloured left stripe; the beyond-the-gate column is dimmed rather than tinted. Stacked tints were what made the page read as noise.
 - **Status is one vocabulary** — `lib/status-styles.ts` holds the tonal chips every surface reads from: slate `Not Started` · sky `In Progress` · amber `Submitted` · rose `Help!` · emerald `Done`, plus `STATUS_DOT` for the bar/dot form. The student badges, the step chips, the teacher grid chips, the section-breakdown bars and the section pills all import it, so a colour never means two things. **Status colours never follow the class colour** — a step that is in progress is sky in a rose class too, or "in progress" and "done" would collide in a green one.
 - **Resource hues are category identity only** — indigo textbook · violet AP Classroom · teal guided notes · amber extra · slate custom. They appear on the icon tile, the editor badge and the objective dot, never on chrome and never on a status. Attachments share one neutral treatment (`ATTACHMENT_CLASS`).
-- **Buttons are three weights and nothing else** — `.btn-primary` (filled, no border) for the one action a screen is for, `.btn-secondary` (1px border, no fill) for an equal alternative, `.btn-ghost` for minor actions, plus `.btn-danger`. Size is `.btn-sm` / `.btn-md` / `.btn-lg`, so height and radius are decided once. **A filled button never also carries a border, and an outlined one never carries a fill** — mixing the two is what made the app read as half-designed.
-- **Flat by design.** The page is white (`#0b0f16` in dark) and every surface sits on it with a 1px border and no shadow. Only true overlays — modals, dropdowns, the demo notice — carry `shadow-z5`. `shadow-z1`–`z3` are no longer used on cards.
+- **Buttons are three weights and nothing else** — `.btn-primary` (solid **ink** — black on light, white on dark — no border, no shadow; a filled brand-blue block was the loudest thing on every screen, so blue is kept for links, the active tab and "new" badges) for the one action a screen is for, `.btn-secondary` (1px border, no fill) for an equal alternative, `.btn-ghost` for minor actions, plus `.btn-danger`. Size is `.btn-sm` / `.btn-md` / `.btn-lg`, so height and radius are decided once. **A filled button never also carries a border, and an outlined one never carries a fill** — mixing the two is what made the app read as half-designed. A primary that is not ready yet turns **neutral grey**, not faded blue — a washed-out brand colour read as broken, worst of all in dark mode — while one that is working (`aria-busy`) keeps its full colour.
+- **Flat by design, after Supabase.** One flat page colour (white, `#0b0f16` in dark). Every surface is `.surface` / `.card`: solid fill, a 1px `slate-200` (`slate-800` in dark) border, **no shadow**. Interactive cards answer the pointer with their border only — no lift, no glow. The class colour is spent sparingly: the primary button, the active tab, the student's class strip, a heading's accent line. Only true overlays (modals, dropdowns) carry a shadow.
+- **Motion does a job or it does not happen.** Two curves in `:root` — `--ease-out` for anything arriving, `--ease-spring` for anything the hand moved. What stayed: a short fade-and-rise when a view changes (`.page-in`, `.list-in`), one sliding pill per tab bar (`useSlidingPill`, in `NavCapsule` and `SubunitViewToggle`), sections that slide to their exact height (`<Collapse>`, grid rows 0fr→1fr), stat numbers that count up (`useCountUp`), bars that grow in (`.bar-fill`), the light sweeping the import card while Gemini reads (`.scan-line`), and the theme switch spreading from the toggle as a circle (View Transitions API). All of it inside `prefers-reduced-motion: no-preference`.
+- **Flat, but it answers the cursor** — the other half of what makes Supabase and Vercel feel alive. `<PointerTracker />` (one listener in the root layout, one write per frame, off on touch screens) feeds `--mx`/`--my` to every `[data-pointer]`, `.card-interactive` and `.edge-glow` under the pointer. With it: a card's 1px edge lights in the brand colour where the cursor is (`::after`, masked to the border); the line-art grid in a landing tile brightens in a circle beneath the cursor (`.line-grid-hot`); each landing vignette plays its change on hover (`.swap-a` / `.swap-b` — a student finishing, a help flag raised, offline changes landing), falling back to a slow loop on touch screens; the landing nav shares one highlight that glides between links (`<HoverNav>`); course cells go from grey to ink and reveal a detail line; and arrows nudge toward where they point.
+
+> ⚠️ **The theme circle must run on an even curve, with every other transition off.** It first ran on a strong ease-out and looked like it stalled three-quarters of the way: the circle covered most of the screen at once, then crawled through the far corner. And because the new snapshot is live, cards and buttons were still easing their own colours inside the circle as it grew. `ThemeToggle` now uses a symmetric ease-in-out and puts `theme-switching` on `<html>` (all transitions `none`) until the view transition finishes. Note that browsers skip view transitions on a hidden page — test it with the window in front.
+
+> ⚠️ **An edge glow cannot sit on an `overflow-hidden` card.** The ring is the card's own `::after` at `inset: -1px`, over the border — and `overflow: hidden` clips a pseudo-element to the padding box, so the ring vanishes. The grid and diff mocks are `overflow-hidden` for their tables and so get row hovers instead.
+
+> ⚠️ **`<Collapse>` unmounts when closed.** A closed track can hold video embeds; keeping every one mounted would load all of them on every page. It mounts on open and unmounts after the close animation, via `useOverlayTransition`.
 - **No native `<select>`.** `components/Select.tsx` draws the option list, because the browser's own popup ignores the app's font and highlight colour. It renders through a **portal**: these sit inside `overflow-x-auto` tables and `overflow-hidden` cards that would clip an absolutely-positioned menu.
 - **One scrollbar, everywhere**: `scrollbar-width: thin` with a transparent track, and matching `::-webkit-scrollbar` rules for the engines that ignore it (8px track, 4px thumb via a transparent border and `background-clip: content-box`). The native Windows bar is a 17px grey gutter with arrow buttons — a piece of the OS sitting on the page.
 - **Students get a class-coloured strip** (white text) so the room they are in is unmistakable; teachers keep the neutral strip. In dark mode it drops to `primary-900` — a full-strength accent against a near-black page glares.
@@ -813,12 +887,15 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
   - **Everything that floats must therefore portal to `<body>`** — outside `#app-root`, or it blurs itself. `Modal`, `Popover`, `Select` and the phone section sheet all do.
 - **One z-ladder, and popups sit on top of it.** Page chrome ≤ `z-30` · demo notice `z-100` · centred popups `z-120` · anchored panels (dropdowns, popovers, the profile menu) `z-200`, so a dropdown opened inside a dialog still lands above it. Anything anchored to a trigger goes through `components/Popover.tsx` rather than an `absolute` panel — an absolutely-positioned menu gets clipped by `overflow-hidden` cards and out-stacked by later siblings in the sticky header, which is exactly what buried the profile menu.
 - **`useOverlayTransition` flips the shown flag after *two* animation frames.** One is not enough: rAF can run before the browser has painted the hidden state, so the transition has nothing to move from and the overlay snaps open. It also keeps the node mounted past the close so the exit animates, and holds the body scroll lock for that whole time.
-- **Anything that floats is translucent and blurred.** `.float-pane` (white / `slate-950` at 85% + `backdrop-blur-md`) and `.float-pane-raised` (over a white page) are on every navbar, the class strip, the phone picker, the teacher grid's sticky student column, dropdowns, popovers, modals and the demo notice. Content passing underneath reads as a blur rather than disappearing behind a hard edge. A sticky container whose children are panes must not paint its own background — an opaque parent cancels the whole effect.
+- **Anything that floats over scrolling content is nearly opaque, lightly blurred.** `.float-pane` (white at 90% + `backdrop-blur-md`) and `.float-pane-raised` (over a white page) are on every navbar, the class strip, the phone picker, the teacher grid's sticky student column, dropdowns, popovers, modals and the demo notice. Content passing underneath reads as a blur rather than disappearing behind a hard edge. A sticky container whose children are panes must not paint its own background — an opaque parent cancels the whole effect.
 - **No nested icon tiles.** A bordered, filled square inside a bordered card made every resource and class card read as somebody else's logo. Icons are bare glyphs at the text's own scale; the resource hue lives on the glyph.
-- **The segmented capsule needs a visible pill in dark mode.** `slate-900` on a `slate-950` navbar left nothing but the label — the active tab is `slate-700` with a `slate-600` ring.
+- **The segmented capsule needs a visible pill in dark mode.** `slate-900` on a `slate-950` navbar left nothing but the label — the sliding pill is `slate-700` with a white/10 ring. Until the pill has measured, the active tab paints its own highlight, so the first frame is never blank; the first placement is instant and only later moves animate.
 - **Radius scale**: `lg` 10px controls · `xl` 14px inner panels · `2xl` 18px cards · `3xl` 24px hero.
-- **Helpers**: `.card` / `.card-interactive`, `.panel-inset`, `.eyebrow` / `.eyebrow-muted`.
+- **Helpers**: `.surface`, `.card` / `.card-interactive`, `.panel-inset`, `.eyebrow` / `.eyebrow-muted`, `.page-in`, `.list-in`, `.fade-in`, `.bar-fill`, `.scan-line`; on the landing, `.ink` / `.muted-ink` for two-tone copy, `.line-grid` / `.line-grid-hot` for tile line-art, `.edge-glow` for a cursor-lit edge.
 - **UI chrome is Title Case**; prose is sentence case.
+- **Spacious, not empty — one rhythm.** 40px (`space-y-10`) between the major sections of a screen; ~12px from a section heading to its content; list rows at an even 14–16px with hairlines between. Fewer, larger gaps rather than many small ones: when a screen feels cluttered the fix is usually to remove an element (the dashboard's per-row Duplicate button moved into the ⋯ menu; the class code lost its label) before adding space around it.
+- **Say less.** A label that can stand alone does: no subtitles under headings, no example text in placeholders (*"Notes (optional)"*), no sentences explaining what a button will do. The dashboard heading is *"Classes"*; the import panel is a title and a composer. If a screen needs a paragraph to be understood, the screen is what needs fixing.
+- **The product says "we", never "AI".** Teachers are wary of AI, so no screen, button, placeholder or error names it: *"we build the class"*, *"anything we should know"*, *"we'll suggest the changes"*, **Create class**. No ✨ sparkle icons on the import either — that glyph is the industry's AI badge. Errors a teacher can see talk about their files (*"We're busier than usual — give it a minute"*), never about models, keys or providers; the operator's detail goes to the server log. The one exception is the privacy policy and terms, which must name Google's Gemini API exactly as the processor of uploaded documents — under calmer headings (*"How your documents are read"*), but with the disclosure itself unchanged.
 
 > ⚠️ **`tailwind.config.ts` must scan `./lib`.** The status chips and resource palettes are plain `.ts` modules. They were silently dropped from the build once — chips rendered with no text in dark mode — until `lib` was added to `content`.
 
@@ -868,7 +945,7 @@ That file is committed pointing at `.next`, which is what a deploy produces, so
 
 13. **A student's "new since you were last here" marks are per-device.** They live in that browser's localStorage, so the same student on a phone and a laptop is told twice. That is the right trade for a reading mark — it costs a row per person per class to do otherwise — but it is a choice, not an oversight.
 
-14. **Templates carry structure, not materials.** Unit/section/date/checkpoint/reference data is transcribed from the timeline sheet; the actual documents, answer keys and videos still have to be attached per section.
+14. **The AI drafts structure, not materials.** It reads units, subunits, dates, checkpoints and resource references out of the teacher's files; the actual documents, answer keys and videos still have to be attached per section.
 
 ---
 
@@ -878,6 +955,7 @@ House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). Th
 
 | Label | Date | What |
 |---|---|---|
+| `5.3` | 2026-10-08 | Classes start from the teacher's own files: attach materials and notes, we draft the curriculum, the teacher approves it (ready-made courses no longer offered). A calmer design — Poppins only, nothing heavier than medium, ink buttons, flat surfaces with fewer boxes, one spacing rhythm, far fewer words, and no "AI" in the product's voice. The import hedges across Gemini models and remembers busy ones (repeat imports ~1s), caps uploads at Vercel's limit, rate-limits signed-in imports and validates demo input. Exit demo always on screen; a non-UUID class address no longer crashes |
 | `5.2` | 2026-10-06 | The RLS helpers moved out of the exposed API, so a signed-in user can no longer probe other accounts' class memberships |
 | `5.1` | 2026-10-06 | Keep-awake workflow working: repo secrets set, and an anonymous heartbeat to ping, since real tables correctly refuse anonymous reads |
 | `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |

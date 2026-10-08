@@ -34,7 +34,7 @@ export function LegalPage({
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-3xl mx-auto px-5 sm:px-6 py-12 sm:py-16">
+      <main className="page-in flex-1 w-full max-w-3xl mx-auto px-5 sm:px-6 py-12 sm:py-16">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           {title}
         </h1>

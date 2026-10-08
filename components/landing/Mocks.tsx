@@ -1,4 +1,4 @@
-import { Check, HelpCircle, X } from "lucide-react";
+import { Check, FileText, HelpCircle, X } from "lucide-react";
 import { STATUS_CHIP, STATUS_DOT } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +55,7 @@ export function GridMock() {
           {STUDENTS.map((s, rowIndex) => (
             <tr
               key={s.name}
-              className="border-b border-slate-50 dark:border-slate-800/60 last:border-0"
+              className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"
             >
               <td className="py-2 pl-3 sm:pl-4 pr-2">
                 <span className="flex items-center gap-1.5 sm:gap-2">
@@ -118,8 +118,8 @@ export function TracksMock() {
   ];
 
   return (
-    <div className="card p-4 sm:p-5 space-y-2.5" aria-hidden="true">
-      <div className="flex items-baseline gap-2">
+    <div className="divide-y divide-slate-200 dark:divide-slate-800" aria-hidden="true">
+      <div className="flex items-baseline gap-2 pb-3">
         <span className="font-mono text-xs text-slate-400">3.3</span>
         <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           Line of Best Fit
@@ -128,7 +128,7 @@ export function TracksMock() {
       </div>
 
       {tracks.map((t) => (
-        <div key={t.label} className="panel-inset p-3 flex items-center gap-3">
+        <div key={t.label} className="py-3 flex items-center gap-3">
           <span
             className={cn(
               "w-1 self-stretch rounded-full",
@@ -178,8 +178,8 @@ export function DiffMock() {
   ];
 
   return (
-    <div className="card overflow-hidden" aria-hidden="true">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 dark:border-slate-800">
+    <div aria-hidden="true">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
         <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
           Curriculum
         </span>
@@ -188,17 +188,9 @@ export function DiffMock() {
         </span>
       </div>
 
-      <div className="p-3 space-y-2">
+      <div className="divide-y divide-slate-200 dark:divide-slate-800">
         {rows.map((r) => (
-          <div
-            key={r.num}
-            className={cn(
-              "rounded-lg border px-2.5 py-2",
-              r.field
-                ? "border-slate-200 dark:border-slate-700"
-                : "border-slate-100 dark:border-slate-800/60"
-            )}
-          >
+          <div key={r.num} className="py-3">
             <div className="flex items-baseline gap-2">
               <span className="font-mono text-[11px] text-slate-400">{r.num}</span>
               <span
@@ -214,7 +206,7 @@ export function DiffMock() {
             </div>
 
             {r.field && (
-              <div className="mt-1.5 pt-1.5 border-t border-dashed border-slate-200 dark:border-slate-700 flex items-center gap-2">
+              <div className="mt-1.5 flex items-center gap-2">
                 <span className="flex-1 min-w-0 text-[11px]">
                   <span className="text-slate-400">{r.field} </span>
                   <span className="text-slate-500 line-through">{r.before}</span>
@@ -237,7 +229,7 @@ export function DiffMock() {
         ))}
       </div>
 
-      <div className="flex items-center gap-2 px-3 py-2.5 border-t border-slate-100 dark:border-slate-800">
+      <div className="flex items-center gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
         <span className="flex-1 text-[10px] text-slate-400">1 of 2 approved</span>
         <span className="btn btn-sm btn-secondary pointer-events-none !h-6 !text-[10px] !px-2">
           Deny all
@@ -246,6 +238,61 @@ export function DiffMock() {
           Apply 1
         </span>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Starting a class: the teacher's own files and a note go in, a drafted
+ * curriculum comes out. Open — rows split by hairlines, no frame — like the
+ * new-class page it pictures.
+ */
+export function CreateMock() {
+  const files = [
+    { name: "Algebra II Time Line 2026.xlsx", size: "48 KB" },
+    { name: "Course Syllabus.pdf", size: "212 KB" },
+    { name: "Unit 3 plan (photo).jpg", size: "1.4 MB" },
+  ];
+  const units = [
+    { title: "Unit 1 · Sequences", count: "6 subunits · 2 quizzes" },
+    { title: "Unit 2 · Central Tendency and Dot Plots", count: "5 subunits · 1 test" },
+    { title: "Unit 3 · Linear Models and Systems", count: "7 subunits · 2 quizzes · 1 test" },
+  ];
+
+  return (
+    <div aria-hidden="true">
+      <p className="text-xs font-medium text-slate-400">Your materials</p>
+      <ul className="mt-1 divide-y divide-slate-100 dark:divide-slate-800/70">
+        {files.map((f) => (
+          <li key={f.name} className="flex items-center gap-2.5 py-2 text-[13px]">
+            <FileText className="w-4 h-4 shrink-0 text-slate-400" />
+            <span className="flex-1 min-w-0 truncate text-slate-700 dark:text-slate-200">{f.name}</span>
+            <span className="text-[11px] text-slate-400">{f.size}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 pb-2 border-b border-slate-200 dark:border-slate-700 text-[13px] text-slate-500 dark:text-slate-400">
+        Column F is the AP Classroom topic. Quizzes are every other Friday.
+      </p>
+
+      <p className="mt-6 flex items-center gap-2 text-[13px] font-medium text-primary dark:text-primary-glow">
+        <Check className="w-4 h-4" />
+        5 units, 31 subunits and 9 checkpoints, ready to review
+      </p>
+      <ul className="mt-2 divide-y divide-slate-100 dark:divide-slate-800/70">
+        {units.map((u, i) => (
+          <li
+            key={u.title}
+            className="chip-in py-2.5 flex items-baseline justify-between gap-3"
+            style={{ "--i": i * 2 } as React.CSSProperties}
+          >
+            <span className="text-[13px] text-slate-800 dark:text-slate-100 truncate">{u.title}</span>
+            <span className="text-[11px] text-slate-400 whitespace-nowrap">{u.count}</span>
+          </li>
+        ))}
+        <li className="py-2.5 text-[12px] text-slate-400">+ 2 more units, waiting for your approval</li>
+      </ul>
     </div>
   );
 }

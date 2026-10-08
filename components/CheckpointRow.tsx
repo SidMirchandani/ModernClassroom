@@ -52,8 +52,8 @@ export function CheckpointRow({
   const { Icon } = meta;
 
   return (
-    <div className="flex items-stretch rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-      <div className={cn("w-1 shrink-0", meta.stripe)} aria-hidden />
+    <div className="flex items-stretch">
+      <div className={cn("w-0.5 shrink-0 rounded-full my-2", meta.stripe)} aria-hidden />
       <div
         className={cn(
           "flex items-start gap-2.5 min-w-0 flex-1",

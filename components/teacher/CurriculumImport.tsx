@@ -1,17 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
-import {
-  ChevronDown,
-  FileSpreadsheet,
-  Loader2,
-  Sparkles,
-  TriangleAlert,
-  Upload,
-  X,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, FileUp, Loader2, TriangleAlert } from "lucide-react";
 import type { CurriculumUnit } from "@/lib/db/types";
 import { cn } from "@/lib/utils";
+import { MAX_UPLOAD_MB, MaterialsPicker, totalMegabytes } from "./MaterialsPicker";
 
 interface CurriculumImportProps {
   units: CurriculumUnit[];
@@ -25,9 +18,9 @@ interface CurriculumImportProps {
   error: string;
   /** A proposal is already on screen; a second one would fight with it. */
   reviewing: boolean;
+  /** Files handed over by the new-class page, shown as already attached. */
+  initialFiles?: File[];
 }
-
-const ACCEPTED = ".xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.md,.pdf,.png,.jpg,.jpeg,.webp";
 
 /**
  * A sample built from this very class, with a few deliberate edits: two dates
@@ -96,196 +89,112 @@ export function CurriculumImport({
   busy,
   error,
   reviewing,
+  initialFiles,
 }: CurriculumImportProps) {
   const [open, setOpen] = useState(true);
   const [files, setFiles] = useState<File[]>([]);
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const add = (incoming: FileList | File[] | null) => {
-    if (!incoming) return;
-    setFiles((current) => [...current, ...Array.from(incoming)].slice(0, 10));
-  };
+  // Files the new-class page handed over arrive after mount.
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0) setFiles(initialFiles);
+  }, [initialFiles]);
 
-  const totalMb = files.reduce((sum, f) => sum + f.size, 0) / 1024 / 1024;
+  const tooLarge = totalMegabytes(files) > MAX_UPLOAD_MB;
   const locked = busy || reviewing;
+  // A class with nothing in it yet is being built, not updated.
+  const empty = units.length === 0;
 
   return (
-    <div className="card mb-4" data-tour="curriculum-import">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2.5 px-4 py-3 text-left"
-      >
-        <Sparkles className="w-4 h-4 text-primary shrink-0" />
-        <span className="flex-1 min-w-0">
-          <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Build this from your own files
-          </span>
-          <span className="block text-xs text-slate-500 dark:text-slate-400">
-            Attach a time line, a syllabus or a scanned plan. Nothing is saved until you
-            approve it.
-          </span>
-        </span>
-        <ChevronDown
-          className={cn(
-            "w-4 h-4 text-slate-400 shrink-0 transition-transform",
-            open && "rotate-180"
-          )}
-        />
-      </button>
+    // No card: a section of the page, set off from the curriculum below it by
+    // one hairline and the space around it. The one surface in it is the
+    // composer, because that is the thing you type into.
+    <section
+      className="mb-8 pb-8 border-b border-slate-200 dark:border-slate-800"
+      data-tour="curriculum-import"
+    >
+      <div className="flex items-start gap-3">
+        <FileUp className="w-4 h-4 mt-1 shrink-0 text-slate-400" />
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-medium text-slate-900 dark:text-slate-100">
+            {empty ? "Build from files" : "Update from files"}
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="shrink-0 h-6 inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+        >
+          {open ? "Hide" : "Show"}
+          <ChevronDown
+            className={cn("w-3.5 h-3.5 transition-transform duration-300", open && "rotate-180")}
+          />
+        </button>
+      </div>
 
-      {open && (
-        <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-3">
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (!locked) setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              if (!locked) add(e.dataTransfer.files);
-            }}
-            className={cn(
-              "rounded-xl border border-dashed px-4 py-6 text-center transition-colors",
-              dragging
-                ? "border-primary bg-primary/5"
-                : "border-slate-300 dark:border-slate-700",
-              locked && "opacity-60"
-            )}
-          >
-            <FileSpreadsheet className="w-6 h-6 mx-auto mb-2 text-slate-400" />
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              Drop files here, or{" "}
-              <button
-                type="button"
-                disabled={locked}
-                onClick={() => inputRef.current?.click()}
-                className="text-primary dark:text-primary-glow font-medium hover:underline disabled:no-underline"
-              >
-                choose them
-              </button>
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Spreadsheets, CSVs, PDFs and photos · up to {demo ? "6" : "15"} MB
-            </p>
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              accept={ACCEPTED}
-              className="hidden"
-              onChange={(e) => {
-                add(e.target.files);
-                e.target.value = "";
-              }}
-            />
-          </div>
-
-          {files.length > 0 && (
-            <ul className="flex flex-wrap gap-1.5">
-              {files.map((file, index) => (
-                <li
-                  key={`${file.name}-${index}`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs"
-                >
-                  <span className="truncate max-w-[14rem]">{file.name}</span>
+      {/* Stays mounted so it can animate shut; `inert` takes the closed
+          contents out of the tab order and away from screen readers. */}
+      <div className={cn("collapse-grid", open && "is-open")} inert={!open}>
+        <div>
+          {/* Full width, lined up with the heading's icon. A pixel of room on
+              every side so the composer's focus halo is never clipped. */}
+          <div className="pt-4 pb-1 px-1">
+            <MaterialsPicker
+              files={files}
+              onFilesChange={setFiles}
+              notes={instructions}
+              onNotesChange={onInstructionsChange}
+              onNotesBlur={onInstructionsCommit}
+              disabled={locked}
+              busy={busy}
+              actions={
+                <>
+                  {/* Reading a year of curriculum takes a few seconds. Waiting
+                      with no way out is the part that feels broken. */}
+                  {busy && (
+                    <button type="button" onClick={onCancel} className="btn btn-sm btn-ghost">
+                      Cancel
+                    </button>
+                  )}
                   <button
                     type="button"
-                    disabled={locked}
-                    onClick={() => setFiles((c) => c.filter((_, i) => i !== index))}
-                    className="text-slate-400 hover:text-rose-500"
-                    title="Remove"
+                    disabled={locked || files.length === 0 || tooLarge}
+                    onClick={() => onGenerate(files)}
+                    // Still pressed-off while it reads, but at full strength:
+                    // work in progress should not look switched off.
+                    aria-busy={busy}
+                    className="btn btn-sm btn-primary"
                   >
-                    <X className="w-3 h-3" />
+                    {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {busy ? "Reading…" : empty ? "Build the curriculum" : "Suggest changes"}
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div>
-            <label
-              htmlFor="import-instructions"
-              className="eyebrow-muted block mb-1.5"
-            >
-              Anything it should know
-            </label>
-            <textarea
-              id="import-instructions"
-              rows={2}
-              value={instructions}
-              disabled={locked}
-              onChange={(e) => onInstructionsChange(e.target.value)}
-              onBlur={onInstructionsCommit}
-              placeholder="Column F is the AP Classroom topic, not a due date. Ignore the second tab — it is last year's."
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm resize-y focus:outline-none focus:border-primary/60"
+                </>
+              }
             />
-          </div>
 
-          {error && (
-            <p className="flex items-start gap-1.5 text-xs text-rose-600 dark:text-rose-400">
-              <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-px" />
-              {error}
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={locked || files.length === 0}
-              onClick={() => onGenerate(files)}
-              className="btn btn-md btn-primary"
-            >
-              {busy ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Upload className="w-4 h-4" />
-              )}
-              {busy ? "Reading your files…" : "Suggest changes"}
-            </button>
-
-            {/* Reading a year of curriculum takes a few seconds. Waiting with no
-                way out is the part that feels broken, not the waiting. */}
-            {busy && (
-              <button type="button" onClick={onCancel} className="btn btn-md btn-secondary">
-                <X className="w-3.5 h-3.5" />
-                Cancel
-              </button>
+            {error && (
+              <p className="fade-in mt-3 flex items-start gap-1.5 text-xs text-rose-600 dark:text-rose-400">
+                <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-px" />
+                {error}
+              </p>
             )}
 
-            {demo && (
+            {demo && !empty && !busy && !reviewing && files.length === 0 && (
               <button
                 type="button"
-                disabled={locked}
                 onClick={() => {
                   const sample = sampleTimeline(units);
                   setFiles([sample]);
                   onGenerate([sample]);
                 }}
-                className="btn btn-md btn-secondary"
+                className="mt-3 text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                Try it with a sample
+                Try a sample →
               </button>
             )}
-
-            {files.length > 0 && (
-              <span className="text-xs text-slate-400">
-                {files.length} file{files.length === 1 ? "" : "s"} · {totalMb.toFixed(1)} MB
-              </span>
-            )}
           </div>
-
-          {reviewing && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Finish reviewing the suggestions below first.
-            </p>
-          )}
         </div>
-      )}
-    </div>
+      </div>
+    </section>
   );
 }

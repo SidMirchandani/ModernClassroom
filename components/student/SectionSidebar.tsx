@@ -197,7 +197,7 @@ export function SectionSidebarContent({
 
 function CheckpointStop({ checkpoint }: { checkpoint: Checkpoint }) {
   return (
-    <div className="flex items-center gap-2 pl-2.5 pr-2 py-1.5 my-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+    <div className="flex items-center gap-2 pl-2.5 pr-2 py-1.5">
       <ClipboardCheck className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
       <div className="min-w-0">
         <div className="text-xs font-semibold text-amber-800 dark:text-amber-300 leading-tight">

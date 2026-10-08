@@ -17,8 +17,21 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
+        // Poppins and nothing else — `display` and `mono` point at it too, so
+        // no class anywhere can quietly bring a second typeface back.
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
-        display: ["var(--font-display)", "var(--font-sans)", "sans-serif"],
+        display: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+      },
+      // Nothing heavier than medium. Poppins at 600–700 reads chunky at every
+      // size this app uses, so the heavy names are mapped down here, once,
+      // rather than hunted out of every component — `font-bold` and
+      // `font-semibold` are both 500. Only 400 and 500 are loaded at all.
+      fontWeight: {
+        semibold: "500",
+        bold: "500",
+        extrabold: "500",
+        black: "500",
       },
       colors: {
         // The house blue, fixed. `primary` moves with the class you are in, so

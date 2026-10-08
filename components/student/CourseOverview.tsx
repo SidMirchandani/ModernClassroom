@@ -22,6 +22,7 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Collapse } from "@/components/Collapse";
 
 interface Props {
   /** What the teacher has changed since this student last looked. */
@@ -94,18 +95,14 @@ export function CourseOverview({
   }, [units, currentUnitIndex]);
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-10">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
           {className}
         </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Everything in the course, in order, with the dates it runs to. Work at your own
-          pace — your teacher can see where you are.
-        </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="list-in grid gap-3 sm:grid-cols-3">
         <StatTile
           label="Sections Complete"
           value={`${totals.complete} / ${totals.total}`}
@@ -125,7 +122,7 @@ export function CourseOverview({
       {upNext && (
         <div
           data-tour="up-next"
-          className="rounded-2xl border border-2 border-primary/40 bg-white dark:bg-slate-900 p-5"
+          className="border-l-2 border-primary pl-4 sm:pl-5 py-1"
         >
           <p className="eyebrow">
             Up Next
@@ -150,7 +147,7 @@ export function CourseOverview({
             <button
               type="button"
               onClick={() => onOpenSection(upNext.section.id)}
-              className="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-xl bg-primary hover:bg-primary-dark text-white text-sm font-medium transition-colors shrink-0"
+              className="btn btn-lg sm:btn-md btn-primary w-full sm:w-auto shrink-0"
             >
               Open Section
               <ArrowRight className="w-4 h-4" />
@@ -161,10 +158,10 @@ export function CourseOverview({
 
       {upcoming.length > 0 && (
         <div>
-          <p className="eyebrow-muted mb-2">
+          <p className="eyebrow-muted mb-3">
             Upcoming Assessments
           </p>
-          <div className="space-y-2">
+          <div className="divide-y divide-slate-200 dark:divide-slate-800">
             {upcoming.map(({ unit, checkpoint }) => (
               <CheckpointRow
                 key={`${unit.id}-${checkpoint.id}`}
@@ -177,10 +174,10 @@ export function CourseOverview({
       )}
 
       <div>
-        <p className="eyebrow-muted mb-2">
+        <p className="eyebrow-muted mb-3">
           Full Curriculum
         </p>
-        <div className="space-y-3">
+        <div className="divide-y divide-slate-200 dark:divide-slate-800 border-y border-slate-200 dark:border-slate-800">
           {units.map((unit, unitIndex) => {
             const phase = getUnitPhase(unitIndex, currentUnitIndex);
             const open = openUnits[unit.id] ?? false;
@@ -195,7 +192,7 @@ export function CourseOverview({
             return (
               <div
                 key={unit.id}
-                className="card overflow-hidden"
+                className="overflow-hidden"
               >
                 <button
                   type="button"
@@ -203,7 +200,7 @@ export function CourseOverview({
                     setOpenUnits((prev) => ({ ...prev, [unit.id]: !open }))
                   }
                   aria-expanded={open}
-                  className="w-full flex items-center gap-2.5 sm:gap-3 px-4 sm:px-5 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  className="w-full flex items-center gap-2.5 sm:gap-3 px-1 sm:px-2 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-900/60 transition-colors"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-slate-900 dark:text-slate-100 leading-snug">
@@ -238,115 +235,113 @@ export function CourseOverview({
                   </span>
                   <ChevronDown
                     className={cn(
-                      "w-4 h-4 text-slate-400 shrink-0 transition-transform",
+                      "w-4 h-4 text-slate-400 shrink-0 transition-transform duration-500 ease-[cubic-bezier(0.34,1.36,0.64,1)]",
                       open && "rotate-180"
                     )}
                   />
                 </button>
 
-                {open && (
-                  <div className="border-t border-slate-100 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
-                    {unit.subunits.map((section) => {
-                      const sectionProgress = progress.sections[section.id];
-                      const accessible = canAccessSection(
-                        progress,
-                        section.id,
-                        allSections,
-                        blockSectionId
-                      );
-                      const complete = isSectionComplete(section, sectionProgress);
-                      const help = sectionHasHelp(section, sectionProgress);
-                      const ratio = getSectionCompletionRatio(section, sectionProgress);
-                      const after = (unit.checkpoints ?? []).filter(
-                        (c) => c.afterSectionId === section.id
-                      );
+                <Collapse open={open} className="border-t border-slate-100 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+                  {unit.subunits.map((section) => {
+                    const sectionProgress = progress.sections[section.id];
+                    const accessible = canAccessSection(
+                      progress,
+                      section.id,
+                      allSections,
+                      blockSectionId
+                    );
+                    const complete = isSectionComplete(section, sectionProgress);
+                    const help = sectionHasHelp(section, sectionProgress);
+                    const ratio = getSectionCompletionRatio(section, sectionProgress);
+                    const after = (unit.checkpoints ?? []).filter(
+                      (c) => c.afterSectionId === section.id
+                    );
 
-                      return (
-                        <div key={section.id}>
-                          <button
-                            type="button"
-                            disabled={!accessible}
-                            onClick={() => onOpenSection(section.id)}
-                            className={cn(
-                              "w-full flex items-start gap-3 px-4 sm:px-5 py-3 text-left transition-colors",
-                              accessible
-                                ? "hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                                : "opacity-55 cursor-not-allowed"
+                    return (
+                      <div key={section.id}>
+                        <button
+                          type="button"
+                          disabled={!accessible}
+                          onClick={() => onOpenSection(section.id)}
+                          className={cn(
+                            "w-full flex items-start gap-3 px-4 sm:px-5 py-3 text-left transition-colors",
+                            accessible
+                              ? "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                              : "opacity-55 cursor-not-allowed"
+                          )}
+                        >
+                          <div className="w-5 shrink-0 flex justify-center pt-0.5">
+                            {!accessible ? (
+                              <Lock className="w-3.5 h-3.5 text-slate-300 dark:text-slate-700" />
+                            ) : complete ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            ) : help ? (
+                              <HelpCircle className="w-4 h-4 text-rose-500" />
+                            ) : (
+                              <div className="w-3.5 h-3.5 rounded-full border-2 border-primary" />
                             )}
-                          >
-                            <div className="w-5 shrink-0 flex justify-center pt-0.5">
-                              {!accessible ? (
-                                <Lock className="w-3.5 h-3.5 text-slate-300 dark:text-slate-700" />
-                              ) : complete ? (
-                                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                              ) : help ? (
-                                <HelpCircle className="w-4 h-4 text-rose-500" />
-                              ) : (
-                                <div className="w-3.5 h-3.5 rounded-full border-2 border-primary" />
-                              )}
-                            </div>
+                          </div>
 
-                            <div className="min-w-0 flex-1">
-                              {/* Plain text flow, not a flex row — a long title
-                                  wraps as a sentence instead of leaving the id
-                                  stranded on a line of its own. */}
-                              <p className="text-sm leading-snug">
-                                <span className="font-medium text-slate-800 dark:text-slate-200">
-                                  {section.id}
-                                </span>{" "}
-                                <span className="text-slate-500 dark:text-slate-400">
-                                  {section.title}
-                                </span>{" "}
-                                {news?.get(section.id) && (
-                                  <span
-                                    className="inline-flex items-center align-middle px-1 h-4 rounded text-[9px] font-bold uppercase tracking-wide bg-primary text-white"
-                                    title={
-                                      news.get(section.id) === "new"
-                                        ? "Added since you were last here"
-                                        : "Changed since you were last here"
-                                    }
-                                  >
-                                    {news.get(section.id) === "new" ? "New" : "Upd"}
-                                  </span>
-                                )}
-                              </p>
-                              {section.date && (
-                                <div className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-600 mt-0.5">
-                                  <CalendarDays className="w-3 h-3" />
-                                  Due {section.date}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="shrink-0 flex items-center gap-3 pt-0.5">
-                              {ratio.total > 0 && (
-                                <span className="text-[11px] text-slate-400 dark:text-slate-600 tabular-nums hidden sm:inline">
-                                  {ratio.done}/{ratio.total}
+                          <div className="min-w-0 flex-1">
+                            {/* Plain text flow, not a flex row — a long title
+                                wraps as a sentence instead of leaving the id
+                                stranded on a line of its own. */}
+                            <p className="text-sm leading-snug">
+                              <span className="font-medium text-slate-800 dark:text-slate-200">
+                                {section.id}
+                              </span>{" "}
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {section.title}
+                              </span>{" "}
+                              {news?.get(section.id) && (
+                                <span
+                                  className="inline-flex items-center align-middle px-1 h-4 rounded text-[9px] font-bold uppercase tracking-wide bg-primary text-white"
+                                  title={
+                                    news.get(section.id) === "new"
+                                      ? "Added since you were last here"
+                                      : "Changed since you were last here"
+                                  }
+                                >
+                                  {news.get(section.id) === "new" ? "New" : "Upd"}
                                 </span>
                               )}
-                              <TrackStatusDots
-                                section={section}
-                                sectionProgress={sectionProgress}
-                                accessible={accessible}
-                                size="xs"
-                              />
-                            </div>
-                          </button>
+                            </p>
+                            {section.date && (
+                              <div className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-600 mt-0.5">
+                                <CalendarDays className="w-3 h-3" />
+                                Due {section.date}
+                              </div>
+                            )}
+                          </div>
 
-                          {after.map((checkpoint) => (
-                            <div key={checkpoint.id} className="px-5 pb-3">
-                              <CheckpointRow
-                                checkpoint={checkpoint}
-                                compact
-                                grade={progress.checkpoints?.[checkpoint.id]}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                          <div className="shrink-0 flex items-center gap-3 pt-0.5">
+                            {ratio.total > 0 && (
+                              <span className="text-[11px] text-slate-400 dark:text-slate-600 tabular-nums hidden sm:inline">
+                                {ratio.done}/{ratio.total}
+                              </span>
+                            )}
+                            <TrackStatusDots
+                              section={section}
+                              sectionProgress={sectionProgress}
+                              accessible={accessible}
+                              size="xs"
+                            />
+                          </div>
+                        </button>
+
+                        {after.map((checkpoint) => (
+                          <div key={checkpoint.id} className="px-5 pb-3">
+                            <CheckpointRow
+                              checkpoint={checkpoint}
+                              compact
+                              grade={progress.checkpoints?.[checkpoint.id]}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </Collapse>
               </div>
             );
           })}
@@ -370,7 +365,7 @@ function StatTile({
   hint?: string;
 }) {
   return (
-    <div className="card px-4 py-3 flex items-baseline justify-between gap-3 sm:block">
+    <div className="py-1 flex items-baseline justify-between gap-3 sm:block">
       <div className="eyebrow-muted shrink-0">
         {label}
       </div>

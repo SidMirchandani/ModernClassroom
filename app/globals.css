@@ -31,6 +31,12 @@
     --surface-2: 241 245 249;
     --border: 226 232 240;
     --muted: 100 116 139;
+
+    /* Two curves for the whole app. `ease-out` settles — overlays, entrances,
+       anything arriving. `spring` overshoots a hair and comes back — anything
+       the hand moved, like a tab pill or a pressed button. */
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
   }
 
   .dark {
@@ -192,8 +198,10 @@
     @apply border-slate-200 dark:border-slate-800;
   }
 
-  /* Flat by design: the page is white and separation comes from 1px borders,
-     never from a drop shadow. Only true overlays (modals, dropdowns) lift. */
+  /* Flat by design, after Supabase: one flat page colour, surfaces separated
+     by 1px borders rather than shadows or glow, and the class colour used
+     sparingly — the primary action, the active state, the second line of a
+     heading. Calm is the feature: a teacher looks at this all day. */
   body {
     @apply bg-white dark:bg-[#0b0f16] text-slate-900 dark:text-slate-100 antialiased;
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
@@ -201,12 +209,20 @@
     letter-spacing: -0.006em;
   }
 
-  /* Headings are the display cut, set tight. At large sizes a grotesque needs
-     negative tracking to stop looking loose; at small sizes it does not, which
-     is why this is scoped to headings and not the body. */
+  /* Headings are the same face set a little tighter: a geometric sans at
+     display size looks loose at its default tracking. */
   h1, h2, h3, .font-display {
-    font-family: var(--font-display), var(--font-sans), sans-serif;
     letter-spacing: -0.02em;
+  }
+
+  pre, code, kbd, samp {
+    font-family: inherit;
+  }
+
+  /* The browser's own bold would ask for 700, which is not loaded, and get a
+     faked, smeared bold instead. Emphasis is medium, like everything else. */
+  b, strong, th {
+    font-weight: 500;
   }
 
   /* Numbers that sit in columns — grades, counts, dates — line up. */
@@ -269,95 +285,53 @@
   .dark :focus-visible {
     outline-color: rgb(var(--primary-glow));
   }
+
+  ::selection {
+    background-color: rgb(var(--primary-200) / 0.7);
+  }
+  .dark ::selection {
+    background-color: rgb(var(--primary-700) / 0.6);
+  }
+
+  /* Text fields light up rather than snap: the border eases to the class
+     colour and a soft halo grows round it. The outline is dropped for these
+     because the halo *is* the focus ring — two rings read as a glitch. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    transition:
+      border-color 200ms var(--ease-out),
+      box-shadow 260ms var(--ease-out),
+      background-color 200ms var(--ease-out);
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: none;
+    border-color: rgb(var(--primary) / 0.6);
+    box-shadow: 0 0 0 4px rgb(var(--primary) / 0.12);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
 }
 
 @layer components {
   /**
-   * The landing page's motion.
-   *
-   * One rule holds all of it together: nothing moves that the reader is trying
-   * to read. The aurora drifts behind the words at a speed you notice only if
-   * you look for it, the grid fills in once as you arrive at it, and sections
-   * rise a few pixels as they come into view. Everything is transform and
-   * opacity — no layout animates — and every one of these is a no-op under
-   * `prefers-reduced-motion`, where the page simply arrives finished.
+   * The landing page's motion: sections rise a few pixels as they come into
+   * view, and nothing else moves. Transform and opacity only, and all of it a
+   * no-op under `prefers-reduced-motion`.
    */
-
-  /* A slow wash of brand colour behind the hero. Three blobs on different
-     clocks, so the shape never repeats in a way the eye can latch onto. */
-  .aurora {
-    @apply pointer-events-none absolute inset-0 overflow-hidden;
-    mask-image: radial-gradient(ellipse 75% 70% at 50% 25%, #000 35%, transparent 75%);
-    -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 25%, #000 35%, transparent 75%);
-  }
-
-  .aurora-blob {
-    @apply absolute rounded-full;
-    filter: blur(72px);
-    opacity: 0.5;
-    will-change: transform;
-  }
-
-  .dark .aurora-blob {
-    opacity: 0.32;
-  }
-
-  .aurora-blob-1 {
-    width: 46rem;
-    height: 34rem;
-    top: -14rem;
-    left: -8rem;
-    background: radial-gradient(circle, rgb(var(--primary-400) / 0.55), transparent 68%);
-  }
-
-  .aurora-blob-2 {
-    width: 40rem;
-    height: 32rem;
-    top: -10rem;
-    right: -10rem;
-    background: radial-gradient(circle, rgb(var(--primary-300) / 0.5), transparent 68%);
-  }
-
-  .aurora-blob-3 {
-    width: 34rem;
-    height: 26rem;
-    top: 8rem;
-    left: 32%;
-    background: radial-gradient(circle, rgb(var(--primary-200) / 0.55), transparent 70%);
-  }
-
-  /* A faint plotting grid, fading out before it reaches the text. */
-  .hero-grid {
-    @apply pointer-events-none absolute inset-0;
-    background-image:
-      linear-gradient(to right, rgb(var(--primary-500) / 0.07) 1px, transparent 1px),
-      linear-gradient(to bottom, rgb(var(--primary-500) / 0.07) 1px, transparent 1px);
-    background-size: 44px 44px;
-    mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000, transparent 70%);
-    -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000, transparent 70%);
-  }
 
   /* Rise-into-view, driven by an IntersectionObserver adding `.is-in`. */
   .reveal {
     opacity: 1;
   }
 
-  /* Staggered children, used for the headline's words and the grid's chips. */
-  .stagger > * {
-    opacity: 1;
-  }
-
   @media (prefers-reduced-motion: no-preference) {
-    .aurora-blob-1 {
-      animation: drift-a 19s ease-in-out infinite;
-    }
-    .aurora-blob-2 {
-      animation: drift-b 23s ease-in-out infinite;
-    }
-    .aurora-blob-3 {
-      animation: drift-c 27s ease-in-out infinite;
-    }
-
     .reveal {
       opacity: 0;
       transform: translateY(18px);
@@ -371,12 +345,6 @@
       transform: none;
     }
 
-    .stagger > * {
-      opacity: 0;
-      animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-      animation-delay: calc(var(--i, 0) * 70ms);
-    }
-
     /* The grid mock's chips, lighting up like a class working through a unit. */
     .reveal.is-in .chip-in {
       opacity: 0;
@@ -385,23 +353,8 @@
     }
   }
 
-  @keyframes drift-a {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50% { transform: translate3d(6%, 8%, 0) scale(1.14); }
-  }
-
-  @keyframes drift-b {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1.08); }
-    50% { transform: translate3d(-7%, 6%, 0) scale(1); }
-  }
-
-  @keyframes drift-c {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50% { transform: translate3d(-5%, -9%, 0) scale(1.18); }
-  }
-
   @keyframes rise-in {
-    from { opacity: 0; transform: translateY(16px); }
+    from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: none; }
   }
 
@@ -424,8 +377,13 @@
    */
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 font-semibold
-           whitespace-nowrap transition-colors
+           whitespace-nowrap
            disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none;
+    transition:
+      color 200ms var(--ease-out),
+      background-color 200ms var(--ease-out),
+      border-color 200ms var(--ease-out),
+      opacity 200ms var(--ease-out);
   }
 
   .btn-sm {
@@ -440,15 +398,33 @@
     @apply h-11 px-5 rounded-xl text-sm;
   }
 
+  /* Solid ink, not brand blue: black on a light page, white on a dark one.
+     A filled blue block was the loudest thing on every screen; ink is the
+     strongest mark that still reads calm, and the blue is kept for small
+     things — links, the active tab, a "new" badge. */
   .btn-primary {
-    @apply bg-primary hover:bg-primary-dark text-white border-0;
+    @apply bg-slate-900 hover:bg-slate-700 text-white
+           dark:bg-white dark:hover:bg-slate-200 dark:text-slate-900 border-0;
+  }
+
+  /* Not ready yet reads as neutral grey, the way a composer's send button
+     waits — a washed-out blue looked broken rather than waiting, worst of all
+     in dark mode. A button that is busy (aria-busy) keeps its full colour:
+     work in progress is not "off". */
+  .btn-primary:disabled:not([aria-busy="true"]) {
+    @apply bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 opacity-100;
+  }
+
+  .btn-primary[aria-busy="true"] {
+    @apply opacity-100;
   }
 
   .btn-secondary {
     @apply border border-slate-200 dark:border-slate-700
            bg-white dark:bg-slate-900
            text-slate-700 dark:text-slate-200
-           hover:border-primary/60 hover:text-primary dark:hover:text-primary-glow;
+           hover:border-slate-300 dark:hover:border-slate-600
+           hover:text-slate-900 dark:hover:text-white;
   }
 
   .btn-ghost {
@@ -465,22 +441,154 @@
   }
 
   /**
-   * Standard surface. Elevation comes from the z-shadow, not from a
-   * translucent background — solid fills keep text crisp in both modes.
+   * The one surface: solid, with a 1px border and no shadow. Depth comes from
+   * the border alone, which is what keeps a screen full of them quiet.
    */
-  .card {
-    @apply rounded-2xl border border-slate-200 dark:border-slate-800
-           bg-white dark:bg-slate-900;
+  .surface {
+    @apply border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900;
   }
 
+  .card {
+    @apply surface rounded-2xl;
+  }
+
+  /** A surface you can press: only its border answers the pointer. */
   .card-interactive {
-    @apply card transition-colors hover:border-slate-300 dark:hover:border-slate-700;
+    @apply card relative transition-colors duration-200
+           hover:border-slate-300 dark:hover:border-slate-700;
   }
 
   /** Recessed panel inside a card — grouping without another border box. */
   .panel-inset {
     @apply rounded-xl border border-slate-200 dark:border-slate-800
-           bg-slate-50/60 dark:bg-slate-800/30;
+           bg-slate-50 dark:bg-slate-800/30;
+  }
+
+  /* A tab's sliding pill. It springs to the new tab instead of the highlight
+     jumping, so you can see where you went *from* as well as to. */
+  .tab-pill {
+    @apply absolute top-0.5 bottom-0.5 pointer-events-none;
+    transition:
+      left 420ms var(--ease-spring),
+      width 420ms var(--ease-spring),
+      opacity 200ms var(--ease-out);
+  }
+
+  /* Height that animates. `grid-template-rows` can go 0fr → 1fr where
+     `height` cannot go 0 → auto, so this opens to exactly its content. */
+  .collapse-grid {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-rows 420ms var(--ease-out),
+      opacity 300ms var(--ease-out);
+  }
+
+  .collapse-grid.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  .collapse-grid > * {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* While the model reads: a band of light sweeping along the card's top
+     edge, so the wait looks like work happening rather than a hang. */
+  .scan-line {
+    @apply pointer-events-none absolute inset-x-0 top-0 h-[2px] overflow-hidden;
+  }
+
+  .scan-line::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--primary-400)),
+      rgb(var(--primary-300)),
+      transparent
+    );
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Arriving on a screen: a short fade and a few pixels, so a change of
+       view reads as one. Ends on `none`, not on zero values — a lingering
+       transform would quietly become the containing block for every fixed
+       child. */
+    .page-in {
+      animation: page-in 280ms var(--ease-out) both;
+    }
+
+    /* Lists rise in one after another. Capped at twelve so a long roster
+       doesn't take a second to finish arriving. */
+    .list-in > * {
+      animation: rise-in 360ms var(--ease-out) both;
+    }
+    .list-in > *:nth-child(2) { animation-delay: 25ms; }
+    .list-in > *:nth-child(3) { animation-delay: 50ms; }
+    .list-in > *:nth-child(4) { animation-delay: 75ms; }
+    .list-in > *:nth-child(5) { animation-delay: 100ms; }
+    .list-in > *:nth-child(6) { animation-delay: 125ms; }
+    .list-in > *:nth-child(7) { animation-delay: 150ms; }
+    .list-in > *:nth-child(8) { animation-delay: 175ms; }
+    .list-in > *:nth-child(9) { animation-delay: 200ms; }
+    .list-in > *:nth-child(10) { animation-delay: 225ms; }
+    .list-in > *:nth-child(11) { animation-delay: 250ms; }
+    .list-in > *:nth-child(n + 12) { animation-delay: 275ms; }
+
+    .scan-line::after {
+      animation: scan 1.6s var(--ease-out) infinite;
+    }
+
+    .fade-in {
+      animation: fade-in 400ms var(--ease-out) both;
+    }
+
+    /* Bars fill in from the left on arrival, and ease to a new length when
+       the number behind them changes. */
+    .bar-fill {
+      transform-origin: left center;
+      transition: width 700ms var(--ease-out);
+      animation: bar-grow 1s var(--ease-out) both;
+    }
+  }
+
+  @keyframes bar-grow {
+    from { transform: scaleX(0); }
+    to { transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tab-pill,
+    .collapse-grid {
+      transition-duration: 1ms;
+    }
+  }
+
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes scan {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(250%); }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   /** Small brand-coloured label that sits above a heading or section. */
@@ -501,7 +609,7 @@
    * underneath stays visible as a blur instead of vanishing behind a hard edge.
    */
   .float-pane {
-    @apply bg-white/[0.85] dark:bg-slate-950/[0.85] backdrop-blur-md;
+    @apply bg-white/[0.9] dark:bg-[#0b0f16]/[0.9] backdrop-blur-md;
   }
 
   /**
@@ -593,7 +701,7 @@
 
   /** Same idea one step up the surface scale, for panes over a white page. */
   .float-pane-raised {
-    @apply bg-white/[0.85] dark:bg-slate-900/[0.85] backdrop-blur-md;
+    @apply bg-white dark:bg-slate-900;
   }
 
   /**
@@ -626,6 +734,24 @@
   }
 }
 
+/*
+ * Switching theme: the new theme spreads out of the toggle as a circle
+ * instead of the whole screen flashing over. The browser's default cross-fade
+ * is turned off so the circle is the only thing moving — see ThemeToggle.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* While the theme switches, nothing else animates — see ThemeToggle. */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
 @layer utilities {
   /* Grade cells are number fields for the keyboard's sake, not for the spinner. */
   .no-spinner::-webkit-outer-spin-button,
@@ -653,5 +779,169 @@
   .dark .shadow-z5 {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 12px 40px rgba(0, 0, 0, 0.56),
       0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/**
+ * Landing pieces, in the same flat language as the app.
+ */
+@layer components {
+  /* Two-tone copy: the point in ink, the rest in grey. */
+  .ink { @apply text-slate-900 dark:text-slate-100; }
+  .muted-ink { @apply text-slate-400 dark:text-slate-500; }
+
+  /* Line-art backgrounds for the feature tiles — a faint plotting grid that
+     fades out toward the text, in grey, never in colour. */
+  .line-grid {
+    @apply pointer-events-none absolute inset-0;
+    background-image:
+      linear-gradient(to right, rgb(148 163 184 / 0.16) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(148 163 184 / 0.16) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(ellipse 70% 70% at 50% 40%, #000 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 40%, #000 30%, transparent 75%);
+  }
+
+  .dark .line-grid {
+    background-image:
+      linear-gradient(to right, rgb(148 163 184 / 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(148 163 184 / 0.08) 1px, transparent 1px);
+  }
+
+  /* FAQ answers open to their height instead of appearing. Where the browser
+     cannot animate to `auto`, they simply appear. */
+  .faq::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size 300ms var(--ease-out),
+      content-visibility 300ms allow-discrete;
+  }
+
+  .faq[open]::details-content {
+    block-size: auto;
+  }
+
+  @supports (interpolate-size: allow-keywords) {
+    :root {
+      interpolate-size: allow-keywords;
+    }
+  }
+
+  /**
+   * Hover-driven vignettes, the way Supabase's product tiles work: a tile
+   * shows its "before" until the pointer arrives, then plays the change —
+   * offline to saved, active to done. Touch screens have no hover, so there
+   * the change loops on its own instead. Still (reduced motion, no hover) it
+   * simply shows the "before", which reads fine on its own.
+   */
+  .swap-a,
+  .swap-b {
+    transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
+  }
+
+  .swap-b {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  @media (hover: hover) {
+    .group:hover .swap-a {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
+    .group:hover .swap-b {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (hover: none) and (prefers-reduced-motion: no-preference) {
+    .swap-a {
+      animation: swap-out 6s var(--ease-out) infinite;
+    }
+    .swap-b {
+      animation: swap-in 6s var(--ease-out) infinite;
+    }
+  }
+
+  /**
+   * The edge that lights where the pointer is — Vercel's card border. A ring
+   * of the brand colour, one pixel wide, masked so only the border shows, and
+   * centred on `--mx`/`--my` from <PointerTracker />. The card stays flat; only
+   * its outline answers the cursor.
+   */
+  .edge-glow {
+    @apply relative;
+  }
+
+  .card-interactive::after,
+  .edge-glow::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background: radial-gradient(
+      220px circle at var(--mx, -999px) var(--my, -999px),
+      rgb(var(--primary) / 0.7),
+      transparent 70%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 300ms var(--ease-out);
+  }
+
+  @media (hover: hover) {
+    .card-interactive:hover::after,
+    .edge-glow:hover::after {
+      opacity: 1;
+    }
+  }
+
+  /* The same plotting grid, drawn again in the brand colour and revealed only
+     in a circle around the pointer, so the lines brighten where you look. */
+  .line-grid-hot {
+    @apply pointer-events-none absolute inset-0;
+    background-image:
+      linear-gradient(to right, rgb(var(--primary) / 0.35) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(var(--primary) / 0.35) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(110px circle at var(--mx, -999px) var(--my, -999px), #000, transparent 70%);
+    -webkit-mask-image: radial-gradient(110px circle at var(--mx, -999px) var(--my, -999px), #000, transparent 70%);
+    opacity: 0;
+    transition: opacity 300ms var(--ease-out);
+  }
+
+  @media (hover: hover) {
+    .group:hover .line-grid-hot {
+      opacity: 1;
+    }
+  }
+
+  /* One highlight that follows the pointer between nav links. */
+  .hover-pill {
+    @apply absolute top-0 bottom-0 rounded-lg bg-slate-100 dark:bg-slate-800 pointer-events-none;
+    transition:
+      left 260ms var(--ease-out),
+      width 260ms var(--ease-out),
+      opacity 200ms var(--ease-out);
+  }
+
+  @keyframes swap-out {
+    0%, 42% { opacity: 1; }
+    50%, 92% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+
+  @keyframes swap-in {
+    0%, 42% { opacity: 0; }
+    50%, 92% { opacity: 1; }
+    100% { opacity: 0; }
   }
 }

@@ -100,7 +100,7 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section id="ai" heading="How AI is used">
+      <Section id="documents" heading="How your documents are read">
         <p>
           A teacher can upload their own planning documents — a timeline
           spreadsheet, a syllabus, a scan of a printed plan — and have them

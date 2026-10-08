@@ -52,8 +52,8 @@ export const store: Store = {
   getCurrentUser: () => activeStore().getCurrentUser(),
   listClassSummaries: (userId) => activeStore().listClassSummaries(userId),
   getClassDetail: (classId, userId, role) => activeStore().getClassDetail(classId, userId, role),
-  createClassForTeacher: (teacherId, templateId) =>
-    activeStore().createClassForTeacher(teacherId, templateId),
+  createClassForTeacher: (teacherId, options) =>
+    activeStore().createClassForTeacher(teacherId, options),
   duplicateClass: (classId, teacherId) => activeStore().duplicateClass(classId, teacherId),
   deleteClass: (classId, teacherId) => activeStore().deleteClass(classId, teacherId),
   updateClass: (classId, patch) => activeStore().updateClass(classId, patch),

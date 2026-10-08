@@ -19,6 +19,7 @@ import {
   type ClassDetail,
   type ClassPatch,
   type ClassRole,
+  type NewClassOptions,
   type RosterStudent,
   type SectionRemap,
   type Store,
@@ -160,8 +161,8 @@ export class SyncedStore implements Store {
     return this.cache.getClassDetail(classId, userId, preferredRole);
   }
 
-  async createClassForTeacher(teacherId: string, templateId?: string): Promise<DbClass> {
-    const cls = createDefaultClass(teacherId, templateId);
+  async createClassForTeacher(teacherId: string, options?: NewClassOptions): Promise<DbClass> {
+    const cls = createDefaultClass(teacherId, options);
     // The server mints the join code; until it has, this one is a placeholder
     // — the sync pill says so, and the next refresh replaces it.
     cls.code = "······";

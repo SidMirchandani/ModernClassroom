@@ -31,7 +31,14 @@ export function ClassPageClient({ classId }: { classId: string }) {
         router.replace("/?auth=login");
         return;
       }
-      const detail = await store.getClassDetail(classId, currentUser.id, requestedRole);
+      // A class that cannot be loaded — gone, not yours, or the server
+      // refusing — goes back to the dashboard rather than to an error screen.
+      const detail = await store
+        .getClassDetail(classId, currentUser.id, requestedRole)
+        .catch((err) => {
+          console.warn("Could not open this class", err);
+          return null;
+        });
       if (!alive) return;
       if (!detail) {
         router.replace("/dashboard");

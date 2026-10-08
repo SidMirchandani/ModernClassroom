@@ -11,7 +11,6 @@ import type {
 } from "../db/types";
 import type { Section } from "../types";
 import { emptySection } from "../curriculum";
-import { getCourseTemplate, instantiateTemplate } from "../course-templates";
 import { getUserInitials } from "../avatar";
 import { randomAccent, type AccentId } from "../class-appearance";
 import {
@@ -19,6 +18,7 @@ import {
   type ClassDetail,
   type ClassPatch,
   type ClassRole,
+  type NewClassOptions,
   type RosterStudent,
   type SectionRemap,
   type Store,
@@ -76,11 +76,12 @@ export function findSubunit(
   return null;
 }
 
-export function createDefaultClass(teacherId: string, templateId?: string): DbClass {
-  const template = templateId ? getCourseTemplate(templateId) : undefined;
-
-  const units: CurriculumUnit[] = template
-    ? instantiateTemplate(template)
+export function createDefaultClass(teacherId: string, options: NewClassOptions = {}): DbClass {
+  // A class the AI is about to draft starts with nothing in it: the import
+  // never deletes a unit the files do not mention, so a placeholder here would
+  // sit beside every unit it proposes.
+  const units: CurriculumUnit[] = options.blank
+    ? []
     : [
         {
           id: uuidv4(),
@@ -90,17 +91,13 @@ export function createDefaultClass(teacherId: string, templateId?: string): DbCl
         },
       ];
 
-  // A whole year of units arrives at once from a template, so the gate starts
-  // at the end of the first unit — the class opens as the teacher moves it.
-  const blockSectionId = template ? units[0]?.subunits.at(-1)?.id ?? null : null;
-
   return {
     id: uuidv4(),
-    name: template?.name ?? "New Class",
+    name: options.name?.trim() || "New Class",
     code: "000000",
     teacherId,
     units,
-    blockSectionId,
+    blockSectionId: null,
     createdAt: new Date().toISOString(),
   };
 }
@@ -342,9 +339,9 @@ export class LocalStore implements Store {
     return String(Date.now()).slice(-6);
   }
 
-  async createClassForTeacher(teacherId: string, templateId?: string): Promise<DbClass> {
+  async createClassForTeacher(teacherId: string, options?: NewClassOptions): Promise<DbClass> {
     return this.mutate((db) => {
-      const cls = createDefaultClass(teacherId, templateId);
+      const cls = createDefaultClass(teacherId, options);
       cls.code = this.mintCode(db);
       db.classes.push(cls);
       return cls;

@@ -10,6 +10,7 @@ import {
   type CurriculumProposal,
 } from "@/lib/curriculum-diff";
 import { isDemoMode } from "@/lib/demo-seed";
+import { takePendingImport } from "@/lib/pending-import";
 import { CurriculumDiff } from "./CurriculumDiff";
 import { CurriculumImport } from "./CurriculumImport";
 import { CurriculumTable } from "./CurriculumTable";
@@ -64,14 +65,36 @@ export function CurriculumPanel({
   // Lets the teacher abort a read that is taking too long. Held in a ref so
   // the cancel button is not re-wiring itself on every render.
   const abortRef = useRef<AbortController | null>(null);
+  // Files handed over by the new-class page, shown as already attached.
+  const [handedFiles, setHandedFiles] = useState<File[]>([]);
+  const handoffChecked = useRef(false);
 
   useEffect(() => setDemo(isDemoMode()), []);
+
+  // A class created from the teacher's materials arrives here with them
+  // waiting: start reading straight away, so the first thing the teacher sees
+  // in their new class is the AI's draft forming. Checked once — the ref
+  // survives React's double-run of effects in development.
+  useEffect(() => {
+    if (handoffChecked.current) return;
+    handoffChecked.current = true;
+    const handed = takePendingImport(classId);
+    if (!handed) return;
+    setHandedFiles(handed.files);
+    if (handed.instructions) {
+      setInstructions(handed.instructions);
+      onSaveInstructions(handed.instructions);
+    }
+    void generate(handed.files, handed.instructions);
+    // Runs once, on arrival; generate reads everything it needs from its args.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId]);
 
   function cancel() {
     abortRef.current?.abort();
   }
 
-  async function generate(files: File[]) {
+  async function generate(files: File[], guidance: string = instructions) {
     const controller = new AbortController();
     abortRef.current = controller;
     setBusy(true);
@@ -80,8 +103,10 @@ export function CurriculumPanel({
       const body = new FormData();
       files.forEach((file) => body.append("files", file));
       body.append("classId", classId);
-      body.append("instructions", instructions);
-      if (demo) {
+      body.append("instructions", guidance);
+      // Asked directly rather than read from state: an import started on
+      // arrival runs before the effect that sets `demo` has.
+      if (isDemoMode()) {
         body.append("demo", "1");
         body.append("units", JSON.stringify(slim(units)));
       }
@@ -91,12 +116,22 @@ export function CurriculumPanel({
         body,
         signal: controller.signal,
       });
-      const payload = (await response.json()) as {
+      // Not every failure is ours to word: the platform answers an oversized
+      // upload or a timed-out function with its own non-JSON page, and
+      // parsing that as JSON would show the teacher a syntax error.
+      const payload = (await response.json().catch(() => ({
+        error:
+          response.status === 413
+            ? "Those files are too large to send — keep the upload under 4 MB"
+            : response.status === 504
+              ? "Reading those files took too long. Try again, or with fewer files."
+              : undefined,
+      }))) as {
         proposal?: CurriculumProposal;
         error?: string;
       };
       if (!response.ok || !payload.proposal) {
-        throw new Error(payload.error || "The import could not be completed");
+        throw new Error(payload.error || "Something went wrong reading those files — try again");
       }
 
       // Nothing is approved to begin with. The teacher decides, not the model.
@@ -106,7 +141,7 @@ export function CurriculumPanel({
     } catch (err) {
       // An abort is the teacher's own decision, not a failure to report.
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setError(err instanceof Error ? err.message : "The import could not be completed");
+      setError(err instanceof Error ? err.message : "Something went wrong reading those files — try again");
     } finally {
       abortRef.current = null;
       setBusy(false);
@@ -154,7 +189,8 @@ export function CurriculumPanel({
         onInstructionsCommit={() => {
           if (instructions !== (importInstructions ?? "")) onSaveInstructions(instructions);
         }}
-        onGenerate={generate}
+        onGenerate={(files) => generate(files)}
+        initialFiles={handedFiles}
         onCancel={cancel}
         busy={busy}
         error={error}

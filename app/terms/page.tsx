@@ -70,7 +70,7 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section heading="The AI import, specifically">
+      <Section heading="Building a curriculum from your documents">
         <p>
           The curriculum import reads documents you give it and{" "}
           <strong>proposes</strong> changes. It can misread a date, miss a row, or

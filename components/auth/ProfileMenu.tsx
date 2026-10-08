@@ -115,7 +115,8 @@ export function ProfileMenu() {
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
             >
               <LogOut className="w-4 h-4" />
-              Log out
+              {/* In the demo there is no account — this leaves the demo. */}
+              {demo ? "Exit demo" : "Log out"}
             </button>
 
             {/* The demo has no account to close. */}

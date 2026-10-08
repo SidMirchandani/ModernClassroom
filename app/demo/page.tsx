@@ -58,7 +58,7 @@ export default function DemoPage() {
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-5 py-10">
+      <main className="page-in flex-1 flex items-center justify-center px-5 py-10">
         <div className="w-full max-w-3xl animate-content-in">
           <div className="text-center">
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">

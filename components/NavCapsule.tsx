@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useSlidingPill } from "@/lib/use-sliding-pill";
 
 export interface NavCapsuleTab {
   id: string;
@@ -18,13 +21,25 @@ interface NavCapsuleProps {
 }
 
 export function NavCapsule({ tabs, activeId, className }: NavCapsuleProps) {
+  const { containerRef, pillStyle, ready } = useSlidingPill<HTMLDivElement>(activeId);
+
   return (
     <div
+      ref={containerRef}
       className={cn(
-        "inline-flex items-center p-0.5 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900",
+        "relative inline-flex items-center p-0.5 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900",
         className
       )}
     >
+      {/* One highlight that slides between tabs. Until it has measured, the
+          active tab paints its own, so the first frame is never blank. */}
+      {ready && (
+        <span
+          aria-hidden
+          style={pillStyle}
+          className="tab-pill rounded-full bg-white dark:bg-slate-700 ring-1 ring-slate-200 dark:ring-slate-600"
+        />
+      )}
       {tabs.map((tab) => {
         const isActive = tab.id === activeId;
         const content = (
@@ -39,15 +54,18 @@ export function NavCapsule({ tabs, activeId, className }: NavCapsuleProps) {
           </>
         );
         const tabClass = cn(
-          "relative px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap",
+          "relative z-[1] px-3 py-1 rounded-full text-xs font-medium transition-colors duration-300 whitespace-nowrap",
           isActive
-            ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm dark:shadow-none dark:ring-1 dark:ring-slate-600"
-            : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+            ? cn(
+                "text-slate-900 dark:text-white",
+                !ready && "bg-white dark:bg-slate-700 ring-1 ring-slate-200 dark:ring-slate-600"
+              )
+            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
         );
 
         if (tab.href) {
           return (
-            <Link key={tab.id} href={tab.href} className={tabClass}>
+            <Link key={tab.id} href={tab.href} data-active={isActive} className={tabClass}>
               {content}
             </Link>
           );
@@ -59,6 +77,7 @@ export function NavCapsule({ tabs, activeId, className }: NavCapsuleProps) {
             type="button"
             onClick={tab.onClick}
             data-tour={tab.tourId}
+            data-active={isActive}
             className={tabClass}
           >
             {content}

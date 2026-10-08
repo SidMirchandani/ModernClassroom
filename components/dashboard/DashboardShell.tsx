@@ -16,7 +16,7 @@ interface DashboardShellProps {
 
 export function DashboardShell({ mode, onModeChange, children }: DashboardShellProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0b0f16]">
+    <div className="min-h-screen flex flex-col">
       <AppNavbar
         // Wordmark hides on a phone — with the capsule beside it, it wraps.
         left={<Logo href="/dashboard" textClassName="text-sm hidden sm:inline" />}
@@ -48,7 +48,7 @@ export function DashboardShell({ mode, onModeChange, children }: DashboardShellP
           </>
         }
       />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-5 sm:px-6 py-6 sm:py-10">
+      <main className="page-in flex-1 max-w-4xl mx-auto w-full px-5 sm:px-6 py-6 sm:py-10">
         {children}
       </main>
     </div>

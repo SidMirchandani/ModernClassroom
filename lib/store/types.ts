@@ -26,6 +26,12 @@ export interface ClassDetail {
   teacherName: string;
 }
 
+/** How a new class starts: its name, and whether it starts with no units. */
+export interface NewClassOptions {
+  name?: string;
+  blank?: boolean;
+}
+
 export type ClassPatch = Partial<
   Pick<DbClass, "name" | "units" | "blockSectionId" | "color" | "icon" | "importInstructions">
 >;
@@ -51,7 +57,12 @@ export interface Store {
     preferredRole?: ClassRole
   ): Promise<ClassDetail | null>;
 
-  createClassForTeacher(teacherId: string, templateId?: string): Promise<DbClass>;
+  /**
+   * A new class. `blank` starts it with no units at all — the path for a
+   * class whose curriculum the AI is about to draft, where a placeholder unit
+   * would survive alongside everything it proposes.
+   */
+  createClassForTeacher(teacherId: string, options?: NewClassOptions): Promise<DbClass>;
   duplicateClass(classId: string, teacherId: string): Promise<DbClass | null>;
   deleteClass(classId: string, teacherId: string): Promise<boolean>;
   updateClass(classId: string, patch: ClassPatch): Promise<DbClass | null>;

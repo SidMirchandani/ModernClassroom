@@ -37,7 +37,7 @@ export function SiteFooter() {
 
             <FooterGroup title="For schools" className="col-span-2 sm:col-span-1" inline>
               <FooterLink href="/privacy#student-data">Student data</FooterLink>
-              <FooterLink href="/privacy#ai">How AI is used</FooterLink>
+              <FooterLink href="/privacy#documents">How documents are read</FooterLink>
             </FooterGroup>
           </nav>
         </div>

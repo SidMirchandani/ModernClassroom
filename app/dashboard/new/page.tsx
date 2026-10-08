@@ -7,18 +7,35 @@ import { AppNavbar } from "@/components/AppNavbar";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
+import {
+  MAX_UPLOAD_MB,
+  MaterialsPicker,
+  totalMegabytes,
+} from "@/components/teacher/MaterialsPicker";
 import { getCurrentUser } from "@/lib/auth-client";
+import { setPendingImport } from "@/lib/pending-import";
 import { store } from "@/lib/store";
-import { COURSE_TEMPLATES } from "@/lib/course-templates";
-import { ArrowLeft, ArrowRight, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 
 /**
- * Starting a class is a decision with a year of curriculum behind it, so it
- * gets a page rather than a dialog — room to read what each template brings.
+ * A class starts from what the teacher already has. Attach the materials —
+ * the year's time line, a syllabus, a photo of a printed plan — say anything
+ * the AI should know, and it drafts the curriculum.
+ *
+ * The draft is made in the new class's own Curriculum tab rather than here:
+ * the import route only reads for a class that exists and that the caller
+ * teaches, and the tab is where every proposal is reviewed anyway. So this
+ * page creates the class empty, hands the files over (`setPendingImport`) and
+ * moves there, where the read starts on arrival. Nothing reaches the class
+ * until the teacher approves it.
  */
 export default function NewClassPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [name, setName] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [notes, setNotes] = useState("");
+  const [creating, setCreating] = useState<"ai" | "empty" | null>(null);
 
   useEffect(() => {
     getCurrentUser().then((user) => {
@@ -30,11 +47,21 @@ export default function NewClassPage() {
     });
   }, [router]);
 
-  async function createClass(templateId?: string) {
+  async function create(withAi: boolean) {
     const user = await getCurrentUser();
     if (!user) return;
-    const cls = await store.createClassForTeacher(user.id, templateId);
-    router.push(`/dashboard/class/${cls.id}`);
+    setCreating(withAi ? "ai" : "empty");
+    try {
+      const cls = await store.createClassForTeacher(user.id, { name, blank: withAi });
+      if (withAi) {
+        setPendingImport(cls.id, { files, instructions: notes.trim() });
+        router.push(`/dashboard/class/${cls.id}?view=curriculum`);
+      } else {
+        router.push(`/dashboard/class/${cls.id}`);
+      }
+    } catch {
+      setCreating(null);
+    }
   }
 
   if (!ready) {
@@ -45,8 +72,11 @@ export default function NewClassPage() {
     );
   }
 
+  const tooLarge = totalMegabytes(files) > MAX_UPLOAD_MB;
+  const busy = creating !== null;
+
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0b0f16]">
+    <div className="min-h-screen flex flex-col">
       <AppNavbar
         sticky
         left={
@@ -70,58 +100,63 @@ export default function NewClassPage() {
         }
       />
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-5 sm:px-6 py-8 sm:py-12">
-        <p className="eyebrow mb-2">New Class</p>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-          Start from a course you already run
+      <main className="page-in flex-1 max-w-2xl mx-auto w-full px-5 sm:px-6 py-10 sm:py-16">
+        <h1 className="text-3xl sm:text-4xl font-medium tracking-[-0.03em] leading-[1.1] text-slate-900 dark:text-slate-100">
+          New class
         </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-xl">
-          Pick a template and the units, dates, checkpoints and resource slots come
-          pre-built — you just attach the materials. Everything stays editable, and the
-          class opens for students only as far as you move the gate.
-        </p>
 
-        <div className="mt-8 space-y-3">
-          {COURSE_TEMPLATES.map((template) => (
-            <button
-              key={template.id}
-              type="button"
-              onClick={() => createClass(template.id)}
-              className="w-full flex items-start gap-4 p-5 card hover:border-primary/60 text-left transition-colors group"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-primary dark:group-hover:text-primary-glow transition-colors">
-                  {template.name}
-                </div>
-                <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  {template.summary}
-                </div>
-                <div className="text-xs text-slate-400 dark:text-slate-600 mt-2">
-                  {template.units.length} units ·{" "}
-                  {template.units.reduce((n, u) => n + u.sections.length, 0)} subunits ·{" "}
-                  {template.tracks.map((t) => t.label).join(", ")}
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-primary dark:group-hover:text-primary-glow shrink-0 mt-1 transition-colors" />
-            </button>
-          ))}
+        <label className="block mt-10">
+          <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            Name
+          </span>
+          <input
+            type="text"
+            value={name}
+            disabled={busy}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Algebra II, Period 3"
+            className="mt-1 w-full px-0 py-2 bg-transparent border-0 border-b border-slate-200 dark:border-slate-700 rounded-none text-lg placeholder:text-slate-300 dark:placeholder:text-slate-600 focus-visible:!shadow-none focus-visible:!border-primary"
+          />
+        </label>
 
-          <button
-            type="button"
-            onClick={() => createClass()}
-            className="w-full flex items-start gap-3 p-5 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-primary/60 text-left transition-colors"
-          >
-            <Plus className="w-4 h-4 text-slate-400 shrink-0 mt-1" />
-            <div>
-              <div className="font-semibold text-slate-900 dark:text-slate-100">
-                Empty Class
-              </div>
-              <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                One unit, one subunit, three empty resource slots.
-              </div>
-            </div>
-          </button>
+        <div className="mt-8">
+          <span className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
+            Files
+          </span>
+          <MaterialsPicker
+            files={files}
+            onFilesChange={setFiles}
+            notes={notes}
+            onNotesChange={setNotes}
+            disabled={busy}
+            actions={
+              <button
+                type="button"
+                disabled={busy || files.length === 0 || tooLarge}
+                onClick={() => create(true)}
+                aria-busy={creating === "ai"}
+                className="btn btn-sm btn-primary"
+              >
+                Create class
+                {creating === "ai" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ArrowRight className="w-3.5 h-3.5" />
+                )}
+              </button>
+            }
+          />
         </div>
+
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => create(false)}
+          className="mt-5 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+        >
+          {creating === "empty" && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Start empty instead
+        </button>
       </main>
     </div>
   );

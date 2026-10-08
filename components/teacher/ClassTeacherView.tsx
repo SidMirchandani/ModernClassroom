@@ -74,6 +74,7 @@ import {
   type ProgressStatus,
 } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
+import { useCountUp } from "@/lib/use-count-up";
 
 type OverallStatus = "complete" | "help" | "in-progress" | "not-started" | "review";
 type StatModal = "students" | "help" | "progress" | "sections" | null;
@@ -114,15 +115,15 @@ const STATUS_CONFIG: Record<OverallStatus, { label: string; classes: string; ico
 };
 
 /**
- * Wide enough for a column title to wrap in **two lines at most**. Inter at
- * 10px semibold measures about 5.05px a character, so two lines hold half the
+ * Wide enough for a column title to wrap in **two lines at most**. Poppins at
+ * 10px measures about 5.1px a character, so two lines hold half the
  * string — and a single long word still has to fit on one line whatever the
  * total. Clamped so one wordy subunit cannot push the grid off the screen.
- * (Measured, not guessed: this was 4.6 for Garamond and every column came out
- * a tenth too narrow when the face changed.)
+ * (Measured, not guessed: 4.6 for Garamond, 5.05 for Inter, 5.1 for Poppins —
+ * and every column came out too narrow the one time it was guessed.)
  */
 function titleColumnWidth(title: string): number {
-  const CHAR = 5.05;
+  const CHAR = 5.1;
   const PADDING = 22;
   const longestWord = title
     .split(/\s+/)
@@ -279,7 +280,12 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
       router.replace("/?auth=login");
       return;
     }
-    const data = await store.getClassDetail(classId, user.id);
+    // A reload that fails keeps what is on screen — see ClassStudentView.
+    const data = await store.getClassDetail(classId, user.id).catch((err) => {
+      console.warn("Could not refresh this class", err);
+      return undefined;
+    });
+    if (data === undefined) return;
     if (!data) {
       router.replace("/dashboard");
       return;
@@ -682,7 +688,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0b0f16]">
+    <div className="min-h-screen flex flex-col">
       <AppNavbar
         sticky
         left={
@@ -693,11 +699,13 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors text-sm shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Dashboard</span>
+              {/* Only where there is room: beside the tab capsule, the label
+                  and the class code together overran it at tablet width. */}
+              <span className="hidden lg:inline">Dashboard</span>
             </Link>
-            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+            <span className="text-slate-300 dark:text-slate-700 hidden lg:inline">|</span>
             <Logo size={24} showText={false} />
-            <span className="font-mono text-sm font-bold tracking-[0.15em] text-slate-700 dark:text-slate-300 tabular-nums">
+            <span className="text-sm font-semibold tracking-[0.08em] text-slate-700 dark:text-slate-300 tabular-nums">
               {cls.code}
             </span>
           </div>
@@ -725,7 +733,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         <NavCapsule tabs={navTabs} activeId={activeView} />
       </div>
 
-      <div className="max-w-7xl mx-auto w-full px-5 py-6 space-y-6">
+      <div className="max-w-7xl mx-auto w-full px-5 sm:px-6 py-8 sm:py-10 space-y-10">
         <div>
           {editingName ? (
             <input
@@ -764,11 +772,11 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         </div>
 
         {activeView === "classroom" && (
-          <>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <StatCard label="Students" value={totalStudents} sub="enrolled" icon={<Users className="w-4 h-4 text-primary" />} color="blue" onClick={() => setOpenModal("students")} />
-          <StatCard label="Avg Progress" value={`${Math.round(avgProgress * 100)}%`} sub="complete" icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} color="green" onClick={() => setOpenModal("progress")} />
-          <StatCard className="col-span-2 sm:col-span-1" label="Sections" value={sections.length} sub="subunits" icon={<LayoutGrid className="w-4 h-4 text-primary" />} color="violet" onClick={() => setOpenModal("sections")} />
+          <div key="classroom" className="page-in space-y-10">
+        <div className="list-in grid grid-cols-2 sm:grid-cols-3 border-y border-slate-200 dark:border-slate-800 sm:divide-x divide-slate-200 dark:divide-slate-800">
+          <StatCard label="Students" value={totalStudents} sub="enrolled" icon={<Users className="w-4 h-4 text-primary" />} onClick={() => setOpenModal("students")} />
+          <StatCard label="Avg Progress" value={`${Math.round(avgProgress * 100)}%`} sub="complete" icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} onClick={() => setOpenModal("progress")} />
+          <StatCard className="col-span-2 sm:col-span-1" label="Sections" value={sections.length} sub="subunits" icon={<LayoutGrid className="w-4 h-4 text-primary" />} onClick={() => setOpenModal("sections")} />
         </div>
 
         {sections.length > 0 && (
@@ -820,7 +828,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-slate-800">
-                      <th className="text-left px-4 py-3 font-semibold text-slate-500 w-36 sticky left-0 z-10 float-pane-sticky">
+                      <th className="text-left px-4 py-3 font-semibold text-slate-500 w-48 sticky left-0 z-10 float-pane-sticky">
                         Student
                       </th>
                       {columns.map((column) =>
@@ -919,11 +927,11 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                       const pct = sections.length > 0 ? Math.round((completedCount / sections.length) * 100) : 0;
 
                       return (
-                        <tr key={student.id} className={cn("border-b border-slate-100 dark:border-slate-800/50", idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/30")}>
+                        <tr key={student.id} className={cn("border-b border-slate-100 dark:border-slate-800/50", idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/30", "transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50")}>
                           <td className="px-4 py-3 sticky left-0 z-10 float-pane-sticky">
                             <div className="flex items-center gap-2">
                               <UserAvatar initials={student.avatar} size="sm" />
-                              <span className="flex-1 min-w-0 font-medium text-sm">
+                              <span className="flex-1 min-w-0 font-medium text-sm whitespace-nowrap">
                                 {student.name}
                               </span>
                               <Popover
@@ -1060,7 +1068,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                           <button
                             type="submit"
                             disabled={inviting || !inviteInput.trim()}
-                            className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-dark text-white text-xs font-medium disabled:opacity-50"
+                            className="btn btn-sm btn-primary"
                           >
                             {inviting ? "Inviting…" : "Invite"}
                           </button>
@@ -1103,12 +1111,12 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
         {sections.length > 0 && (
           <div>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 mb-3">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 mb-4">
               Section Breakdown
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="list-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-2">
               {classStats.map((stat) => (
-                <div key={stat.sectionId} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+                <div key={stat.sectionId} className="py-3">
                   <div className="mb-3">
                     <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
                       {stat.sectionId}
@@ -1130,11 +1138,11 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
             </div>
           </div>
         )}
-          </>
+          </div>
         )}
 
         {activeView === "curriculum" && (
-          <div data-tour="curriculum">
+          <div key="curriculum" data-tour="curriculum" className="page-in">
           <CurriculumPanel
             classId={classId}
             units={cls.units}
@@ -1147,6 +1155,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         )}
 
         {activeView === "customize" && (
+          <div key="customize" className="page-in">
           <ClassCustomize
             name={cls.name}
             code={cls.code}
@@ -1157,6 +1166,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               saveClass(patch);
             }}
           />
+          </div>
         )}
 
       </div>
@@ -1506,25 +1516,22 @@ function KeyRow({ swatch, label }: { swatch: React.ReactNode; label: string }) {
   );
 }
 
-function StatCard({ label, value, sub, icon, color, onClick, className }: {
+function StatCard({ label, value, sub, icon, onClick, className }: {
   label: string; value: string | number; sub: string; icon: React.ReactNode;
-  color: "blue" | "red" | "green" | "violet"; onClick: () => void; className?: string;
+  onClick: () => void; className?: string;
 }) {
-  const bg = { blue: "bg-white dark:bg-slate-900 border border-primary/30", red: "bg-rose-50 dark:bg-rose-950", green: "bg-emerald-50 dark:bg-emerald-950", violet: "bg-white dark:bg-slate-900 border border-primary/30" }[color];
+  const shown = useCountUp(value);
   return (
     <button
       type="button"
       onClick={onClick}
-      className={cn(
-        "rounded-xl border bg-white dark:bg-slate-900 p-4 text-left hover:border-primary/50 transition-colors",
-        className
-      )}
+      className={cn("group px-1 sm:px-5 py-4 sm:first:pl-1 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/60", className)}
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-medium text-slate-500">{label}</span>
-        <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", bg)}>{icon}</div>
+        {icon}
       </div>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-2xl font-bold font-display tabular-nums">{shown}</div>
       <div className="text-xs text-slate-400 mt-0.5">{sub}</div>
     </button>
   );
@@ -1536,7 +1543,7 @@ function MiniBar({ label, count, total, color }: { label: string; count: number;
     <div className="flex items-center gap-2 mb-1">
       <span className="text-[10px] text-slate-400 w-16 shrink-0">{label}</span>
       <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-        <div className={cn("h-full rounded-full", color)} style={{ width: `${pct}%` }} />
+        <div className={cn("bar-fill h-full rounded-full", color)} style={{ width: `${pct}%` }} />
       </div>
       <span className="text-[10px] font-medium w-4 text-right">{count}</span>
     </div>

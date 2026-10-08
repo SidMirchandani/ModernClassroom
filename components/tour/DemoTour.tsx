@@ -352,7 +352,7 @@ export function DemoTour() {
           <button
             type="button"
             onClick={() => (last ? close() : go(index + 1))}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary hover:bg-primary-dark text-white text-xs font-semibold transition-colors"
+            className="btn btn-sm btn-primary"
           >
             {last ? "Start exploring" : "Next"}
             {!last && <ArrowRight className="w-3.5 h-3.5" />}

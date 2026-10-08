@@ -1,27 +1,22 @@
 import type { Metadata } from "next";
-import { Archivo, Inter } from "next/font/google";
+import { Poppins } from "next/font/google";
+import { PointerTracker } from "@/components/PointerTracker";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SITE } from "@/lib/site";
 import "./globals.css";
 
 /**
- * Two faces, one voice. Inter carries every piece of interface text — it was
- * drawn for screens at exactly the 11–14px this app lives at. Archivo is the
- * display cut: tighter, heavier, used only where something is announcing
- * itself. Both are flat grotesques, so headings read as the same family
- * speaking louder rather than as a second design.
+ * One typeface, everywhere: Poppins, for headings, body, labels, numbers and
+ * code alike. A single geometric face is what keeps a flat interface calm —
+ * hierarchy comes from size, weight and grey, never from switching families.
+ * Not a variable font, so the weights are listed — and there are only two:
+ * nothing in the interface is heavier than medium (see tailwind.config.ts).
  */
-const inter = Inter({
+const poppins = Poppins({
   subsets: ["latin"],
   display: "swap",
+  weight: ["400", "500"],
   variable: "--font-sans",
-});
-
-const archivo = Archivo({
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["600", "700", "800"],
-  variable: "--font-display",
 });
 
 export const metadata: Metadata = {
@@ -63,7 +58,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${archivo.variable}`}
+      className={poppins.variable}
+      // Smooth scrolling is on in globals.css; this tells Next to switch it
+      // off for the instant jump to the top on navigation.
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
     >
       <body suppressHydrationWarning>
@@ -76,6 +74,7 @@ export default function RootLayout({
             <body>, so blurring this one element blurs the page — chrome
             included — without touching the popup on top of it. */}
         <ThemeProvider>
+          <PointerTracker />
           <div id="app-root">{children}</div>
         </ThemeProvider>
       </body>

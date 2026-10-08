@@ -20,9 +20,15 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const DEFAULT_MODEL = "gemini-flash-latest";
-const MAX_BYTES = 15 * 1024 * 1024;
-const MAX_DEMO_BYTES = 6 * 1024 * 1024;
+/**
+ * Vercel refuses a request body over 4.5 MB with its own non-JSON page before
+ * this code runs, so any larger limit here was a promise the platform broke.
+ * The import card checks the same number before sending.
+ */
+const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_FILES = 10;
+/** The demo's curriculum arrives from the browser; a real year is ~40k. */
+const MAX_DEMO_UNITS_CHARS = 200_000;
 /** Enough of a sheet for a year's timeline; guards a runaway paste. */
 const MAX_SHEET_CHARS = 120_000;
 
@@ -40,21 +46,34 @@ const INLINE_MIME: Record<string, string> = {
   gif: "image/gif",
 };
 
-/** The demo has no account to rate-limit, so the address has to do. */
-const demoHits = new Map<string, number[]>();
-const DEMO_WINDOW_MS = 60 * 60 * 1000;
+/**
+ * Every import spends the operator's Gemini quota, so every caller is
+ * limited: the demo by address (it has no account), a signed-in teacher by
+ * account — otherwise anyone could sign up and loop imports on the key.
+ * Per server instance, which on Vercel is a soft limit rather than a hard
+ * one; it is there to stop a loop, not to meter honest use.
+ */
+const WINDOW_MS = 60 * 60 * 1000;
 const DEMO_LIMIT = 8;
+const TEACHER_LIMIT = 30;
+const hits = new Map<string, number[]>();
 
-function demoAllowed(ip: string): boolean {
+function allowed(key: string, limit: number): boolean {
   const now = Date.now();
-  const recent = (demoHits.get(ip) ?? []).filter((t) => now - t < DEMO_WINDOW_MS);
-  if (recent.length >= DEMO_LIMIT) {
-    demoHits.set(ip, recent);
+  const recent = (hits.get(key) ?? []).filter((t) => now - t < WINDOW_MS);
+  if (recent.length >= limit) {
+    hits.set(key, recent);
     return false;
   }
   recent.push(now);
-  demoHits.set(ip, recent);
-  if (demoHits.size > 500) demoHits.clear();
+  hits.set(key, recent);
+  // Forget callers whose window has passed, rather than wiping everyone —
+  // clearing the whole map handed every limited caller a fresh allowance.
+  if (hits.size > 500) {
+    for (const [k, times] of hits) {
+      if (times.every((t) => now - t >= WINDOW_MS)) hits.delete(k);
+    }
+  }
   return true;
 }
 
@@ -152,18 +171,18 @@ function summarise(units: CurriculumUnit[]) {
   return units.map((unit) => ({
     existingId: unit.id,
     title: unit.title,
-    sections: (unit.subunits ?? []).map((section) => ({
+    sections: (unit.subunits ?? []).filter(Boolean).map((section) => ({
       existingId: section.id,
       number: section.id,
       title: section.title,
       date: section.date ?? null,
-      tracks: (section.tracks ?? []).map((track) => ({
+      tracks: (section.tracks ?? []).filter(Boolean).map((track) => ({
         kind: track.kind,
         label: track.label,
         reference: track.reference ?? null,
       })),
     })),
-    checkpoints: (unit.checkpoints ?? []).map((c) => ({
+    checkpoints: (unit.checkpoints ?? []).filter(Boolean).map((c) => ({
       existingId: c.id,
       kind: c.kind,
       title: c.title,
@@ -204,13 +223,30 @@ async function fileToParts(file: File): Promise<Part[]> {
       { text: `FILE: ${name}` },
       {
         inlineData: {
-          mimeType: file.type || INLINE_MIME[ext] || "application/octet-stream",
+          // The extension decides, not the browser: `file.type` is whatever
+          // the client claimed, and a generic octet-stream is a type Gemini
+          // will not read as a PDF or an image.
+          mimeType: INLINE_MIME[ext] ?? file.type ?? "application/octet-stream",
           data: buffer.toString("base64"),
         },
       },
     ];
   }
   throw new Error(`${name} is not a kind of file this can read`);
+}
+
+/** Units as the summary reads them: objects, each with a list of sections. */
+function isUnitList(value: unknown): value is CurriculumUnit[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (unit) =>
+        unit !== null &&
+        typeof unit === "object" &&
+        (!("subunits" in unit) || Array.isArray((unit as { subunits: unknown }).subunits)) &&
+        (!("checkpoints" in unit) || Array.isArray((unit as { checkpoints: unknown }).checkpoints))
+    )
+  );
 }
 
 function bad(message: string, status: number) {
@@ -225,20 +261,6 @@ function statusOf(err: unknown): number | null {
   return match ? Number(match[1]) : null;
 }
 
-/**
- * A busy model is not a failed import. Google returns 503 under load often
- * enough that one attempt would make the feature feel broken, and model names
- * are retired on Google's schedule rather than ours — so this tries the
- * configured model twice, then siblings that read the same documents against
- * the same schema.
- *
- * Two rules learned the hard way:
- *   - A 404 means that name is gone for good. Never spend another attempt on
- *     it, but do fall through to the next model rather than failing: a retired
- *     default should degrade, not take the feature down.
- *   - Report the model that actually failed. Blaming the configured model for
- *     a fallback's error sends people to fix a setting that was never wrong.
- */
 /**
  * Last resort only. Every name here will be retired eventually — that is the
  * whole problem — so the real answer is `discoverModels()` below, and this
@@ -262,6 +284,27 @@ let catalogue: { models: string[]; at: number } | null = null;
 const retired = new Set<string>();
 
 /**
+ * Models that were busy a moment ago, and until when to believe it.
+ *
+ * Google's overload is sticky and per model: on 2026-10-06 `gemini-3.8-flash`
+ * and `3.7-flash` answered 503 to import after import — sometimes only after
+ * thirty seconds of waiting — while `3.6` answered at once. Remembering that
+ * for a few minutes means the next import goes straight to the model that is
+ * working instead of paying for the same lesson again. Cooled models are moved
+ * to the back of the queue, never removed: they may be all there is.
+ */
+const COOLDOWN_MS = 5 * 60 * 1000;
+const cooling = new Map<string, number>();
+
+function isCooling(model: string): boolean {
+  const until = cooling.get(model);
+  if (until === undefined) return false;
+  if (Date.now() < until) return true;
+  cooling.delete(model);
+  return false;
+}
+
+/**
  * How good a candidate is, highest first. Newer beats older, stable beats
  * preview, and full beats lite — but any of them can read a spreadsheet, so a
  * lite preview model is still infinitely better than a failed import.
@@ -274,6 +317,9 @@ function score(name: string): number {
   if (version) points += Number(version[1]) * 100 + Number(version[2] ?? 0) * 10;
   if (/-lite/.test(name)) points -= 25;
   if (/preview|exp|\d{4}/.test(name)) points -= 40;
+  // Pro reads just as well but takes several times as long; it is the model
+  // to reach for when every flash is busy, not before.
+  if (/pro/.test(name)) points -= 60;
   return points;
 }
 
@@ -303,8 +349,14 @@ async function discoverModels(apiKey: string): Promise<string[]> {
     const usable = (payload.models ?? [])
       .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
       .map((m) => (m.name ?? "").replace(/^models\//, ""))
-      // Text-in, JSON-out. Image, speech and embedding models cannot do this job.
-      .filter((n) => /flash|pro/.test(n) && !/tts|image|audio|embedding|vision|aqa/.test(n))
+      // Text-in, JSON-out. Image, speech, music, research-agent and tool-only
+      // variants cannot do this job, and the catalogue lists plenty of them.
+      .filter(
+        (n) =>
+          /^gemini-/.test(n) &&
+          /flash|pro/.test(n) &&
+          !/tts|image|audio|embedding|vision|aqa|omni|customtools|research|live/.test(n)
+      )
       .sort((a, b) => score(b) - score(a));
 
     if (usable.length === 0) throw new Error("catalogue listed nothing usable");
@@ -333,12 +385,12 @@ async function buildChain(apiKey: string, preferred: string): Promise<string[]> 
     );
   }
 
-  const ordered = [
-    ...(preferredIsReal ? [preferred, preferred] : []),
-    ...live,
-    ...FALLBACK_MODELS,
-  ];
-  const chain = [...new Set(ordered)].filter((m) => m && !retired.has(m));
+  // Overload is per model: when one is busy, a sibling usually is not. So
+  // every attempt goes to a different model rather than queueing twice
+  // behind the same busy one.
+  const ordered = [...(preferredIsReal ? [preferred] : []), ...live, ...FALLBACK_MODELS];
+  const known = [...new Set(ordered)].filter((m) => m && !retired.has(m));
+  const chain = [...known.filter((m) => !isCooling(m)), ...known.filter(isCooling)];
 
   // Only if everything known is struck off — better a doomed attempt with a
   // real error than refusing to try at all.
@@ -356,42 +408,154 @@ class ModelError extends Error {
   }
 }
 
-async function withRetry<T>(
-  call: (model: string) => Promise<T>,
+/** Distinct models to try before admitting defeat. */
+const MAX_ATTEMPTS = 7;
+/** One model may not eat the whole request: a hung call is a busy call. */
+const ATTEMPT_TIMEOUT_MS = 40_000;
+/**
+ * How long one model gets before a second is started alongside it. A healthy
+ * import answers in 3–13s; past this it is more likely stuck in a queue than
+ * thinking, and Google's busy models can sit for thirty seconds before saying
+ * so.
+ */
+const HEDGE_AFTER_MS = 14_000;
+const MAX_IN_FLIGHT = 2;
+/** Stop starting new attempts this close to `maxDuration`, so the teacher gets a real answer instead of a platform timeout. */
+const DEADLINE_MS = (maxDuration - 12) * 1000;
+/** Not worth starting an attempt with less than this left. */
+const MIN_ATTEMPT_MS = 8_000;
+
+/**
+ * What a failure says about the model, and so what to do next:
+ *   busy  — it may work in a minute; cool it and ask a sibling now
+ *   gone  — retired, or refuses our settings; never ask it again
+ *   fatal — the request itself is wrong (a bad file, a refused key) and
+ *           would fail the same way everywhere, so stop rather than wait
+ */
+function classify(status: number | null, err: unknown): "busy" | "gone" | "fatal" {
+  const message = err instanceof Error ? err.message : "";
+  if (status === 404) return "gone";
+  // thinkingLevel is a 3.x setting; an older model may refuse it outright.
+  if (status === 400 && /thinking/i.test(message)) return "gone";
+  if (status === null) return "busy"; // a dropped connection, not a verdict
+  if (status === 429 || status >= 500) return "busy";
+  return "fatal";
+}
+
+/**
+ * Runs the import against the chain of models until one answers.
+ *
+ * It *hedges*: if the model it is waiting on has not answered within
+ * HEDGE_AFTER_MS, it starts the next model alongside rather than waiting out
+ * the full timeout, and takes whichever finishes first — the loser is aborted.
+ * A tail-latency technique: the occasional extra call costs far less than a
+ * teacher watching a spinner for fifty seconds because the first model drawn
+ * happened to be stuck.
+ *
+ * Two rules learned the hard way:
+ *   - A 404 means that name is gone for good. Never spend another attempt on
+ *     it, but do fall through rather than failing: a retired default should
+ *     degrade, not take the feature down.
+ *   - Report the model that actually failed. Blaming the configured model for
+ *     a fallback's error sends people to fix a setting that was never wrong.
+ */
+function runChain<T>(
+  call: (model: string, signal: AbortSignal) => Promise<T>,
   chain: string[],
-  attempts = 4
+  startedAt: number
 ): Promise<T> {
-  const limit = Math.min(attempts, chain.length);
-  let last: ModelError | null = null;
+  return new Promise<T>((resolve, reject) => {
+    const queue = [...chain];
+    const inFlight = new Set<AbortController>();
+    let launched = 0;
+    let last: ModelError | null = null;
+    let settled = false;
 
-  for (let attempt = 0; attempt < limit; attempt++) {
-    const model = chain[attempt];
-    try {
-      return await call(model);
-    } catch (err) {
-      const status = statusOf(err);
-      last = new ModelError(model, status, err);
+    const settle = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      for (const controller of inFlight) controller.abort();
+      inFlight.clear();
+      finish();
+    };
 
-      const busy = status === 503 || status === 500 || status === 429;
-      const isRetired = status === 404;
-      if (!busy && !retired) throw last;
+    const launch = () => {
+      if (settled) return;
+      const left = DEADLINE_MS - (Date.now() - startedAt);
+      const model = launched < MAX_ATTEMPTS && left >= MIN_ATTEMPT_MS ? queue.shift() : undefined;
 
-      // A name that is gone will still be gone on the next attempt, and on
-      // every future import too.
-      if (isRetired) {
-        retired.add(model);
-        while (attempt + 1 < limit && chain[attempt + 1] === model) attempt++;
+      if (!model) {
+        // Nothing more to start. Give up only once nothing is still running —
+        // the model already in flight may yet answer.
+        if (inFlight.size === 0) {
+          settle(() =>
+            reject(last ?? new ModelError(chain[0] ?? "unknown", 503, new Error("No model was tried")))
+          );
+        }
+        return;
       }
-      if (attempt >= limit - 1) break;
-      await new Promise((resolve) => setTimeout(resolve, 800 * 2 ** attempt));
-    }
-  }
-  throw last;
+
+      launched++;
+      const controller = new AbortController();
+      const timeout = AbortSignal.timeout(Math.min(ATTEMPT_TIMEOUT_MS, left));
+      inFlight.add(controller);
+
+      const hedge = setTimeout(() => {
+        if (settled || !inFlight.has(controller) || inFlight.size >= MAX_IN_FLIGHT) return;
+        console.warn(
+          `[import] ${model} still working after ${Date.now() - startedAt}ms; starting another model alongside`
+        );
+        launch();
+      }, HEDGE_AFTER_MS);
+
+      call(model, AbortSignal.any([controller.signal, timeout])).then(
+        (result) => {
+          clearTimeout(hedge);
+          settle(() => resolve(result));
+        },
+        (err) => {
+          clearTimeout(hedge);
+          inFlight.delete(controller);
+          // Lost the race, or cancelled because another model won: not news.
+          if (settled) return;
+
+          const timedOut = timeout.aborted;
+          const status = timedOut ? 503 : statusOf(err);
+          last = new ModelError(model, status, err);
+          console.warn(
+            `[import] ${model} failed (${timedOut ? "timed out" : `HTTP ${status ?? "?"}`}) after ${Date.now() - startedAt}ms`
+          );
+
+          const kind = classify(timedOut ? 503 : status, err);
+          if (kind === "fatal") {
+            settle(() => reject(last));
+            return;
+          }
+          // A name that is gone will still be gone on every future import; a
+          // busy one is worth skipping for a few minutes.
+          if (kind === "gone") retired.add(model);
+          else cooling.set(model, Date.now() + COOLDOWN_MS);
+
+          // Replace it straight away — a gone model cost nothing to ask — or
+          // after a short jittered pause when it was load, so as not to hammer.
+          setTimeout(launch, kind === "gone" ? 0 : 300 + Math.random() * 500);
+        }
+      );
+    };
+
+    launch();
+  });
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return bad("The import is not configured on this server", 503);
+  if (!apiKey) {
+    // The operator's problem, not the teacher's: say so in the log, where the
+    // person who can set the key will look.
+    console.error("[import] GEMINI_API_KEY is not set on this server");
+    return bad("Building curricula isn’t available right now — please try again later", 503);
+  }
 
   let form: FormData;
   try {
@@ -408,10 +572,18 @@ export async function POST(request: Request) {
   if (files.length === 0) return bad("Attach at least one file", 400);
   if (files.length > MAX_FILES) return bad(`At most ${MAX_FILES} files at a time`, 400);
 
-  const limit = demo ? MAX_DEMO_BYTES : MAX_BYTES;
   const total = files.reduce((sum, f) => sum + f.size, 0);
-  if (total > limit) {
-    return bad(`That is more than ${Math.round(limit / 1024 / 1024)} MB of files`, 413);
+  if (total > MAX_BYTES) {
+    return bad(`That is more than ${Math.round(MAX_BYTES / 1024 / 1024)} MB of files`, 413);
+  }
+
+  // Files are read before anything is counted against a rate limit, so a
+  // wrong file type costs the teacher a correction, not one of their imports.
+  let parts: Part[];
+  try {
+    parts = (await Promise.all(files.map(fileToParts))).flat();
+  } catch (err) {
+    return bad(err instanceof Error ? err.message : "Could not read a file", 415);
   }
 
   let current: CurriculumUnit[] = [];
@@ -423,11 +595,18 @@ export async function POST(request: Request) {
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       request.headers.get("x-real-ip") ||
       "unknown";
-    if (!demoAllowed(ip)) {
+    if (!allowed(`ip:${ip}`, DEMO_LIMIT)) {
       return bad("The demo import has had a lot of use in the last hour — try again later", 429);
     }
+    // The demo's curriculum comes from the browser, so it is checked for shape
+    // before anything walks it — a `null` unit would otherwise crash the
+    // summary below with an unhandled 500.
+    const raw = String(form.get("units") ?? "[]");
+    if (raw.length > MAX_DEMO_UNITS_CHARS) return bad("The demo curriculum is too large", 413);
     try {
-      current = JSON.parse(String(form.get("units") ?? "[]")) as CurriculumUnit[];
+      const parsed: unknown = JSON.parse(raw);
+      if (!isUnitList(parsed)) return bad("Could not read the demo curriculum", 400);
+      current = parsed;
     } catch {
       return bad("Could not read the demo curriculum", 400);
     }
@@ -462,6 +641,9 @@ export async function POST(request: Request) {
     if (!cls || cls.teacher_id !== user.id) {
       return bad("Only this class's teacher can import a curriculum", 403);
     }
+    if (!allowed(`user:${user.id}`, TEACHER_LIMIT)) {
+      return bad("That is a lot of imports in an hour — give it a little while", 429);
+    }
 
     current = (cls.units ?? []) as CurriculumUnit[];
     version = cls.version ?? null;
@@ -469,13 +651,6 @@ export async function POST(request: Request) {
   }
 
   const guidance = instructions.trim() || storedInstructions.trim();
-
-  let parts: Part[];
-  try {
-    parts = (await Promise.all(files.map(fileToParts))).flat();
-  } catch (err) {
-    return bad(err instanceof Error ? err.message : "Could not read a file", 415);
-  }
 
   const prompt: Part[] = [
     {
@@ -497,33 +672,37 @@ export async function POST(request: Request) {
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const response = await withRetry((candidate) =>
-      ai.models.generateContent({
-        model: candidate,
-        contents: [{ role: "user", parts: prompt }],
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: PROPOSAL_SCHEMA,
-          temperature: 0.1,
-          // This is transcription and matching, not reasoning. Full thinking
-          // tripled the wait on a year-long curriculum for no better answer.
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        },
-      })
-    , chain);
+    const response = await runChain(
+      (candidate, signal) =>
+        ai.models.generateContent({
+          model: candidate,
+          contents: [{ role: "user", parts: prompt }],
+          config: {
+            abortSignal: signal,
+            systemInstruction: SYSTEM_INSTRUCTION,
+            responseMimeType: "application/json",
+            responseSchema: PROPOSAL_SCHEMA,
+            temperature: 0.1,
+            // This is transcription and matching, not reasoning. Full thinking
+            // tripled the wait on a year-long curriculum for no better answer.
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          },
+        }),
+      chain,
+      startedAt
+    );
 
     const text = response.text;
-    if (!text) return bad("The model returned nothing to review", 502);
+    if (!text) return bad("We couldn’t find a curriculum in those files", 502);
 
     let proposal: CurriculumProposal;
     try {
       proposal = JSON.parse(text) as CurriculumProposal;
     } catch {
-      return bad("The model's answer was not readable", 502);
+      return bad("Something went wrong reading those files — try again", 502);
     }
     if (!Array.isArray(proposal.units)) {
-      return bad("The model's answer had no curriculum in it", 502);
+      return bad("We couldn’t find a curriculum in those files", 502);
     }
 
     return NextResponse.json({ proposal, version });
@@ -533,27 +712,26 @@ export async function POST(request: Request) {
     const status = failed?.status ?? statusOf(err);
     const message = err instanceof Error ? err.message : "";
 
+    // Teachers see these, so they talk about their files, never about models,
+    // keys or providers. The operator's detail — which model failed, and how
+    // — is in the log line above and the per-attempt warnings.
     if (status === 503) {
-      return bad(
-        "Google's models are busy right now — every one we tried. Give it a minute.",
-        503
-      );
+      return bad("We’re busier than usual — give it a minute and try again", 503);
     }
     if (status === 429 || /quota|rate limit/i.test(message)) {
-      return bad("That key has hit its rate limit — wait a minute and try again", 429);
+      return bad("We’re reading a lot of files right now — wait a minute and try again", 429);
     }
     if (status === 404) {
       // Names the model that actually 404'd, which may be a fallback rather
       // than the configured one.
-      return bad(
-        `The AI model "${failed?.model ?? model}" is no longer available. ` +
-          "Set GEMINI_MODEL to a current one.",
-        502
+      console.error(
+        `[import] model "${failed?.model ?? model}" is gone; set GEMINI_MODEL to a current one`
       );
+      return bad("Building curricula isn’t available right now — please try again later", 502);
     }
     if (status === 400 && /api.?key/i.test(message)) {
-      return bad("The Gemini key on this server was rejected", 502);
+      return bad("Building curricula isn’t available right now — please try again later", 502);
     }
-    return bad("The import could not be completed", 502);
+    return bad("Something went wrong reading those files — try again", 502);
   }
 }

@@ -167,21 +167,16 @@ export function DashboardClient() {
 
   return (
     <DashboardShell mode={mode} onModeChange={setMode}>
-      <div className="flex items-start justify-between gap-4 mb-8">
+      <div className="flex items-center justify-between gap-4 mb-10">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-            {mode === "teaching" ? "Classes you teach" : "Classes you're enrolled in"}
+          <h1 className="text-2xl font-medium tracking-[-0.02em] text-slate-900 dark:text-slate-100">
+            Classes
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {mode === "teaching"
-              ? "Create and manage your classes"
-              : "Join a class with a code or open one below"}
-          </p>
         </div>
         {mode === "teaching" ? (
           <Link
             href="/dashboard/new"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary-dark text-white text-sm font-medium shrink-0"
+            className="btn btn-md btn-primary shrink-0"
           >
             <Plus className="w-4 h-4" />
             New Class
@@ -200,7 +195,7 @@ export function DashboardClient() {
       {mode === "enrolled" && (
         <form
           onSubmit={handleJoin}
-          className="mb-8 flex flex-col sm:flex-row gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+          className="page-in mb-8 flex flex-col sm:flex-row gap-3 p-4 rounded-xl surface focus-within:border-primary/50 transition-colors"
         >
           <div className="flex-1 flex items-center gap-2">
             <Hash className="w-4 h-4 text-slate-400 shrink-0" />
@@ -209,14 +204,14 @@ export function DashboardClient() {
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="Enter 6-digit class code to join"
-              className="flex-1 bg-transparent text-sm focus:outline-none"
+              className="flex-1 bg-transparent text-sm focus:outline-none focus-visible:!shadow-none focus-visible:!border-transparent"
               maxLength={6}
             />
           </div>
           <button
             type="submit"
             disabled={joining || joinCode.length !== 6}
-            className="px-4 py-2 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-medium disabled:opacity-50"
+            className="btn btn-md btn-primary"
           >
             {joining ? "Joining…" : "Join class"}
           </button>
@@ -227,7 +222,7 @@ export function DashboardClient() {
       )}
 
       {filteredClasses.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+        <div className="page-in text-center py-16 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 ">
           <p className="text-slate-500 dark:text-slate-400">
             {mode === "teaching"
               ? "No classes yet. Create one to get started."
@@ -235,7 +230,7 @@ export function DashboardClient() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div key={mode} className="list-in divide-y divide-slate-200 dark:divide-slate-800 border-y border-slate-200 dark:border-slate-800">
           {filteredClasses.map((cls, i) => {
             // One quiet glyph per card, never a boxed tile — but the teacher
             // picks which glyph and which colour, so six periods are told
@@ -247,7 +242,7 @@ export function DashboardClient() {
               // is scoped to the card rather than to the document.
               <div
                 key={`${cls.id}-${cls.role}`}
-                className="relative"
+                className="relative group/row transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/60"
                 data-accent={cls.color}
                 data-tour={i === 0 ? "class-card" : undefined}
               >
@@ -258,9 +253,9 @@ export function DashboardClient() {
                       ? `/dashboard/class/${cls.id}?as=student`
                       : `/dashboard/class/${cls.id}`
                   }
-                  className="flex items-center gap-3.5 p-5 card hover:border-primary/60 transition-colors group"
+                  className="flex items-center gap-3.5 px-2 sm:px-3 py-5 group"
                 >
-                  <Icon className="w-5 h-5 shrink-0 text-primary dark:text-primary-glow transition-colors" />
+                  <Icon className="w-5 h-5 shrink-0 text-primary dark:text-primary-glow" />
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-primary dark:group-hover:text-primary-glow transition-colors">
                       {cls.name}
@@ -275,46 +270,31 @@ export function DashboardClient() {
                   <span
                     className={cn(
                       "hidden sm:block shrink-0",
-                      cls.role === "teacher" ? "w-[18rem]" : "w-10"
+                      cls.role === "teacher" ? "w-[9rem]" : "w-10"
                     )}
                     aria-hidden
                   />
                 </Link>
 
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2">
+                <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2">
                   {cls.role === "teacher" && (
-                    <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div className="eyebrow-muted">Class Code</div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-mono tracking-[0.15em] text-slate-500 dark:text-slate-400">
-                          {cls.code}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => copyCode(cls.id, cls.code)}
-                          title="Copy class code"
-                          aria-label="Copy class code"
-                          className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-primary dark:hover:text-primary-glow hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                        >
-                          {copiedId === cls.id ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-500" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDuplicate(cls.id)}
-                      title="Create another class with this curriculum — students and progress are not copied"
-                      className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-600 dark:text-slate-400 hover:border-primary/50 hover:text-primary dark:hover:text-primary-glow transition-colors"
-                    >
-                      <CopyPlus className="w-3.5 h-3.5" />
-                      Duplicate
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm tracking-[0.12em] tabular-nums text-slate-500 dark:text-slate-400">
+                        {cls.code}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyCode(cls.id, cls.code)}
+                        title="Copy class code"
+                        aria-label="Copy class code"
+                        className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        {copiedId === cls.id ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
                     </div>
                   )}
 
@@ -339,6 +319,22 @@ export function DashboardClient() {
                     panelClassName="p-1.5"
                   >
                     {(close) => (
+                      <>
+                      {/* Duplicating is occasional, so it lives in here too
+                          rather than as a button on every row. */}
+                      {cls.role === "teacher" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            close();
+                            handleDuplicate(cls.id);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          <CopyPlus className="w-4 h-4" />
+                          Duplicate
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -359,6 +355,7 @@ export function DashboardClient() {
                           </>
                         )}
                       </button>
+                      </>
                     )}
                   </Popover>
                 </div>

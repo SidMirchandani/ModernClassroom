@@ -132,8 +132,17 @@ export function ClassStudentView({
     // Ask for the student role explicitly: a teacher enrolled in their own
     // class would otherwise get the teacher payload, which strips their own
     // progress row.
-    const data = await store.getClassDetail(classId, studentId, "student");
-    if (!aliveRef.current) return;
+    // A reload that fails keeps what is on screen: these run on every live
+    // nudge and every return to the tab, and one bad answer from the server
+    // is no reason to throw a student out of their class. (A class that
+    // cannot be opened at all is caught earlier, by ClassPageClient.)
+    const data = await store
+      .getClassDetail(classId, studentId, "student")
+      .catch((err) => {
+        console.warn("Could not refresh this class", err);
+        return undefined;
+      });
+    if (!aliveRef.current || data === undefined) return;
     if (!data) {
       router.replace("/dashboard");
       return;
@@ -375,7 +384,7 @@ export function ClassStudentView({
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-[#0b0f16]">
+    <div className="min-h-screen flex flex-col">
       <div className="sticky top-0 z-20">
         <AppNavbar
           left={
@@ -410,7 +419,7 @@ export function ClassStudentView({
             move you around it — the dashboard and the unit you are reading. */}
         <div
           data-tour="class-strip"
-          className="h-11 px-4 sm:px-6 bg-primary/[0.85] dark:bg-primary-900/[0.85] backdrop-blur-md flex items-center gap-2 sm:gap-3"
+          className="h-11 px-4 sm:px-6 bg-primary dark:bg-primary-900 flex items-center gap-2 sm:gap-3"
         >
           <ClassGlyph className="w-4 h-4 text-white shrink-0" />
           <span className="text-sm font-semibold text-white truncate">
@@ -550,9 +559,14 @@ export function ClassStudentView({
         <SectionSidebar {...sidebarProps} className="hidden md:block" />
 
         <main className="flex-1 min-w-0 flex justify-center px-4 sm:px-6 py-6">
-          <div className="w-full max-w-3xl">
+          <div
+            // Keyed by what is open, so moving between sections is a
+            // crossfade into the new one rather than the text swapping in place.
+            key={view === "overview" ? "overview" : activeSectionId}
+            className="page-in w-full max-w-3xl"
+          >
             {news.size > 0 && (
-              <div className="mb-4 flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-primary/30 bg-primary/5">
+              <div className="fade-in mb-4 flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-primary/30 bg-primary/5">
                 <Sparkles className="w-4 h-4 text-primary shrink-0" />
                 <p className="flex-1 min-w-0 text-sm text-slate-700 dark:text-slate-200">
                   Your teacher changed {news.size}{" "}
@@ -582,13 +596,13 @@ export function ClassStudentView({
                 news={news}
               />
             ) : !activeSection ? (
-              <div className="rounded-2xl border bg-white dark:bg-slate-900 p-8 text-center">
+              <div className="surface rounded-2xl p-8 text-center">
                 <p className="text-slate-600 dark:text-slate-400">
                   Pick a section from the list to get started.
                 </p>
               </div>
             ) : !sectionAccessible ? (
-              <div className="rounded-2xl border bg-white dark:bg-slate-900 p-8 text-center">
+              <div className="surface rounded-2xl p-8 text-center">
                 <p className="text-slate-600 dark:text-slate-400">
                   {isBeyondBlock(sections, activeSectionId, blockSectionId) ? (
                     <>

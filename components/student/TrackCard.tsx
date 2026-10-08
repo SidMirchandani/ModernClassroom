@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { STATUS_CHIP, STATUS_LABEL, type ProgressStatus } from "@/lib/status-styles";
 import { cn } from "@/lib/utils";
+import { Collapse } from "@/components/Collapse";
 
 const TRACK_ICONS = {
   textbook: BookMarked,
@@ -130,7 +131,9 @@ export function TrackCard({
     <div
       className={cn(
         "rounded-2xl border bg-white dark:bg-slate-900 overflow-hidden transition-colors",
-        expanded ? colors.border : "border-slate-200 dark:border-slate-800"
+        expanded
+          ? colors.border
+          : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
       )}
     >
       <button
@@ -180,82 +183,80 @@ export function TrackCard({
           </span>
           <ChevronDown
             className={cn(
-              "w-4 h-4 text-slate-400 transition-transform",
+              "w-4 h-4 text-slate-400 transition-transform duration-500 ease-[cubic-bezier(0.34,1.36,0.64,1)]",
               expanded && "rotate-180"
             )}
           />
         </div>
       </button>
 
-      {expanded && (
-        <div className="px-4 sm:px-5 pb-5 pt-1 border-t border-slate-100 dark:border-slate-800 space-y-5">
-          {track.objectives.length > 0 && (
-            <div className="pt-4">
-              <p className="eyebrow-muted mb-2">
-                Learning Targets
-              </p>
-              <ul className="space-y-1.5">
-                {track.objectives.map((obj) => (
-                  <li
-                    key={obj.id}
-                    className="flex items-start gap-2.5 text-sm text-slate-600 dark:text-slate-400"
-                  >
-                    <div
-                      className={cn("mt-1.5 w-1.5 h-1.5 rounded-full shrink-0", colors.dot)}
-                    />
-                    <span>{obj.text}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+      <Collapse open={expanded} className="px-4 sm:px-5 pb-5 pt-1 border-t border-slate-100 dark:border-slate-800 space-y-5">
+        {track.objectives.length > 0 && (
+          <div className="pt-4">
+            <p className="eyebrow-muted mb-2">
+              Learning Targets
+            </p>
+            <ul className="space-y-1.5">
+              {track.objectives.map((obj) => (
+                <li
+                  key={obj.id}
+                  className="flex items-start gap-2.5 text-sm text-slate-600 dark:text-slate-400"
+                >
+                  <div
+                    className={cn("mt-1.5 w-1.5 h-1.5 rounded-full shrink-0", colors.dot)}
+                  />
+                  <span>{obj.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-          {steps.length === 0 && (
-            <p className="pt-4 text-sm text-slate-400 italic">No content added yet.</p>
-          )}
+        {steps.length === 0 && (
+          <p className="pt-4 text-sm text-slate-400 italic">No content added yet.</p>
+        )}
 
-          {steps.includes("learn") && (
-            <div className={cn(track.objectives.length === 0 && "pt-4")}>
-              <StepPanel
-                step="learn"
-                status={learnStatus}
-                blocks={getTrackBlocks(track, "learn")}
-                locked={!accessible}
-                lockedMessage="Finish the previous section to unlock"
-                onStatusChange={(status) => onStepChange(track.id, "learn", status)}
-                readOnly={readOnly}
-              />
-            </div>
-          )}
+        {steps.includes("learn") && (
+          <div className={cn(track.objectives.length === 0 && "pt-4")}>
+            <StepPanel
+              step="learn"
+              status={learnStatus}
+              blocks={getTrackBlocks(track, "learn")}
+              locked={!accessible}
+              lockedMessage="Finish the previous section to unlock"
+              onStatusChange={(status) => onStepChange(track.id, "learn", status)}
+              readOnly={readOnly}
+            />
+          </div>
+        )}
 
-          {steps.includes("practice") && (
-            <div
-              className={cn(
-                steps.includes("learn") &&
-                  "pt-5 border-t border-slate-100 dark:border-slate-800"
-              )}
-            >
-              <StepPanel
-                step="practice"
-                status={practiceStatus}
-                blocks={getTrackBlocks(track, "practice")}
-                locked={!accessible || practiceStatus === "locked"}
-                lockedMessage={
-                  !accessible
-                    ? "Finish the previous section to unlock"
-                    : `Finish the ${track.label} reading to unlock Practice`
-                }
-                requiresProof
-                proofUrl={progress?.practiceProofUrl}
-                onStatusChange={(status, proofUrl) =>
-                  onStepChange(track.id, "practice", status, proofUrl)
-                }
-                readOnly={readOnly}
-              />
-            </div>
-          )}
-        </div>
-      )}
+        {steps.includes("practice") && (
+          <div
+            className={cn(
+              steps.includes("learn") &&
+                "pt-5 border-t border-slate-100 dark:border-slate-800"
+            )}
+          >
+            <StepPanel
+              step="practice"
+              status={practiceStatus}
+              blocks={getTrackBlocks(track, "practice")}
+              locked={!accessible || practiceStatus === "locked"}
+              lockedMessage={
+                !accessible
+                  ? "Finish the previous section to unlock"
+                  : `Finish the ${track.label} reading to unlock Practice`
+              }
+              requiresProof
+              proofUrl={progress?.practiceProofUrl}
+              onStatusChange={(status, proofUrl) =>
+                onStepChange(track.id, "practice", status, proofUrl)
+              }
+              readOnly={readOnly}
+            />
+          </div>
+        )}
+      </Collapse>
     </div>
   );
 }

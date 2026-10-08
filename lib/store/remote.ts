@@ -170,7 +170,17 @@ export interface ClassPull {
   progress: DbStudentProgress[];
 }
 
+/**
+ * Class ids on the server are UUIDs. Anything else — a demo id like
+ * `demo-algebra-2` left in the address bar after leaving the demo, a typo, a
+ * truncated link — is simply a class that does not exist. Asking Postgres
+ * anyway gets "invalid input syntax for type uuid", which used to surface as
+ * a crash instead of the not-found it is.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function pullClass(classId: string): Promise<ClassPull | null> {
+  if (!UUID.test(classId)) return null;
   const sb = supabase();
   const cls = await sb.from("classes").select("*").eq("id", classId).maybeSingle();
   if (cls.error) fail(cls.error, "Could not load the class");
