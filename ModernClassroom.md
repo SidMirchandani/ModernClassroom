@@ -197,7 +197,7 @@ The demo never touches the server and has no account. Signing in leaves it.
 ### Importing a curriculum — `lib/curriculum-diff.ts`, `app/api/curriculum/import/`
 
 Teachers already keep their year in a spreadsheet. The Curriculum tab takes
-those files — `.xlsx`, `.csv`, PDFs, photos of a printed plan — and proposes
+those files — Word documents, `.xlsx`, `.csv`, PDFs, photos of a printed plan — and proposes
 the curriculum they describe. It only ever *proposes*: nothing is written until
 the teacher has said yes to it, cell by cell if they want to.
 
@@ -208,15 +208,23 @@ POST from a student is refused rather than trusted.
 
 **The route** (`app/api/curriculum/import/route.ts`) is where the Gemini key
 lives and the only place it lives. It reads the class from the database rather
-than trusting the browser's copy, turns spreadsheets into text with SheetJS
-(the model reads tables far better than binaries) and passes PDFs and images
-inline. The reply is constrained by a `responseSchema`, so it is parsed, not
-guessed at. When Google is busy the route moves to a *different* model rather
-than waiting on the same one, and it **hedges**: if the model it is waiting on
-has not answered in 14s, it starts the next one alongside and takes whichever
-finishes first, aborting the other. Up to seven distinct models per import,
-each capped at 40s, at most two in flight, and no new attempt within 12s of the
-function's `maxDuration` — so a teacher gets a real answer, never a platform
+than trusting the browser's copy, turns spreadsheets and Word documents into
+text with SheetJS (the model reads tables far better than binaries, and cannot
+read a `.docx` at all) and passes PDFs and images inline. The reply is
+constrained by a `responseSchema`, so it is parsed, not guessed at. Models are
+tried in a **measured order**, not newest-first: `PREFERRED_MODELS` (3.5 Flash,
+then the Lite models) lead while the catalogue lists them, then the rest of the
+catalogue. The answer is **streamed**, which tells a model that is writing apart
+from one stuck in Google's queue: no first word in 20s, or 25s of silence
+mid-answer, and that model is dropped — but a model that is writing gets as
+long as it needs, because a full year is 20–60s of output. When Google is busy
+the route moves to a *different* model rather than waiting on the same one, and
+it **hedges**: if the model it is waiting on is still silent at 8s, it starts
+the next one alongside and takes whichever finishes first, aborting the other.
+An answer cut off partway or not in the asked-for shape is retried on another
+model rather than shown as an error. Up to seven distinct models per import, at
+most two in flight, and no new attempt within 12s of the function's
+`maxDuration` (180s) — so a teacher gets a real answer, never a platform
 timeout. A model that came back busy is **cooled** for five minutes (moved to
 the back of the queue, never removed), so the next import goes straight to one
 that is working: on 2026-10-06 that took repeat imports from ~45s to ~1s. Every
@@ -226,7 +234,8 @@ failed attempt logs one line (`[import] gemini-3.8-flash failed (HTTP 503) after
 Every import spends the operator's Gemini quota, so every caller is limited:
 the demo to 8 an hour per address, a signed-in teacher to 30 an hour per
 account. Files are parsed *before* either counter runs, so a wrong file type
-costs a correction, not an import. The demo's curriculum arrives from the
+costs a correction, not an import, and an import that fails on our side hands
+its allowance back. The demo's curriculum arrives from the
 browser and is shape-checked (and capped at 200k characters) before anything
 walks it.
 
@@ -243,6 +252,17 @@ walks it.
 > `3.6` answered at once. Teachers saw *"Google's models are busy"* for an outage
 > that never touched most of the catalogue. Walking down distinct models turned
 > the same morning into 5–9s imports.
+
+> ⚠️ **Newest is not best, and one cap on a whole answer kills working
+> models.** On 2026-10-08 imports were failing more often than not. Measured
+> against a year-long plan (60 sections, as a sheet and as a PDF): 3.6–3.8
+> Flash — first in the old newest-first order, and 3.8 pinned by
+> `GEMINI_MODEL` — dropped four answers in six partway through, the one that
+> finished took 59s, and `gemini-flash-latest` answered 503 three times in
+> three; 3.5 Flash and the Lite models answered every time in 21–29s. The old
+> 40s cap per attempt then cut off even the models that were working. Reordering,
+> streaming and limiting *silence* instead of total time took the same files to
+> six imports in six, 2–28s each.
 
 **The diff engine** (`lib/curriculum-diff.ts`) is the part that matters, and the
 one place in the repo with tests, because its failure mode is silent loss of
@@ -719,7 +739,7 @@ Then open http://localhost:3000. Scripts: `dev`, `build`, `start`, `lint` (broke
 | `NEXT_PUBLIC_SUPABASE_URL` | Browser. Project settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser. The publishable key — safe there, every table is behind RLS |
 | `GEMINI_API_KEY` | **Server only.** The curriculum import route. Never `NEXT_PUBLIC_` |
-| `GEMINI_MODEL` | Optional, and best left unset. It is only the *first* model tried — the route reads Google's catalogue and falls through to whatever is current — so it defaults to the `gemini-flash-latest` alias. A retired name here degrades to "used a different model", not to a broken import |
+| `GEMINI_MODEL` | Optional, and best left unset. When set it is tried *before* the measured order (`PREFERRED_MODELS`), so pinning a busy model makes every import start on it — `gemini-3.8-flash` here was part of why imports failed on 2026-10-08. A retired name degrades to "used a different model", not to a broken import |
 
 `.env.local` is gitignored; `.env.example` is the template. **`/demo` needs none
 of them** — it is entirely local, which is also what makes it the fallback when
@@ -849,8 +869,8 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 > ⚠️ **The model catalogue is not the truth.** Google keeps listing
 > `gemini-2.5-flash` in ListModels long after calling it returns *"no longer
 > available to new users"*. So discovery alone is not enough: the route asks the
-> catalogue what exists, ranks it (newer > older, stable > preview, full > lite,
-> with `*-latest` aliases trusted most), **and** strikes off any name it watches
+> catalogue what exists, ranks what follows the measured `PREFERRED_MODELS`
+> (newer > older, stable > preview, full > lite), **and** strikes off any name it watches
 > 404 so no later import spends a request on it. With a deliberately retired
 > `GEMINI_MODEL` the first import still succeeded in 10.9s and the next took
 > 2.6s — the difference is the dead name being remembered.
@@ -956,6 +976,7 @@ House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). Th
 | Label | Date | What |
 |---|---|---|
 | `5.3` | 2026-10-08 | Classes start from the teacher's own files: attach materials and notes, we draft the curriculum, the teacher approves it (ready-made courses no longer offered). A calmer design — Poppins only, nothing heavier than medium, ink buttons, flat surfaces with fewer boxes, one spacing rhythm, far fewer words, and no "AI" in the product's voice. The import hedges across Gemini models and remembers busy ones (repeat imports ~1s), caps uploads at Vercel's limit, rate-limits signed-in imports and validates demo input. Exit demo always on screen; a non-UUID class address no longer crashes |
+| `5.4` | 2026-10-08 | Imports stop failing: models are tried in a measured order (3.5 Flash and Lite first, not the newest), answers are streamed so a model that is writing is never cut off while one stuck in Google's queue is dropped at 20s, a cut-off answer retries on another model, and `maxDuration` is 180s. Word documents (`.docx`) can be attached. A failed import no longer counts against the hourly limit |
 | `5.2` | 2026-10-06 | The RLS helpers moved out of the exposed API, so a signed-in user can no longer probe other accounts' class memberships |
 | `5.1` | 2026-10-06 | Keep-awake workflow working: repo secrets set, and an anonymous heartbeat to ping, since real tables correctly refuse anonymous reads |
 | `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |

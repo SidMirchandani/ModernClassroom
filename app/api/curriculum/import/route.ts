@@ -17,9 +17,13 @@ import type { CurriculumProposal } from "@/lib/curriculum-diff";
  */
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+/**
+ * A year-long plan takes 20–30s on a healthy model and nearly a minute on a
+ * slow one, and the first model drawn may drop its answer halfway. Three
+ * minutes leaves room to recover from that and still answer.
+ */
+export const maxDuration = 180;
 
-const DEFAULT_MODEL = "gemini-flash-latest";
 /**
  * Vercel refuses a request body over 4.5 MB with its own non-JSON page before
  * this code runs, so any larger limit here was a promise the platform broke.
@@ -33,6 +37,7 @@ const MAX_DEMO_UNITS_CHARS = 200_000;
 const MAX_SHEET_CHARS = 120_000;
 
 const SPREADSHEET = /\.(xlsx|xlsm|xlsb|xls|ods)$/i;
+const WORD = /\.docx$/i;
 const PLAIN_TEXT = /\.(csv|tsv|txt|md|json)$/i;
 const INLINE_MEDIA = /\.(pdf|png|jpe?g|webp|heic|gif)$/i;
 
@@ -75,6 +80,11 @@ function allowed(key: string, limit: number): boolean {
     }
   }
   return true;
+}
+
+/** An import that failed on our side gives the caller their allowance back. */
+function refund(key: string) {
+  hits.get(key)?.pop();
 }
 
 const SYSTEM_INSTRUCTION = `You turn a teacher's own planning documents into the curriculum this app already holds.
@@ -207,12 +217,43 @@ function sheetToText(name: string, buffer: Buffer): string {
   return `FILE: ${name}\n${pages.join("\n\n")}`.slice(0, MAX_SHEET_CHARS);
 }
 
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+
+/**
+ * A Word document is read here too — it is what most teachers plan in, and
+ * the model cannot read one directly. A .docx is a zip with the text in
+ * `word/document.xml`; paragraphs and table rows become lines, cells are
+ * split with bars, and the rest of the markup is dropped.
+ */
+function wordToText(name: string, buffer: Buffer): string {
+  const zip = XLSX.CFB.read(buffer, { type: "buffer" });
+  // Rooted: SheetJS files a zip's entries under "Root Entry/".
+  const entry = XLSX.CFB.find(zip, "/word/document.xml");
+  if (!entry?.content) throw new Error(`${name} could not be opened`);
+  const xml = Buffer.from(entry.content as Uint8Array).toString("utf8");
+  const text = xml
+    .replace(/<w:tab\/>/g, "\t")
+    .replace(/<\/w:tc>/g, " | ")
+    .replace(/<\/w:p>|<\/w:tr>|<w:br\b[^>]*\/>/g, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(#x?[0-9a-f]+|\w+);/gi, (whole, code: string) => {
+      if (code[0] !== "#") return ENTITIES[code] ?? whole;
+      const point = code[1] === "x" || code[1] === "X" ? parseInt(code.slice(2), 16) : Number(code.slice(1));
+      return Number.isFinite(point) ? String.fromCodePoint(point) : whole;
+    })
+    .replace(/\n{3,}/g, "\n\n");
+  return `FILE: ${name}\n${text.trim()}`.slice(0, MAX_SHEET_CHARS);
+}
+
 async function fileToParts(file: File): Promise<Part[]> {
   const name = file.name || "upload";
   const buffer = Buffer.from(await file.arrayBuffer());
 
   if (SPREADSHEET.test(name)) {
     return [{ text: sheetToText(name, buffer) }];
+  }
+  if (WORD.test(name)) {
+    return [{ text: wordToText(name, buffer) }];
   }
   if (PLAIN_TEXT.test(name)) {
     return [{ text: `FILE: ${name}\n${buffer.toString("utf8").slice(0, MAX_SHEET_CHARS)}` }];
@@ -266,7 +307,23 @@ function statusOf(err: unknown): number | null {
  * whole problem — so the real answer is `discoverModels()` below, and this
  * exists purely for the case where the catalogue itself cannot be reached.
  */
-const FALLBACK_MODELS = ["gemini-flash-latest", "gemini-3.6-flash"];
+const FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-flash-latest"];
+
+/**
+ * Tried first, while the catalogue still lists them. Measured, not guessed:
+ * on 2026-10-08 a year-long plan (60 sections, as a sheet and as a PDF) went
+ * to every flash model this key could use. 3.5 Flash and the Lite models
+ * answered every time, in 21–29s. 3.6–3.8 Flash dropped four answers in six
+ * partway through, the one that finished took 59s, and `gemini-flash-latest`
+ * answered 503 three times in three. The newest model is the one everyone is
+ * calling, which makes it the worst one to depend on.
+ */
+const PREFERRED_MODELS = [
+  "gemini-3.5-flash",
+  "gemini-flash-lite-latest",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+];
 
 /** Six hours: long enough to cost nothing, short enough to notice a retirement. */
 const CATALOGUE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -369,32 +426,37 @@ async function discoverModels(apiKey: string): Promise<string[]> {
 }
 
 /**
- * The order to try models in: what the operator asked for, then whatever the
- * catalogue says is current, then the hard-coded names. Duplicates are dropped
- * so an attempt is never spent twice on the same model.
+ * The order to try models in: what the operator asked for, if anything, then
+ * the models measured to be dependable, then whatever else the catalogue says
+ * is current, then the hard-coded names. Duplicates are dropped so an attempt
+ * is never spent twice on the same model.
  */
-async function buildChain(apiKey: string, preferred: string): Promise<string[]> {
+async function buildChain(apiKey: string, configured: string | undefined): Promise<string[]> {
   const live = await discoverModels(apiKey);
+  // With no catalogue to check against, every name gets the benefit of the doubt.
+  const listed = (m: string) => live.length === 0 || live.includes(m);
 
   // If the catalogue is readable and does not list the configured model, that
   // model is gone — say so once, and do not waste an attempt on it.
-  const preferredIsReal = live.length === 0 || live.includes(preferred);
-  if (!preferredIsReal) {
-    console.warn(
-      `[import] GEMINI_MODEL "${preferred}" is not available to this key; using ${live[0]}`
-    );
+  if (configured && !listed(configured)) {
+    console.warn(`[import] GEMINI_MODEL "${configured}" is not available to this key; ignoring it`);
   }
 
   // Overload is per model: when one is busy, a sibling usually is not. So
   // every attempt goes to a different model rather than queueing twice
   // behind the same busy one.
-  const ordered = [...(preferredIsReal ? [preferred] : []), ...live, ...FALLBACK_MODELS];
+  const ordered = [
+    ...(configured && listed(configured) ? [configured] : []),
+    ...PREFERRED_MODELS.filter(listed),
+    ...live,
+    ...FALLBACK_MODELS,
+  ];
   const known = [...new Set(ordered)].filter((m) => m && !retired.has(m));
   const chain = [...known.filter((m) => !isCooling(m)), ...known.filter(isCooling)];
 
   // Only if everything known is struck off — better a doomed attempt with a
   // real error than refusing to try at all.
-  return chain.length > 0 ? chain : [preferred];
+  return chain.length > 0 ? chain : [...FALLBACK_MODELS];
 }
 
 class ModelError extends Error {
@@ -410,15 +472,20 @@ class ModelError extends Error {
 
 /** Distinct models to try before admitting defeat. */
 const MAX_ATTEMPTS = 7;
-/** One model may not eat the whole request: a hung call is a busy call. */
-const ATTEMPT_TIMEOUT_MS = 40_000;
 /**
- * How long one model gets before a second is started alongside it. A healthy
- * import answers in 3–13s; past this it is more likely stuck in a queue than
- * thinking, and Google's busy models can sit for thirty seconds before saying
- * so.
+ * Answers are streamed, which tells a model that is writing apart from one
+ * that is stuck in Google's queue — a difference a single timeout cannot see.
+ * The old 40s cap on a whole answer cut off models that were working: a full
+ * year is 20–60s of writing. Now the limits are on silence instead.
+ *
+ * A healthy model starts writing in 1–9s. No first word by this point means
+ * it is queued, not thinking.
  */
-const HEDGE_AFTER_MS = 14_000;
+const FIRST_CHUNK_MS = 20_000;
+/** Silence this long partway through an answer means the stream has died. */
+const STALL_MS = 25_000;
+/** Still silent at this point: start a second model alongside the first. */
+const HEDGE_AFTER_MS = 8_000;
 const MAX_IN_FLIGHT = 2;
 /** Stop starting new attempts this close to `maxDuration`, so the teacher gets a real answer instead of a platform timeout. */
 const DEADLINE_MS = (maxDuration - 12) * 1000;
@@ -442,15 +509,21 @@ function classify(status: number | null, err: unknown): "busy" | "gone" | "fatal
   return "fatal";
 }
 
+interface Attempt {
+  controller: AbortController;
+  /** Has started writing its answer. */
+  writing: boolean;
+}
+
 /**
  * Runs the import against the chain of models until one answers.
  *
- * It *hedges*: if the model it is waiting on has not answered within
- * HEDGE_AFTER_MS, it starts the next model alongside rather than waiting out
- * the full timeout, and takes whichever finishes first — the loser is aborted.
- * A tail-latency technique: the occasional extra call costs far less than a
- * teacher watching a spinner for fifty seconds because the first model drawn
- * happened to be stuck.
+ * It *hedges*: if the model it is waiting on has not started writing within
+ * HEDGE_AFTER_MS, it starts the next model alongside rather than waiting it
+ * out, and takes whichever finishes first — the loser is aborted. A
+ * tail-latency technique: the occasional extra call costs far less than a
+ * teacher watching a spinner because the first model drawn happened to be
+ * stuck. Once a model is writing, nothing new is started while it does.
  *
  * Two rules learned the hard way:
  *   - A 404 means that name is gone for good. Never spend another attempt on
@@ -460,13 +533,13 @@ function classify(status: number | null, err: unknown): "busy" | "gone" | "fatal
  *     a fallback's error sends people to fix a setting that was never wrong.
  */
 function runChain<T>(
-  call: (model: string, signal: AbortSignal) => Promise<T>,
+  call: (model: string, signal: AbortSignal, onChunk: () => void) => Promise<T>,
   chain: string[],
   startedAt: number
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const queue = [...chain];
-    const inFlight = new Set<AbortController>();
+    const inFlight = new Set<Attempt>();
     let launched = 0;
     let last: ModelError | null = null;
     let settled = false;
@@ -474,7 +547,7 @@ function runChain<T>(
     const settle = (finish: () => void) => {
       if (settled) return;
       settled = true;
-      for (const controller of inFlight) controller.abort();
+      for (const attempt of inFlight) attempt.controller.abort();
       inFlight.clear();
       finish();
     };
@@ -496,37 +569,58 @@ function runChain<T>(
       }
 
       launched++;
-      const controller = new AbortController();
-      const timeout = AbortSignal.timeout(Math.min(ATTEMPT_TIMEOUT_MS, left));
-      inFlight.add(controller);
+      const attempt: Attempt = { controller: new AbortController(), writing: false };
+      inFlight.add(attempt);
+
+      // Why this attempt was cut off, when it was us that cut it.
+      let cutOff: string | null = null;
+      const stop = (reason: string) => {
+        cutOff = reason;
+        attempt.controller.abort();
+      };
+      let watchdog = setTimeout(() => stop("never started"), Math.min(FIRST_CHUNK_MS, left));
+      const deadline = setTimeout(() => stop("out of time"), left);
 
       const hedge = setTimeout(() => {
-        if (settled || !inFlight.has(controller) || inFlight.size >= MAX_IN_FLIGHT) return;
+        if (settled || attempt.writing || !inFlight.has(attempt) || inFlight.size >= MAX_IN_FLIGHT) {
+          return;
+        }
         console.warn(
-          `[import] ${model} still working after ${Date.now() - startedAt}ms; starting another model alongside`
+          `[import] ${model} silent after ${Date.now() - startedAt}ms; starting another model alongside`
         );
         launch();
       }, HEDGE_AFTER_MS);
 
-      call(model, AbortSignal.any([controller.signal, timeout])).then(
+      const onChunk = () => {
+        attempt.writing = true;
+        clearTimeout(watchdog);
+        watchdog = setTimeout(() => stop("stalled"), STALL_MS);
+      };
+
+      const finish = () => {
+        clearTimeout(watchdog);
+        clearTimeout(deadline);
+        clearTimeout(hedge);
+        inFlight.delete(attempt);
+      };
+
+      call(model, attempt.controller.signal, onChunk).then(
         (result) => {
-          clearTimeout(hedge);
+          finish();
           settle(() => resolve(result));
         },
         (err) => {
-          clearTimeout(hedge);
-          inFlight.delete(controller);
+          finish();
           // Lost the race, or cancelled because another model won: not news.
           if (settled) return;
 
-          const timedOut = timeout.aborted;
-          const status = timedOut ? 503 : statusOf(err);
+          const status = cutOff ? 503 : statusOf(err);
           last = new ModelError(model, status, err);
           console.warn(
-            `[import] ${model} failed (${timedOut ? "timed out" : `HTTP ${status ?? "?"}`}) after ${Date.now() - startedAt}ms`
+            `[import] ${model} failed (${cutOff ?? `HTTP ${status ?? "?"}`}) after ${Date.now() - startedAt}ms`
           );
 
-          const kind = classify(timedOut ? 503 : status, err);
+          const kind = classify(status, err);
           if (kind === "fatal") {
             settle(() => reject(last));
             return;
@@ -538,13 +632,37 @@ function runChain<T>(
 
           // Replace it straight away — a gone model cost nothing to ask — or
           // after a short jittered pause when it was load, so as not to hammer.
-          setTimeout(launch, kind === "gone" ? 0 : 300 + Math.random() * 500);
+          // Not while another model is already writing: that one is likely to
+          // finish, and if it does not, its own failure starts the next.
+          setTimeout(
+            () => {
+              if ([...inFlight].some((a) => a.writing)) return;
+              launch();
+            },
+            kind === "gone" ? 0 : 300 + Math.random() * 500
+          );
         }
       );
     };
 
     launch();
   });
+}
+
+/**
+ * The finished answer, or an error that sends the import on to another
+ * model: an answer cut off partway, or not the shape asked for, says
+ * something about that model's moment, not about the teacher's files.
+ */
+function readProposal(text: string): CurriculumProposal {
+  let proposal: CurriculumProposal;
+  try {
+    proposal = JSON.parse(text) as CurriculumProposal;
+  } catch {
+    throw new Error("The answer was cut off");
+  }
+  if (!proposal || !Array.isArray(proposal.units)) throw new Error("The answer had no units");
+  return proposal;
 }
 
 export async function POST(request: Request) {
@@ -589,13 +707,15 @@ export async function POST(request: Request) {
   let current: CurriculumUnit[] = [];
   let version: number | null = null;
   let storedInstructions = "";
+  let limitKey: string;
 
   if (demo) {
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       request.headers.get("x-real-ip") ||
       "unknown";
-    if (!allowed(`ip:${ip}`, DEMO_LIMIT)) {
+    limitKey = `ip:${ip}`;
+    if (!allowed(limitKey, DEMO_LIMIT)) {
       return bad("The demo import has had a lot of use in the last hour — try again later", 429);
     }
     // The demo's curriculum comes from the browser, so it is checked for shape
@@ -641,7 +761,8 @@ export async function POST(request: Request) {
     if (!cls || cls.teacher_id !== user.id) {
       return bad("Only this class's teacher can import a curriculum", 403);
     }
-    if (!allowed(`user:${user.id}`, TEACHER_LIMIT)) {
+    limitKey = `user:${user.id}`;
+    if (!allowed(limitKey, TEACHER_LIMIT)) {
       return bad("That is a lot of imports in an hour — give it a little while", 429);
     }
 
@@ -667,14 +788,14 @@ export async function POST(request: Request) {
     ...parts,
   ];
 
-  const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
-  const chain = await buildChain(apiKey, model);
+  const configured = process.env.GEMINI_MODEL || undefined;
+  const chain = await buildChain(apiKey, configured);
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const response = await runChain(
-      (candidate, signal) =>
-        ai.models.generateContent({
+    const proposal = await runChain(
+      async (candidate, signal, onChunk) => {
+        const stream = await ai.models.generateContentStream({
           model: candidate,
           contents: [{ role: "user", parts: prompt }],
           config: {
@@ -687,26 +808,22 @@ export async function POST(request: Request) {
             // tripled the wait on a year-long curriculum for no better answer.
             thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           },
-        }),
+        });
+        let text = "";
+        for await (const chunk of stream) {
+          onChunk();
+          text += chunk.text ?? "";
+        }
+        return readProposal(text);
+      },
       chain,
       startedAt
     );
 
-    const text = response.text;
-    if (!text) return bad("We couldn’t find a curriculum in those files", 502);
-
-    let proposal: CurriculumProposal;
-    try {
-      proposal = JSON.parse(text) as CurriculumProposal;
-    } catch {
-      return bad("Something went wrong reading those files — try again", 502);
-    }
-    if (!Array.isArray(proposal.units)) {
-      return bad("We couldn’t find a curriculum in those files", 502);
-    }
-
     return NextResponse.json({ proposal, version });
   } catch (err) {
+    // Our failure, not the teacher's: it should not cost them an import.
+    refund(limitKey);
     console.error("curriculum import failed", err);
     const failed = err instanceof ModelError ? err : null;
     const status = failed?.status ?? statusOf(err);
@@ -725,7 +842,7 @@ export async function POST(request: Request) {
       // Names the model that actually 404'd, which may be a fallback rather
       // than the configured one.
       console.error(
-        `[import] model "${failed?.model ?? model}" is gone; set GEMINI_MODEL to a current one`
+        `[import] model "${failed?.model ?? chain[0]}" is gone; set GEMINI_MODEL to a current one`
       );
       return bad("Building curricula isn’t available right now — please try again later", 502);
     }

@@ -5,7 +5,7 @@ import { FileText, Paperclip, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const ACCEPTED_MATERIALS =
-  ".xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.md,.pdf,.png,.jpg,.jpeg,.webp";
+  ".docx,.xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.md,.pdf,.png,.jpg,.jpeg,.webp";
 
 /**
  * Vercel refuses a request body over 4.5 MB before the import route ever
