@@ -222,7 +222,16 @@ the route moves to a *different* model rather than waiting on the same one, and
 it **hedges**: if the model it is waiting on is still silent at 8s, it starts
 the next one alongside and takes whichever finishes first, aborting the other.
 An answer cut off partway or not in the asked-for shape is retried on another
-model rather than shown as an error. Up to seven distinct models per import, at
+model rather than shown as an error. The prompt gives the model a **skeleton**: the
+number before a section's dot *is* its unit, one unit per unit number,
+semesters and tabs are never units, quizzes and tests are checkpoints in the
+unit they assess with the date the files give, review days are neither. Then
+`shapeProposal` (`lib/curriculum-diff.ts`, tested) enforces the part that can
+be checked in code: sections are regrouped by their unit number whatever the
+model did, a lumped unit's title is dropped in favour of the existing unit's
+or "Unit N", and a new checkpoint with no place in its unit is placed by date.
+Sheets are flattened with SheetJS's `strip`, so a formatted sheet's hundreds
+of empty columns do not eat the 400k-character budget. Up to seven distinct models per import, at
 most two in flight, and no new attempt within 12s of the function's
 `maxDuration` (180s) — so a teacher gets a real answer, never a platform
 timeout. A model that came back busy is **cooled** for five minutes (moved to
@@ -977,6 +986,7 @@ House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). Th
 |---|---|---|
 | `5.3` | 2026-10-08 | Classes start from the teacher's own files: attach materials and notes, we draft the curriculum, the teacher approves it (ready-made courses no longer offered). A calmer design — Poppins only, nothing heavier than medium, ink buttons, flat surfaces with fewer boxes, one spacing rhythm, far fewer words, and no "AI" in the product's voice. The import hedges across Gemini models and remembers busy ones (repeat imports ~1s), caps uploads at Vercel's limit, rate-limits signed-in imports and validates demo input. Exit demo always on screen; a non-UUID class address no longer crashes |
 | `5.4` | 2026-10-08 | Imports stop failing: models are tried in a measured order (3.5 Flash and Lite first, not the newest), answers are streamed so a model that is writing is never cut off while one stuck in Google's queue is dropped at 20s, a cut-off answer retries on another model, and `maxDuration` is 180s. Word documents (`.docx`) can be attached. A failed import no longer counts against the hourly limit |
+| `5.5` | 2026-10-08 | Imports build one unit per unit number: the prompt gives the model a skeleton (the number before the dot is the unit; semesters and tabs are never units; quizzes and tests are dated checkpoints in the unit they assess), and `shapeProposal` regroups sections by number in code whatever the model returns. Undated-place checkpoints are placed by date; sheets drop trailing empty columns and the per-file budget is 400k characters |
 | `5.2` | 2026-10-06 | The RLS helpers moved out of the exposed API, so a signed-in user can no longer probe other accounts' class memberships |
 | `5.1` | 2026-10-06 | Keep-awake workflow working: repo secrets set, and an anonymous heartbeat to ping, since real tables correctly refuse anonymous reads |
 | `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |

@@ -3,6 +3,7 @@ import {
   applyChanges,
   buildChangeSet,
   orderRemaps,
+  shapeProposal,
   type CurriculumProposal,
 } from "./curriculum-diff";
 import type { CurriculumUnit } from "./db/types";
@@ -408,5 +409,86 @@ describe("units the files never mention", () => {
       "Unit 4: Quadratics",
     ]);
     expect(units[1].subunits[0].tracks[0].id).toBe(stableTrackId("4.1", "textbook"));
+  });
+});
+
+describe("shapeProposal", () => {
+  const sec = (number: string, date?: string) => ({ number, title: `Lesson ${number}`, date });
+
+  it("gives every unit number its own unit, however the model grouped them", () => {
+    // A sheet numbered 1.1 to 3.2, lumped by semester.
+    const lumped: CurriculumProposal = {
+      units: [
+        {
+          title: "Semester 1",
+          sections: [sec("1.1", "9/1"), sec("1.2", "9/2"), sec("2.1", "9/8")],
+          checkpoints: [{ kind: "test", title: "Unit 1 Test", date: "9/4" }],
+        },
+        {
+          title: "Semester 2",
+          sections: [sec("2.2", "9/9"), sec("3.1", "1/12"), sec("3.2", "1/13")],
+          checkpoints: [
+            { kind: "test", title: "Unit 2 Test", date: "9/11", afterSectionNumber: "2.2" },
+            { kind: "quiz", title: "Quiz 3.1", date: "1/12" },
+          ],
+        },
+      ],
+    };
+
+    const { units } = shapeProposal(lumped);
+    expect(units.map((u) => [u.number, u.title, u.sections.map((s) => s.number)])).toEqual([
+      ["1", "Unit 1", ["1.1", "1.2"]],
+      ["2", "Unit 2", ["2.1", "2.2"]],
+      ["3", "Unit 3", ["3.1", "3.2"]],
+    ]);
+    // Tests follow the unit they assess, placed by the section or date.
+    expect(units.map((u) => u.checkpoints?.map((c) => [c.title, c.afterSectionNumber]))).toEqual([
+      [["Unit 1 Test", "1.2"]],
+      [["Unit 2 Test", "2.2"]],
+      [["Quiz 3.1", "3.1"]],
+    ]);
+  });
+
+  it("passes a well-formed answer through with its titles and ids", () => {
+    const good: CurriculumProposal = {
+      units: [
+        { existingId: "u1", title: "Functions", sections: [sec("1.1"), sec("1.2")], checkpoints: [] },
+        { existingId: null, title: "Quadratics", sections: [sec("2.1")], checkpoints: [] },
+      ],
+    };
+    expect(shapeProposal(good).units.map((u) => [u.existingId, u.number, u.title])).toEqual([
+      ["u1", "1", "Functions"],
+      [null, "2", "Quadratics"],
+    ]);
+  });
+
+  it("finds the existing unit by number when a lumped answer lost its id", () => {
+    const lumped: CurriculumProposal = {
+      units: [{ title: "Fall", sections: [sec("3.1"), sec("3.2"), sec("4.1")], checkpoints: [] }],
+    };
+    const { units } = shapeProposal(lumped, curriculum());
+    expect(units.map((u) => [u.existingId, u.title])).toEqual([
+      ["unit-3", "Unit 3: Linear Functions"],
+      [null, "Unit 4"],
+    ]);
+  });
+
+  it("leaves an existing checkpoint's place alone, and an unnumbered answer as it was", () => {
+    const kept: CurriculumProposal = {
+      units: [
+        {
+          existingId: "unit-3",
+          title: "Unit 3: Linear Functions",
+          sections: [sec("3.1"), sec("3.2")],
+          checkpoints: [{ existingId: "cp-1", kind: "quiz", title: "Quiz 3A", afterSectionNumber: null }],
+        },
+      ],
+    };
+    expect(shapeProposal(kept).units[0].checkpoints?.[0].afterSectionNumber).toBeNull();
+
+    const plain: CurriculumProposal = {
+      units: [{ title: "Poetry", sections: [{ number: "A", title: "Sonnets" }], checkpoints: [] }],
+    };
+    expect(shapeProposal(plain)).toBe(plain);
   });
 });

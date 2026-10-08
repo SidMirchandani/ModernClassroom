@@ -66,6 +66,8 @@ export interface ProposedCheckpoint {
 
 export interface ProposedUnit {
   existingId?: string | null;
+  /** The unit's own number, "13" — the part of its section numbers before the dot. */
+  number?: string | null;
   title: string;
   sections: ProposedSection[];
   checkpoints?: ProposedCheckpoint[] | null;
@@ -75,6 +77,170 @@ export interface CurriculumProposal {
   units: ProposedUnit[];
   /** Anything the model wants the teacher to know, shown above the diff. */
   notes?: string[] | null;
+}
+
+// ── putting the answer in shape ────────────────────────────────────────────
+
+/** "13.2" → "13". Null for anything not numbered unit-dot-section. */
+function unitNumberOf(value: string | null | undefined): string | null {
+  const match = norm(value).match(/^(\d+)\s*\.\s*\d+/);
+  return match ? String(Number(match[1])) : null;
+}
+
+/** "13" → "13", "013" → "13"; null for anything else. */
+function plainNumber(value: string | null | undefined): string | null {
+  return /^\d+$/.test(norm(value)) ? String(Number(norm(value))) : null;
+}
+
+/** "Unit 4 Test" → "4". */
+function unitNamedIn(value: string | null | undefined): string | null {
+  const match = norm(value).match(/\bunit\s*(\d+)\b/i);
+  return match ? String(Number(match[1])) : null;
+}
+
+/** "Quiz 4.1–4.3" → "4". */
+function sectionUnitIn(value: string | null | undefined): string | null {
+  return unitNumberOf(norm(value).match(/\d+\s*\.\s*\d+/)?.[0]);
+}
+
+/**
+ * Where a date falls in the school year, for ordering only: "9/3", "Tue 10/12"
+ * and "10/12–10/14" all read by their first month/day, and a month before July
+ * belongs to the following calendar year.
+ */
+function schoolDay(date: string | null | undefined): number | null {
+  const match = norm(date).match(/(\d{1,2})\/(\d{1,2})/);
+  if (!match) return null;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return (month < 7 ? month + 12 : month) * 32 + day;
+}
+
+interface ShapedUnit {
+  number: string | null;
+  title: string | null;
+  existingId: string | null;
+  sections: ProposedSection[];
+  checkpoints: ProposedCheckpoint[];
+}
+
+/**
+ * Puts the model's answer into the one shape a curriculum has: a unit for
+ * every unit number, holding exactly the sections numbered under it.
+ *
+ * The number before the dot *is* the unit — "13.2" belongs to unit 13 — and
+ * that can be checked here, so it is not left to the model. A teacher's sheet
+ * numbered 1.1 to 13.x once came back as two units; a model that lumps units
+ * together (by semester, by tab) or splits one is regrouped here, and one that
+ * got it right passes through as it was. Sections without numbers stay with
+ * the numbered section before them.
+ *
+ * A unit keeps the model's title and id only when it held one unit's sections
+ * — a lumped unit's title ("Semester 1") names no single unit. The current
+ * curriculum then supplies the id and title for a number it already has, so
+ * the diff still recognises the unit.
+ *
+ * Checkpoints follow the unit they assess: the unit their title names, else
+ * the section they sit after. A new checkpoint with no place inside its unit
+ * is placed by its date, after the last section taught on or before it.
+ */
+export function shapeProposal(
+  proposal: CurriculumProposal,
+  current: CurriculumUnit[] = []
+): CurriculumProposal {
+  const units = proposal.units ?? [];
+  const numbered = units.some((u) => (u.sections ?? []).some((s) => unitNumberOf(s.number)));
+  if (!numbered) return proposal;
+
+  const groups = new Map<string, ShapedUnit>();
+  const order: string[] = [];
+  const groupFor = (k: string, number: string | null) => {
+    let group = groups.get(k);
+    if (!group) {
+      group = { number, title: null, existingId: null, sections: [], checkpoints: [] };
+      groups.set(k, group);
+      order.push(k);
+    }
+    return group;
+  };
+
+  units.forEach((unit, index) => {
+    const sections = unit.sections ?? [];
+    const found = new Set(sections.map((s) => unitNumberOf(s.number)).filter(Boolean));
+    const lumped = found.size > 1;
+    const home =
+      found.size === 1
+        ? [...found][0]!
+        : found.size === 0
+          ? (plainNumber(unit.number) ?? unitNamedIn(unit.title))
+          : null;
+
+    let last: string | null = home;
+    for (const section of sections) {
+      const n = unitNumberOf(section.number);
+      const k = n ?? last ?? `#${index}`;
+      groupFor(k, n ?? home).sections.push(section);
+      last = k;
+    }
+
+    if (!lumped) {
+      const group = groupFor(home ?? `#${index}`, home);
+      group.title ??= norm(unit.title) || null;
+      group.existingId ??= unit.existingId ?? null;
+    }
+
+    for (const checkpoint of unit.checkpoints ?? []) {
+      const k =
+        unitNamedIn(checkpoint.title) ??
+        unitNumberOf(checkpoint.afterSectionNumber) ??
+        sectionUnitIn(checkpoint.title) ??
+        home ??
+        last ??
+        `#${index}`;
+      groupFor(k, plainNumber(k)).checkpoints.push(checkpoint);
+    }
+  });
+
+  if (order.every((k) => /^\d+$/.test(k))) order.sort((a, b) => Number(a) - Number(b));
+
+  const currentByNumber = new Map<string, CurriculumUnit>();
+  for (const unit of current) {
+    const n = unitNumberOf(unit.subunits?.[0]?.id);
+    if (n && !currentByNumber.has(n)) currentByNumber.set(n, unit);
+  }
+
+  const shaped: ProposedUnit[] = order.map((k) => {
+    const group = groups.get(k)!;
+    const existing = group.number ? currentByNumber.get(group.number) : undefined;
+    const numbers = group.sections.map((s) => norm(s.number));
+
+    const checkpoints = group.checkpoints.map((checkpoint) => {
+      const anchor = norm(checkpoint.afterSectionNumber);
+      // An existing checkpoint's silence means "where it is now".
+      if (checkpoint.existingId || numbers.includes(anchor)) return checkpoint;
+      const when = schoolDay(checkpoint.date);
+      let after: string | null = numbers.at(-1) ?? null;
+      if (when !== null && group.sections.some((s) => schoolDay(s.date) !== null)) {
+        const before = group.sections.filter((s) => {
+          const day = schoolDay(s.date);
+          return day !== null && day <= when;
+        });
+        after = before.length > 0 ? norm(before.at(-1)!.number) : null;
+      }
+      return { ...checkpoint, afterSectionNumber: after };
+    });
+
+    return {
+      existingId: group.existingId ?? existing?.id ?? null,
+      number: group.number,
+      title: group.title ?? existing?.title ?? (group.number ? `Unit ${group.number}` : "New unit"),
+      sections: group.sections,
+      checkpoints,
+    };
+  });
+
+  return { ...proposal, units: shaped };
 }
 
 // ── what comes back ────────────────────────────────────────────────────────
