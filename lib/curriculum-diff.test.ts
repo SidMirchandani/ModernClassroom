@@ -449,6 +449,18 @@ describe("shapeProposal", () => {
     ]);
   });
 
+  it("keeps the year's teaching order when unit numbers are out of order", () => {
+    // Unit 11 is taught in February, unit 8 after it — the model listed 8 first.
+    const answer: CurriculumProposal = {
+      units: [
+        { title: "Conics", sections: [sec("8.1", "2/23"), sec("8.2", "2/24")], checkpoints: [] },
+        { title: "Statistics", sections: [sec("11.1", "2/5"), sec("11.2", "2/8")], checkpoints: [] },
+        { title: "Matrices", sections: [sec("6.1", "12/21"), sec("6.2", "1/4")], checkpoints: [] },
+      ],
+    };
+    expect(shapeProposal(answer).units.map((u) => u.number)).toEqual(["6", "11", "8"]);
+  });
+
   it("passes a well-formed answer through with its titles and ids", () => {
     const good: CurriculumProposal = {
       units: [
@@ -458,7 +470,8 @@ describe("shapeProposal", () => {
     };
     expect(shapeProposal(good).units.map((u) => [u.existingId, u.number, u.title])).toEqual([
       ["u1", "1", "Functions"],
-      [null, "2", "Quadratics"],
+      // A new unit is numbered; one the class already has keeps its title.
+      [null, "2", "Unit 2: Quadratics"],
     ]);
   });
 

@@ -202,7 +202,19 @@ export function shapeProposal(
     }
   });
 
-  if (order.every((k) => /^\d+$/.test(k))) order.sort((a, b) => Number(a) - Number(b));
+  // Teaching order is the files' order, not numeric: a class may teach unit 11
+  // before unit 8. When every unit has a dated lesson, the dates decide —
+  // a model listing 8 before 11 is not allowed to reorder the year.
+  const firstDay = (k: string) => {
+    const days = groups
+      .get(k)!
+      .sections.map((s) => schoolDay(s.date))
+      .filter((d): d is number => d !== null);
+    return days.length > 0 ? Math.min(...days) : null;
+  };
+  if (order.every((k) => firstDay(k) !== null)) {
+    order.sort((a, b) => firstDay(a)! - firstDay(b)!);
+  }
 
   const currentByNumber = new Map<string, CurriculumUnit>();
   for (const unit of current) {
@@ -231,10 +243,19 @@ export function shapeProposal(
       return { ...checkpoint, afterSectionNumber: after };
     });
 
+    const existingId = group.existingId ?? existing?.id ?? null;
+    let title = group.title ?? existing?.title ?? (group.number ? `Unit ${group.number}` : "New unit");
+    // A new unit carries its number, "Unit 3: Linear Models", like every
+    // unit the app ships with. One the class already has keeps the title the
+    // teacher gave it — renaming it here would show up as a change.
+    if (!existingId && group.number && !/^unit\s*\d+/i.test(title)) {
+      title = `Unit ${group.number}: ${title}`;
+    }
+
     return {
-      existingId: group.existingId ?? existing?.id ?? null,
+      existingId,
       number: group.number,
-      title: group.title ?? existing?.title ?? (group.number ? `Unit ${group.number}` : "New unit"),
+      title,
       sections: group.sections,
       checkpoints,
     };

@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 
 type ViewTransitionDocument = Document & {
   startViewTransition?: (update: () => void) => {
-    ready: Promise<void>;
     finished: Promise<void>;
   };
 };
@@ -53,32 +52,23 @@ export function ThemeToggle() {
     const root = document.documentElement;
     root.classList.add("theme-switching");
 
+    // The circle itself is a CSS animation on the transition (globals.css,
+    // `theme-reveal`); this only tells it where to grow from and how far.
+    // It used to be started from here with element.animate() once the
+    // transition was ready — but a transition ends when the browser's own
+    // animations do (~250ms), and an animation added from script did not
+    // always hold it open: on phones the circle got about halfway and the
+    // page snapped to the new theme. Declared in CSS, it *is* one of the
+    // transition's animations, so the transition lasts exactly as long.
+    root.style.setProperty("--vt-x", `${x}px`);
+    root.style.setProperty("--vt-y", `${y}px`);
+    root.style.setProperty("--vt-r", `${radius}px`);
+
     // flushSync so the snapshot the browser takes "after" really has the new
     // theme in it — including this button's own icon.
     const transition = doc.startViewTransition(() => {
       flushSync(() => setTheme(next));
     });
-
-    transition.ready
-      .then(() => {
-        root.animate(
-          {
-            clipPath: [
-              `circle(0px at ${x}px ${y}px)`,
-              `circle(${radius}px at ${x}px ${y}px)`,
-            ],
-          },
-          {
-            duration: 560,
-            // An even ease-in-out, not an ease-out: a strong ease-out covers
-            // most of the screen at once and then crawls through the far
-            // corner, which reads as the circle stalling three-quarters in.
-            easing: "cubic-bezier(0.45, 0, 0.55, 1)",
-            pseudoElement: "::view-transition-new(root)",
-          }
-        );
-      })
-      .catch(() => {});
 
     transition.finished
       .catch(() => {})

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2, Minus, Plus, X } from "lucide-react";
+import { Check, Loader2, MessageSquare, Minus, Plus, X } from "lucide-react";
 import type {
   Change,
   ChangeSet,
@@ -415,12 +415,22 @@ export function CurriculumDiff({
         </p>
       )}
 
+      {/* Spoken to the teacher, and labelled as a note so nobody reads it
+          as a suggestion: it is not in the table and Apply never adds it. */}
       {notes && notes.length > 0 && (
-        <ul className="panel-inset px-4 py-3 mb-3 space-y-1 text-xs text-slate-600 dark:text-slate-300 list-disc list-inside">
-          {notes.map((note, i) => (
-            <li key={i}>{note}</li>
-          ))}
-        </ul>
+        <div className="panel-inset px-4 py-3 mb-3 flex gap-3">
+          <MessageSquare className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" aria-hidden />
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              A note for you · not added to your curriculum
+            </p>
+            {notes.map((note, i) => (
+              <p key={i} className="text-sm text-slate-700 dark:text-slate-200">
+                {note}
+              </p>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="card overflow-hidden">

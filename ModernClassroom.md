@@ -212,9 +212,10 @@ than trusting the browser's copy, turns spreadsheets and Word documents into
 text with SheetJS (the model reads tables far better than binaries, and cannot
 read a `.docx` at all) and passes PDFs and images inline. The reply is
 constrained by a `responseSchema`, so it is parsed, not guessed at. Models are
-tried in a **measured order**, not newest-first: `PREFERRED_MODELS` (3.5 Flash,
-then the Lite models) lead while the catalogue lists them, then the rest of the
-catalogue. The answer is **streamed**, which tells a model that is writing apart
+tried in a **measured order**, not newest-first: `PREFERRED_MODELS` (3.5, 3.6,
+3.7 Flash, `flash-latest`, 3.8) lead while the catalogue lists them, then the
+rest of the catalogue, and **Lite models last of all** — they never fail, but
+on a real timeline they stop after a unit or four and call it finished. The answer is **streamed**, which tells a model that is writing apart
 from one stuck in Google's queue: no first word in 20s, or 25s of silence
 mid-answer, and that model is dropped — but a model that is writing gets as
 long as it needs, because a full year is 20–60s of output. When Google is busy
@@ -222,14 +223,24 @@ the route moves to a *different* model rather than waiting on the same one, and
 it **hedges**: if the model it is waiting on is still silent at 8s, it starts
 the next one alongside and takes whichever finishes first, aborting the other.
 An answer cut off partway or not in the asked-for shape is retried on another
-model rather than shown as an error. The prompt gives the model a **skeleton**: the
-number before a section's dot *is* its unit, one unit per unit number,
-semesters and tabs are never units, quizzes and tests are checkpoints in the
-unit they assess with the date the files give, review days are neither. Then
+model rather than shown as an error. The prompt gives the model a **skeleton**: it
+writes an `outline` of every unit first (number and title), then the units in
+full; the number before a section's dot *is* its unit, one unit per unit
+number; semesters, tabs and heading-only rows are never units; quizzes, tests
+and projects (Qz, Tst, Pj) are checkpoints in the unit they assess with the
+date the files give; review days are neither. When a timeline lays **several
+plans side by side** (two textbooks, a platform, a framework), one column is
+the class's sequence — the one numbered through the year in order with its own
+headings and assessments, unless the teacher's notes name another — and every
+other column becomes a resource track on that day's section. An answer whose
+units fall short of its own outline (more than 15% missing), or that is empty
+for an empty class, is retried on another model; if every model falls short,
+the fullest partial answer is offered with a note to check it. Then
 `shapeProposal` (`lib/curriculum-diff.ts`, tested) enforces the part that can
 be checked in code: sections are regrouped by their unit number whatever the
 model did, a lumped unit's title is dropped in favour of the existing unit's
-or "Unit N", and a new checkpoint with no place in its unit is placed by date.
+or "Unit N", a new unit is titled "Unit N: Name", units are ordered by their first lesson's date (a class may teach
+11 before 8), and a new checkpoint with no place in its unit is placed by date.
 Sheets are flattened with SheetJS's `strip`, so a formatted sheet's hundreds
 of empty columns do not eat the 400k-character budget. Up to seven distinct models per import, at
 most two in flight, and no new attempt within 12s of the function's
@@ -272,6 +283,14 @@ walks it.
 > 40s cap per attempt then cut off even the models that were working. Reordering,
 > streaming and limiting *silence* instead of total time took the same files to
 > six imports in six, 2–28s each.
+
+> ⚠️ **A free-tier Gemini key is 20 requests a day per model.** Google's 429
+> says so ("limit: 20, model: gemini-3.5-flash"), and the whole site shares that
+> allowance. Once a model's is spent it answers 429 for hours; the route reads
+> Google's "retry in 1h17m" and skips that model until then. Below that, the
+> chain falls to weaker models — which is how a teacher's real timeline came
+> back as two units, then none. **Production needs a key with billing enabled**
+> (Tier 1); an import costs a few cents.
 
 **The diff engine** (`lib/curriculum-diff.ts`) is the part that matters, and the
 one place in the repo with tests, because its failure mode is silent loss of
@@ -903,7 +922,7 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 - **Motion does a job or it does not happen.** Two curves in `:root` — `--ease-out` for anything arriving, `--ease-spring` for anything the hand moved. What stayed: a short fade-and-rise when a view changes (`.page-in`, `.list-in`), one sliding pill per tab bar (`useSlidingPill`, in `NavCapsule` and `SubunitViewToggle`), sections that slide to their exact height (`<Collapse>`, grid rows 0fr→1fr), stat numbers that count up (`useCountUp`), bars that grow in (`.bar-fill`), the light sweeping the import card while Gemini reads (`.scan-line`), and the theme switch spreading from the toggle as a circle (View Transitions API). All of it inside `prefers-reduced-motion: no-preference`.
 - **Flat, but it answers the cursor** — the other half of what makes Supabase and Vercel feel alive. `<PointerTracker />` (one listener in the root layout, one write per frame, off on touch screens) feeds `--mx`/`--my` to every `[data-pointer]`, `.card-interactive` and `.edge-glow` under the pointer. With it: a card's 1px edge lights in the brand colour where the cursor is (`::after`, masked to the border); the line-art grid in a landing tile brightens in a circle beneath the cursor (`.line-grid-hot`); each landing vignette plays its change on hover (`.swap-a` / `.swap-b` — a student finishing, a help flag raised, offline changes landing), falling back to a slow loop on touch screens; the landing nav shares one highlight that glides between links (`<HoverNav>`); course cells go from grey to ink and reveal a detail line; and arrows nudge toward where they point.
 
-> ⚠️ **The theme circle must run on an even curve, with every other transition off.** It first ran on a strong ease-out and looked like it stalled three-quarters of the way: the circle covered most of the screen at once, then crawled through the far corner. And because the new snapshot is live, cards and buttons were still easing their own colours inside the circle as it grew. `ThemeToggle` now uses a symmetric ease-in-out and puts `theme-switching` on `<html>` (all transitions `none`) until the view transition finishes. Note that browsers skip view transitions on a hidden page — test it with the window in front.
+> ⚠️ **The theme circle must run on an even curve, with every other transition off.** It first ran on a strong ease-out and looked like it stalled three-quarters of the way: the circle covered most of the screen at once, then crawled through the far corner. And because the new snapshot is live, cards and buttons were still easing their own colours inside the circle as it grew. `ThemeToggle` now uses a symmetric ease-in-out and puts `theme-switching` on `<html>` (all transitions `none`) until the view transition finishes. The circle itself is a **CSS animation** (`theme-reveal` on `:root.theme-switching::view-transition-new(root)`, centre and radius passed as `--vt-x`/`--vt-y`/`--vt-r`), not `element.animate()` from script: a transition ends when its own animations do (~250ms), and one added from script did not always hold it open — on phones the circle got halfway and the page snapped. Declared in CSS it is one of the transition's animations. Note that browsers skip view transitions on a hidden page — test it with the window in front.
 
 > ⚠️ **An edge glow cannot sit on an `overflow-hidden` card.** The ring is the card's own `::after` at `inset: -1px`, over the border — and `overflow: hidden` clips a pseudo-element to the padding box, so the ring vanishes. The grid and diff mocks are `overflow-hidden` for their tables and so get row hovers instead.
 
@@ -987,6 +1006,7 @@ House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). Th
 | `5.3` | 2026-10-08 | Classes start from the teacher's own files: attach materials and notes, we draft the curriculum, the teacher approves it (ready-made courses no longer offered). A calmer design — Poppins only, nothing heavier than medium, ink buttons, flat surfaces with fewer boxes, one spacing rhythm, far fewer words, and no "AI" in the product's voice. The import hedges across Gemini models and remembers busy ones (repeat imports ~1s), caps uploads at Vercel's limit, rate-limits signed-in imports and validates demo input. Exit demo always on screen; a non-UUID class address no longer crashes |
 | `5.4` | 2026-10-08 | Imports stop failing: models are tried in a measured order (3.5 Flash and Lite first, not the newest), answers are streamed so a model that is writing is never cut off while one stuck in Google's queue is dropped at 20s, a cut-off answer retries on another model, and `maxDuration` is 180s. Word documents (`.docx`) can be attached. A failed import no longer counts against the hourly limit |
 | `5.5` | 2026-10-08 | Imports build one unit per unit number: the prompt gives the model a skeleton (the number before the dot is the unit; semesters and tabs are never units; quizzes and tests are dated checkpoints in the unit they assess), and `shapeProposal` regroups sections by number in code whatever the model returns. Undated-place checkpoints are placed by date; sheets drop trailing empty columns and the per-file budget is 400k characters |
+| `5.6` | 2026-10-08 | Imports read real teacher timelines: the model writes an outline of the whole year first and is held to it (short answers retry on another model, or come back flagged), side-by-side plans pick one column as the class's sequence and turn the others into tracks, units keep the year's teaching order by date, Lite models are tried last, and a model out of free-tier quota is skipped until it resets. The theme circle runs as a CSS animation, so it no longer snaps to the end halfway on phones. New units are numbered ("Unit 3: Linear Models"); notes speak to the teacher in the first person about gaps only, shown under "A note for you · not added to your curriculum" |
 | `5.2` | 2026-10-06 | The RLS helpers moved out of the exposed API, so a signed-in user can no longer probe other accounts' class memberships |
 | `5.1` | 2026-10-06 | Keep-awake workflow working: repo secrets set, and an anonymous heartbeat to ping, since real tables correctly refuse anonymous reads |
 | `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |
