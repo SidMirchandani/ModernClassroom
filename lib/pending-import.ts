@@ -4,7 +4,7 @@
  * Creating a class from your materials happens across a navigation: the class
  * has to exist before the import route will read anything for it (it checks
  * the caller teaches that class), so the new-class page creates it, parks the
- * files here and moves to the class's curriculum, where the panel picks them
+ * files here and moves to the class's curriculum, where the chat picks them
  * up and starts the read. `File` objects cannot survive a reload or go into
  * storage, and do not need to — this is a client-side hand-off of a second or
  * two, so module memory is exactly the right lifetime.

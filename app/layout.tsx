@@ -21,11 +21,12 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:5000"
   ),
+  // The tab reads from the most specific place outwards — see usePageTitle.
   title: {
-    default: "Modern Classroom — self-paced learning, teacher oversight",
-    template: "%s · Modern Classroom",
+    default: "Modern Classroom",
+    template: "%s - Modern Classroom",
   },
   description: SITE.description,
   applicationName: SITE.name,

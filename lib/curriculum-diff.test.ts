@@ -468,11 +468,31 @@ describe("shapeProposal", () => {
         { existingId: null, title: "Quadratics", sections: [sec("2.1")], checkpoints: [] },
       ],
     };
-    expect(shapeProposal(good).units.map((u) => [u.existingId, u.number, u.title])).toEqual([
+    const current: CurriculumUnit[] = [
+      { id: "u1", title: "Functions", subunits: [section("1.1", "Lesson 1.1")], checkpoints: [] },
+    ];
+    expect(shapeProposal(good, current).units.map((u) => [u.existingId, u.number, u.title])).toEqual([
       ["u1", "1", "Functions"],
       // A new unit is numbered; one the class already has keeps its title.
       [null, "2", "Unit 2: Quadratics"],
     ]);
+  });
+
+  it("does not read a unit's bare name as a rename of its numbered title", () => {
+    // The model is asked for the name alone; the class calls it "Unit 3: Linear Functions".
+    const bare: CurriculumProposal = {
+      units: [
+        {
+          existingId: "unit-3",
+          title: "Linear Functions",
+          sections: [sec("3.1"), sec("3.2"), sec("3.3")],
+          checkpoints: [],
+        },
+      ],
+    };
+    const shaped = shapeProposal(bare, curriculum());
+    expect(shaped.units[0].title).toBe("Unit 3: Linear Functions");
+    expect(buildChangeSet(curriculum(), shaped).changes.some((c) => c.kind === "unit-title")).toBe(false);
   });
 
   it("finds the existing unit by number when a lumped answer lost its id", () => {
@@ -503,5 +523,21 @@ describe("shapeProposal", () => {
       units: [{ title: "Poetry", sections: [{ number: "A", title: "Sonnets" }], checkpoints: [] }],
     };
     expect(shapeProposal(plain)).toBe(plain);
+  });
+});
+
+describe("checkpoints a sheet never mentions", () => {
+  it("are kept, not offered for removal, when a unit comes back with none", () => {
+    const proposal = echoProposal(curriculum());
+    proposal.units[0].checkpoints = [];
+    expect(buildChangeSet(curriculum(), proposal).changes).toEqual([]);
+  });
+
+  it("are offered for removal when the unit lists others", () => {
+    const proposal = echoProposal(curriculum());
+    proposal.units[0].checkpoints = [{ kind: "test", title: "Unit 3 Test", date: "10/10", afterSectionNumber: "3.3" }];
+    const kinds = buildChangeSet(curriculum(), proposal).changes.map((c) => c.kind);
+    expect(kinds).toContain("checkpoint-add");
+    expect(kinds).toContain("checkpoint-remove");
   });
 });

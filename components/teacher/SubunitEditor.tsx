@@ -21,6 +21,7 @@ import { getCurrentUser } from "@/lib/auth-client";
 import { store } from "@/lib/store";
 import { normalizeSection } from "@/lib/section-tracks";
 import { useClassTheme } from "@/lib/use-class-theme";
+import { usePageTitle } from "@/lib/use-page-title";
 
 const PREVIEW_PROGRESS: SectionActivityStatus = { tracks: {} };
 
@@ -70,6 +71,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   }, [loadData]);
 
   useClassTheme(cls?.color);
+  usePageTitle(section && `${section.id} ${section.title}`.trim(), cls?.name, "Teaching");
 
   const saveSection = useCallback(
     async (updated: Section) => {

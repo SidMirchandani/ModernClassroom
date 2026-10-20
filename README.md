@@ -53,7 +53,7 @@ npm run dev
 The demo at `/demo` runs with no configuration at all — it never touches the
 network. The env file is only needed for real accounts.
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:5000](http://localhost:5000).
 
 ### Scripts
 

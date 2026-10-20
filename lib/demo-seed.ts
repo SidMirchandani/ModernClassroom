@@ -4,6 +4,7 @@ import { checkpointMax } from "./grades";
 import { DEMO_DB_KEY, DEMO_SESSION_KEY } from "./store/local";
 import { getCourseTemplate, instantiateTemplate } from "./course-templates";
 import { DEMO_PROGRESS, UNIT } from "./demo-units";
+import { clearDemoChats } from "./curriculum-chat";
 
 export const DEMO_FLAG_KEY = "modern-classroom-demo";
 const DEMO_NOTICE_KEY = "modern-classroom-demo-notice";
@@ -32,6 +33,7 @@ export function isDemoMode(): boolean {
 
 export function exitDemoMode(): void {
   if (typeof window === "undefined") return;
+  void clearDemoChats();
   localStorage.removeItem(DEMO_FLAG_KEY);
   localStorage.removeItem(DEMO_NOTICE_KEY);
   localStorage.removeItem(DEMO_DB_KEY);
@@ -279,6 +281,8 @@ function authoredUnit3States(): Record<
  */
 export function seedDemo(): void {
   if (typeof window === "undefined") return;
+  // A fresh demo has had no conversations yet.
+  void clearDemoChats();
 
   const algebra = makeClass(
     "algebra-2",

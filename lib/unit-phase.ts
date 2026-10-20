@@ -1,8 +1,19 @@
 import type { CurriculumUnit } from "./db/types";
 
-export type UnitPhase = "finished" | "active" | "upcoming";
+export type UnitPhase = "finished" | "active" | "upcoming" | "not-started";
 
-export function getUnitPhase(unitIndex: number, currentUnitIndex: number): UnitPhase {
+/**
+ * Where a unit stands against the class's place in the year. A class nobody
+ * has joined has not started anywhere: with no gate set, the class counts as
+ * open through its last unit, which would otherwise call every unit before
+ * it "Finished" on day one.
+ */
+export function getUnitPhase(
+  unitIndex: number,
+  currentUnitIndex: number,
+  started = true
+): UnitPhase {
+  if (!started) return "not-started";
   if (unitIndex < currentUnitIndex) return "finished";
   if (unitIndex > currentUnitIndex) return "upcoming";
   return "active";
@@ -12,6 +23,8 @@ export const UNIT_PHASE_LABEL: Record<UnitPhase, string> = {
   finished: "Finished",
   active: "Active",
   upcoming: "Upcoming",
+  // The same words the status chips use for work nobody has begun.
+  "not-started": "Not Started",
 };
 
 export const UNIT_PHASE_CLASSES: Record<UnitPhase, string> = {
@@ -21,6 +34,8 @@ export const UNIT_PHASE_CLASSES: Record<UnitPhase, string> = {
     "bg-white dark:bg-slate-900 border border-primary/30 text-primary dark:text-primary-glow border border-primary/25",
   upcoming:
     "bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800",
+  "not-started":
+    "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-500 border border-slate-200 dark:border-slate-800",
 };
 
 /** Resolve which unit the class is currently working in from the progress gate. */

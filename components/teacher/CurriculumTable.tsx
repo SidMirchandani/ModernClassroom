@@ -185,7 +185,7 @@ export function CurriculumTable({
                 value={subunit.title}
                 onChange={(e) => updateSubunitTitle(unit.id, subunit.id, e.target.value)}
                 onBlur={() => onEdit?.()}
-                className="w-28 sm:w-36 bg-transparent border-b border-slate-300 focus:outline-none"
+                className="w-28 cq-sm:w-36 bg-transparent border-b border-slate-300 focus:outline-none"
               />
               <button
                 type="button"
@@ -267,7 +267,7 @@ export function CurriculumTable({
                   updateCheckpoint(unit, checkpoint.id, { title: e.target.value })
                 }
                 onBlur={() => onEdit?.()}
-                placeholder="Quiz 3A"
+                placeholder="Title"
                 className="flex-1 min-w-0 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs bg-white dark:bg-slate-900"
               />
               <button
@@ -301,7 +301,7 @@ export function CurriculumTable({
                   updateCheckpoint(unit, checkpoint.id, { date: e.target.value })
                 }
                 onBlur={() => onEdit?.()}
-                placeholder="10/12"
+                placeholder="Date"
                 className="w-20 px-1.5 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs bg-white dark:bg-slate-900"
               />
               <Select
@@ -362,7 +362,7 @@ export function CurriculumTable({
       <div className="card overflow-hidden">
         {/* Phone: one card per unit. Three columns fighting over 375px is
             unreadable, so the same content stacks instead. */}
-        <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+        <div className="cq-md:hidden divide-y divide-slate-100 dark:divide-slate-800">
           {units.map((unit) => (
             <div key={unit.id} className="px-4 py-4 space-y-3">
               <div>{renderUnitTitle(unit)}</div>
@@ -384,7 +384,7 @@ export function CurriculumTable({
           ))}
         </div>
 
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden cq-md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">

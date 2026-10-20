@@ -28,7 +28,7 @@ export function SubunitScheduleEditor({ section, onChange, onSave }: Props) {
         value={section.date ?? ""}
         onChange={(e) => onChange({ ...section, date: e.target.value })}
         onBlur={(e) => onSave({ ...section, date: e.target.value })}
-        placeholder="e.g. 10/12 or 10/13"
+        placeholder="Date"
         className="w-full max-w-xs px-3 h-11 rounded-lg border border-slate-200 dark:border-slate-700 text-sm bg-white dark:bg-slate-900 transition-colors focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
       />
     </section>

@@ -1,3 +1,4 @@
+import plugin from "tailwindcss/plugin";
 import type { Config } from "tailwindcss";
 
 /**
@@ -82,7 +83,19 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // Breakpoints on the nearest size container instead of the window, for
+    // what sits beside the docked chat: the class view is a container, and
+    // its contents use `cq-md:` where they would use `md:`. Same widths
+    // as the screen breakpoints, so a class with the chat closed looks as
+    // it always did.
+    plugin(({ addVariant }) => {
+      addVariant("cq-sm", "@container (min-width: 40rem)");
+      addVariant("cq-md", "@container (min-width: 48rem)");
+      addVariant("cq-lg", "@container (min-width: 64rem)");
+      addVariant("cq-xl", "@container (min-width: 80rem)");
+    }),
+  ],
 };
 
 export default config;

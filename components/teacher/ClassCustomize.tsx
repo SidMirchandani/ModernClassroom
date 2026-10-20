@@ -60,7 +60,7 @@ export function ClassCustomize({ name, code, color, icon, onChange }: Props) {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col cq-sm:flex-row gap-3">
           <label className="flex-1 min-w-0">
             <span className="eyebrow-muted">Class name</span>
             <input
@@ -76,7 +76,7 @@ export function ClassCustomize({ name, code, color, icon, onChange }: Props) {
             />
           </label>
 
-          <div className="sm:w-44 shrink-0">
+          <div className="cq-sm:w-44 shrink-0">
             <span className="eyebrow-muted">Class code</span>
             <div className="mt-1 flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 panel-inset">
               <span className="flex-1 font-mono text-sm tracking-[0.15em] tabular-nums text-slate-600 dark:text-slate-300">
@@ -108,7 +108,7 @@ export function ClassCustomize({ name, code, color, icon, onChange }: Props) {
           </p>
         </div>
 
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+        <div className="grid grid-cols-4 cq-sm:grid-cols-6 gap-2">
           {CLASS_ICONS.map((entry) => {
             const Glyph = entry.icon;
             const active = (icon ?? "grid") === entry.id;

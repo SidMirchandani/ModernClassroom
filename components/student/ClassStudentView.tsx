@@ -33,6 +33,7 @@ import { useOverlayTransition } from "@/lib/use-overlay-transition";
 import { shortUnitLabel } from "@/lib/curriculum";
 import { classIcon, type AccentId } from "@/lib/class-appearance";
 import { useClassTheme } from "@/lib/use-class-theme";
+import { usePageTitle } from "@/lib/use-page-title";
 import { buildClassTodos } from "@/lib/todos";
 import { TodoButton } from "@/components/TodoButton";
 import { SectionSidebar, SectionSidebarContent } from "./SectionSidebar";
@@ -288,6 +289,7 @@ export function ClassStudentView({
   );
 
   useClassTheme(cls?.color);
+  usePageTitle(cls?.name, "Enrolled");
 
   if (loading || !progress || !cls) {
     return (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell, type DashboardMode } from "./DashboardShell";
 import { getCurrentUser } from "@/lib/auth-client";
+import { usePageTitle } from "@/lib/use-page-title";
 import { store } from "@/lib/store";
 import type { ClassSummary } from "@/lib/db/types";
 import { buildTodosForClasses, type TodoItem } from "@/lib/todos";
@@ -37,6 +38,7 @@ export function DashboardClient() {
         ? "teaching"
         : null;
   const [mode, setMode] = useState<DashboardMode>(requestedTab ?? "teaching");
+  usePageTitle(mode === "teaching" ? "Teaching" : "Enrolled");
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);

@@ -222,7 +222,7 @@ function TrackEditorCard({
             value={track.reference ?? ""}
             onChange={(e) => onUpdate({ reference: e.target.value })}
             onBlur={onSaveCurrent}
-            placeholder="e.g. Ch 11 – Least Squares"
+            placeholder="Reference"
             className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm bg-white dark:bg-slate-900 transition-colors focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
@@ -246,7 +246,7 @@ function TrackEditorCard({
           objectives={track.objectives}
           onChange={(objectives) => setObjectives(objectives, false)}
           onSave={(objectives) => setObjectives(objectives, true)}
-          placeholder="Paste a CED learning target…"
+          placeholder="Learning target"
           addLabel="Add Target"
           emptyLabel="No targets on this resource yet."
           dotClass={colors.dot}

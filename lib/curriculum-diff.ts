@@ -4,11 +4,14 @@ import type { SectionRemap } from "./store/types";
 import type {
   Checkpoint,
   CheckpointKind,
+  ContentBlock,
   ResourceTrack,
   Section,
   TrackKind,
+  TrackStep,
 } from "./types";
 import {
+  STEP_LABELS,
   TRACK_KIND_LABELS,
   getTracks,
   normalizeSection,
@@ -37,10 +40,20 @@ import {
 
 // ── what the model is asked for ────────────────────────────────────────────
 
+/** One thing students do in a resource: how they learn it, or how they practise. */
+export interface ProposedActivity {
+  title: string;
+  instructions?: string | null;
+}
+
 export interface ProposedTrack {
   kind: TrackKind;
   label?: string | null;
   reference?: string | null;
+  /** Learning targets for this resource. */
+  objectives?: string[] | null;
+  learn?: ProposedActivity | null;
+  practice?: ProposedActivity | null;
 }
 
 export interface ProposedSection {
@@ -244,12 +257,17 @@ export function shapeProposal(
     });
 
     const existingId = group.existingId ?? existing?.id ?? null;
-    let title = group.title ?? existing?.title ?? (group.number ? `Unit ${group.number}` : "New unit");
-    // A new unit carries its number, "Unit 3: Linear Models", like every
-    // unit the app ships with. One the class already has keeps the title the
-    // teacher gave it — renaming it here would show up as a change.
-    if (!existingId && group.number && !/^unit\s*\d+/i.test(title)) {
-      title = `Unit ${group.number}: ${title}`;
+    const matched = current.find((u) => u.id === existingId) ?? existing;
+    let title = group.title ?? matched?.title ?? (group.number ? `Unit ${group.number}` : "New unit");
+    // A unit carries its number, "Unit 3: Linear Models", like every unit the
+    // app ships with — the model is asked for the name alone. One the class
+    // already has keeps the title the teacher gave it: a bare "Linear Models"
+    // for a unit already called that is not a rename, and neither is one
+    // that only lacks the "Unit 3:" its current title has.
+    if (group.number && !/^unit\s*\d+/i.test(title)) {
+      const prefixed = `Unit ${group.number}: ${title}`;
+      const bare = (t: string) => key(t.replace(/^unit\s*\d+\s*[:.\-–—]?\s*/i, ""));
+      title = matched && bare(matched.title) === key(title) ? matched.title : prefixed;
     }
 
     return {
@@ -278,6 +296,7 @@ export type ChangeKind =
   | "section-objectives"
   | "track-reference"
   | "track-add"
+  | "track-content"
   | "checkpoint-add"
   | "checkpoint-remove"
   | "checkpoint-field";
@@ -595,6 +614,247 @@ function planUnits(current: CurriculumUnit[], proposal: CurriculumProposal): Mer
   return { units };
 }
 
+// ── content ────────────────────────────────────────────────────────────────
+
+function hasActivity(activity: ProposedActivity | null | undefined): boolean {
+  return Boolean(norm(activity?.title) || norm(activity?.instructions));
+}
+
+/** A proposed activity as the block the editor would have made. */
+export function activityBlock(
+  step: TrackStep,
+  activity: ProposedActivity | null | undefined
+): ContentBlock | null {
+  if (!hasActivity(activity)) return null;
+  return {
+    id: uuidv4(),
+    type: step,
+    title: norm(activity!.title) || STEP_LABELS[step],
+    description: norm(activity!.instructions),
+    attachments: [],
+  };
+}
+
+export interface ContentToAdd {
+  objectives: string[];
+  learn: ProposedActivity | null;
+  practice: ProposedActivity | null;
+}
+
+/**
+ * What a proposal would add to a resource the section already has — only
+ * what is missing. A teacher's own activities and targets are never replaced
+ * or reworded; the model can fill an empty slot and nothing else.
+ */
+export function contentToAdd(existing: ResourceTrack, proposed: ProposedTrack): ContentToAdd {
+  const lacks = (step: TrackStep) => !(existing.blocks ?? []).some((b) => b.type === step);
+  return {
+    objectives:
+      (existing.objectives ?? []).length === 0
+        ? (proposed.objectives ?? []).map(norm).filter(Boolean)
+        : [],
+    learn: lacks("learn") && hasActivity(proposed.learn) ? proposed.learn! : null,
+    practice: lacks("practice") && hasActivity(proposed.practice) ? proposed.practice! : null,
+  };
+}
+
+/** "2 targets · Learn: Completing the square · Practice: …", or null for nothing. */
+function describeContent(content: ContentToAdd): string | null {
+  const parts = [
+    content.objectives.length > 0
+      ? `${content.objectives.length} target${content.objectives.length === 1 ? "" : "s"}`
+      : "",
+    content.learn ? `Learn: ${norm(content.learn.title) || STEP_LABELS.learn}` : "",
+    content.practice ? `Practice: ${norm(content.practice.title) || STEP_LABELS.practice}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+// ── keeping to the class's own format ──────────────────────────────────────
+
+/** A pattern every one of a resource's activities follows, with "{ref}" for its reference. */
+interface Pattern {
+  title: string | null;
+  instructions: string | null;
+}
+
+interface TrackProfile {
+  objectives: boolean;
+  learn: boolean;
+  practice: boolean;
+  patterns: Record<TrackStep, Pattern>;
+}
+
+/**
+ * The one form every example shares, or null. "{ref}" stands for the
+ * resource's reference wherever an example contains its own; at least two
+ * examples are needed before anything counts as a pattern.
+ */
+function sharedPattern(examples: { text: string; reference: string }[]): string | null {
+  if (examples.length < 2) return null;
+  const forms = examples.map(({ text, reference }) =>
+    reference && text.includes(reference) ? text.split(reference).join("{ref}") : text
+  );
+  return forms.every((f) => f === forms[0]) ? forms[0] : null;
+}
+
+function hasContent(section: Section): boolean {
+  return (
+    (section.objectives ?? []).length > 0 ||
+    (section.tracks ?? []).some((t) => (t.blocks ?? []).length > 0 || (t.objectives ?? []).length > 0)
+  );
+}
+
+interface ClassFormat {
+  usesObjectives: boolean;
+  profiles: Map<string, TrackProfile>;
+}
+
+/** What a set of filled-in subunits does with its resources, or null with too few to tell. */
+function formatOf(sections: Section[]): ClassFormat | null {
+  const filled = sections.filter(Boolean).filter(hasContent);
+  if (filled.length < 2) return null;
+
+  const profiles = new Map<string, TrackProfile>();
+  const examples = new Map<string, Record<TrackStep, { title: string[]; instructions: string[]; refs: string[] }>>();
+
+  for (const section of filled) {
+    for (const track of getTracks(section)) {
+      const k = trackKey(track.kind, track.label);
+      const profile = profiles.get(k) ?? {
+        objectives: false,
+        learn: false,
+        practice: false,
+        patterns: { learn: { title: null, instructions: null }, practice: { title: null, instructions: null } },
+      };
+      const seen = examples.get(k) ?? {
+        learn: { title: [], instructions: [], refs: [] },
+        practice: { title: [], instructions: [], refs: [] },
+      };
+      if ((track.objectives ?? []).length > 0) profile.objectives = true;
+      for (const step of ["learn", "practice"] as const) {
+        const block = (track.blocks ?? []).find((b) => b.type === step);
+        if (!block) continue;
+        profile[step] = true;
+        seen[step].title.push(norm(block.title));
+        seen[step].instructions.push(norm(block.description));
+        seen[step].refs.push(norm(track.reference));
+      }
+      profiles.set(k, profile);
+      examples.set(k, seen);
+    }
+  }
+
+  for (const [k, seen] of examples) {
+    const profile = profiles.get(k)!;
+    for (const step of ["learn", "practice"] as const) {
+      const pair = (texts: string[]) => texts.map((text, i) => ({ text, reference: seen[step].refs[i] }));
+      profile.patterns[step] = {
+        title: sharedPattern(pair(seen[step].title)),
+        instructions: sharedPattern(pair(seen[step].instructions)),
+      };
+    }
+  }
+
+  return { usesObjectives: filled.some((s) => (s.objectives ?? []).length > 0), profiles };
+}
+
+/**
+ * Holds content the model wrote to the class's own format, in code rather
+ * than on trust. A unit whose subunits carry no objectives gets none invented
+ * for a new one; a resource whose every Practice is titled "Practice" with
+ * "Assigned practice for Ch 12.6." gets exactly that, with its own reference.
+ * Fields left empty on a resource stay empty.
+ *
+ * The format is read from the unit the subunit goes into — a class can be
+ * written two ways (a hand-authored unit beside plainer ones), and a new
+ * subunit should look like its neighbours. Only when its unit has too little
+ * to go on does the rest of the class decide.
+ *
+ * Only for content written in the chat. What a teacher's own files say is
+ * theirs to keep, whatever shape the class had before; and a class with too
+ * little content to show a pattern is left to the model.
+ */
+export function conformToClass(
+  proposal: CurriculumProposal,
+  current: CurriculumUnit[]
+): CurriculumProposal {
+  const classFormat = formatOf(current.flatMap((u) => u.subunits ?? []));
+  if (!classFormat) return proposal;
+
+  const unitFormat = (unit: ProposedUnit): ClassFormat => {
+    const home =
+      current.find((u) => u.id === unit.existingId) ??
+      current.find((u) => plainNumber(unit.number) !== null && unitNumberOf(u.subunits?.[0]?.id) === plainNumber(unit.number));
+    return (home && formatOf(home.subunits ?? [])) ?? classFormat;
+  };
+
+  /** The pattern, filled with this resource's reference — or the model's own words without one. */
+  const apply = (pattern: string | null, reference: string, own: string | null | undefined) => {
+    if (pattern === null) return own ?? null;
+    if (!pattern.includes("{ref}")) return pattern;
+    return reference ? pattern.split("{ref}").join(reference) : (own ?? null);
+  };
+
+  const conformTrack = (format: ClassFormat, fresh: boolean) => (track: ProposedTrack): ProposedTrack => {
+    const profile = format.profiles.get(trackKey(track.kind, track.label));
+    // A resource with no content on it yet has no format to keep.
+    if (!profile) return track;
+    const reference = norm(track.reference);
+    const activity = (step: TrackStep): ProposedActivity | null => {
+      if (!profile[step]) return null;
+      const own = track[step];
+      const pattern = profile.patterns[step];
+      if (!own) {
+        // An activity the pattern decides entirely — "Ch 12.7", then
+        // "Practice" / "Assigned practice for Ch 12.7." — is written here
+        // when the model left it out, for a new subunit only: one that
+        // exists keeps whatever it has unless the teacher asks.
+        const decided =
+          fresh &&
+          pattern.title !== null &&
+          pattern.instructions !== null &&
+          (reference !== "" || (!pattern.title.includes("{ref}") && !pattern.instructions.includes("{ref}")));
+        if (!decided) return null;
+        return {
+          title: apply(pattern.title, reference, null) ?? "",
+          instructions: apply(pattern.instructions, reference, null),
+        };
+      }
+      return {
+        title: apply(pattern.title, reference, own.title) ?? own.title,
+        instructions: apply(pattern.instructions, reference, own.instructions),
+      };
+    };
+    return {
+      ...track,
+      objectives: profile.objectives ? track.objectives : null,
+      learn: activity("learn"),
+      practice: activity("practice"),
+    };
+  };
+
+  const known = new Set(current.flatMap((u) => (u.subunits ?? []).map((s) => s?.id)));
+
+  return {
+    ...proposal,
+    units: proposal.units.map((unit) => {
+      const format = unitFormat(unit);
+      return {
+        ...unit,
+        sections: unit.sections.map((section) => {
+          const fresh = !section.existingId && !known.has(norm(section.number));
+          return {
+            ...section,
+            objectives: format.usesObjectives ? section.objectives : null,
+            tracks: section.tracks ? section.tracks.map(conformTrack(format, fresh)) : section.tracks,
+          };
+        }),
+      };
+    }),
+  };
+}
+
 // ── the change set ─────────────────────────────────────────────────────────
 
 /**
@@ -741,6 +1001,21 @@ export function buildChangeSet(
       for (const track of section.tracks) {
         const label = track.existing?.label ?? track.label;
         if (track.existing && track.proposed) {
+          // Content the resource lacks, offered on its own row: filling in a
+          // section's activities is a different decision from re-pointing it.
+          const content = describeContent(contentToAdd(track.existing, track.proposed));
+          if (content) {
+            changes.push({
+              id: changeId("track-content", unit.key, section.key, trackKey(track.kind, label)),
+              kind: "track-content",
+              unitKey: unit.key,
+              sectionKey: section.key,
+              field: `${label} content`,
+              where,
+              before: null,
+              after: content,
+            });
+          }
           const after = norm(track.proposed.reference);
           if (!after) continue;
           push({
@@ -805,6 +1080,11 @@ export function buildChangeSet(
       }
 
       if (existing && !proposed) {
+        // A unit returned with no checkpoints at all is silence about them —
+        // a lesson-by-lesson sheet that never mentions a quiz is not asking
+        // to delete every quiz. Only a unit that lists some offers to drop
+        // the ones it left out.
+        if ((unit.proposed.checkpoints ?? []).length === 0) continue;
         changes.push({
           id: changeId("checkpoint-remove", unit.key, checkpoint.key, "checkpoint"),
           kind: "checkpoint-remove",
@@ -892,13 +1172,22 @@ function newTrack(
   while (used.has(id)) id = `${base}::${suffix++}`;
   used.add(id);
 
+  // A resource arrives with whatever content the proposal gave it — without
+  // a Learn or Practice it is an empty track, which students never see.
+  const blocks = [
+    activityBlock("learn", planned.proposed?.learn),
+    activityBlock("practice", planned.proposed?.practice),
+  ].filter((b): b is ContentBlock => b !== null);
   return {
     id,
     kind: planned.kind,
     label: norm(planned.proposed?.label) || planned.label || TRACK_KIND_LABELS[planned.kind],
     reference: norm(planned.proposed?.reference),
-    objectives: [],
-    blocks: [],
+    objectives: (planned.proposed?.objectives ?? [])
+      .map(norm)
+      .filter(Boolean)
+      .map((text) => ({ id: uuidv4(), text })),
+    blocks,
     ...(planned.kind === "extra" ? { optional: true } : {}),
   };
 }
@@ -1051,7 +1340,26 @@ export function applyChanges(
             const approvedRef =
               reference !== "" &&
               ok("track-reference", unit.key, section.key, trackKey(track.kind, label));
-            return approvedRef ? { ...track.existing, reference } : track.existing;
+            let kept: ResourceTrack = approvedRef ? { ...track.existing, reference } : track.existing;
+            // Filling in only ever adds to the resource: its id, its blocks
+            // and every mark filed under them stay as they were.
+            if (track.proposed && ok("track-content", unit.key, section.key, trackKey(track.kind, label))) {
+              const add = contentToAdd(track.existing, track.proposed);
+              kept = {
+                ...kept,
+                objectives:
+                  add.objectives.length > 0
+                    ? add.objectives.map((text) => ({ id: uuidv4(), text }))
+                    : kept.objectives,
+                blocks: [
+                  ...(kept.blocks ?? []),
+                  ...[activityBlock("learn", add.learn), activityBlock("practice", add.practice)].filter(
+                    (b): b is ContentBlock => b !== null
+                  ),
+                ],
+              };
+            }
+            return kept;
           }
           return ok("track-add", unit.key, section.key, trackKey(track.kind, track.label))
             ? newTrack(id, track, used)

@@ -15,6 +15,7 @@ import {
 import { getCurrentUser } from "@/lib/auth-client";
 import { setPendingImport } from "@/lib/pending-import";
 import { store } from "@/lib/store";
+import { usePageTitle } from "@/lib/use-page-title";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 
 /**
@@ -32,6 +33,7 @@ import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 export default function NewClassPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  usePageTitle("New class", "Teaching");
   const [name, setName] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [notes, setNotes] = useState("");
@@ -114,7 +116,7 @@ export default function NewClassPage() {
             value={name}
             disabled={busy}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Algebra II, Period 3"
+            placeholder="Name"
             className="mt-1 w-full px-0 py-2 bg-transparent border-0 border-b border-slate-200 dark:border-slate-700 rounded-none text-lg placeholder:text-slate-300 dark:placeholder:text-slate-600 focus-visible:!shadow-none focus-visible:!border-primary"
           />
         </label>

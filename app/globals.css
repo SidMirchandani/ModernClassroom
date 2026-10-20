@@ -591,6 +591,44 @@
     to { opacity: 1; }
   }
 
+  /* The chat's step that is running: a light passing over its verb, the way
+     an editor's agent shows the line it is on. Still text without motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    .shimmer-text {
+      background: linear-gradient(
+        90deg,
+        rgb(100 116 139) 0%,
+        rgb(100 116 139) 35%,
+        rgb(15 23 42) 50%,
+        rgb(100 116 139) 65%,
+        rgb(100 116 139) 100%
+      );
+      background-size: 300% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      /* Fill, not colour: a text-colour utility on the same element wins
+         over `color`, but never over the fill. */
+      -webkit-text-fill-color: transparent;
+      animation: shimmer-text 1.8s linear infinite;
+    }
+
+    .dark .shimmer-text {
+      background-image: linear-gradient(
+        90deg,
+        rgb(148 163 184) 0%,
+        rgb(148 163 184) 35%,
+        rgb(255 255 255) 50%,
+        rgb(148 163 184) 65%,
+        rgb(148 163 184) 100%
+      );
+    }
+  }
+
+  @keyframes shimmer-text {
+    from { background-position: 100% 0; }
+    to { background-position: 0% 0; }
+  }
+
   /** Small brand-coloured label that sits above a heading or section. */
   .eyebrow {
     @apply text-[11px] font-bold uppercase tracking-[0.08em] leading-[1.25]

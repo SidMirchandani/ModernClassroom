@@ -17,6 +17,7 @@ import {
 import { getActiveSteps, getVisibleTracks } from "@/lib/section-tracks";
 import { classIcon } from "@/lib/class-appearance";
 import { useClassTheme } from "@/lib/use-class-theme";
+import { usePageTitle } from "@/lib/use-page-title";
 import { TrackStatusDots } from "@/components/TrackStatusDots";
 import { CHECKPOINT_KIND_META } from "@/components/CheckpointRow";
 import { Popover } from "@/components/Popover";
@@ -27,6 +28,8 @@ import { getCurrentUnitIndex, getUnitPhase, type UnitPhase } from "@/lib/unit-ph
 import { UnitPhaseBadge } from "./UnitPhaseBadge";
 import { TableProgressGate } from "./TableProgressGate";
 import { CurriculumPanel } from "./CurriculumPanel";
+import { AgentPanel } from "./AgentPanel";
+import { useCurriculumAgent } from "@/lib/use-curriculum-agent";
 import { ClassCustomize } from "./ClassCustomize";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
@@ -228,7 +231,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const sectionIds = sections.map((s) => s.id);
   const columns = buildColumns(sections, activeUnit?.checkpoints ?? []);
   const currentUnitIndex = getCurrentUnitIndex(units, blockSectionId);
-  const unitPhase = getUnitPhase(activeUnitIndex, currentUnitIndex);
+  const unitPhase = getUnitPhase(activeUnitIndex, currentUnitIndex, students.length > 0);
   const isActiveUnit = unitPhase === "active";
   const effectiveBlockId =
     isActiveUnit && blockSectionId
@@ -341,6 +344,15 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const [pendingRemoval, setPendingRemoval] = useState<Student | null>(null);
 
   useClassTheme(cls?.color);
+  usePageTitle(
+    cls?.name &&
+      (activeView === "curriculum"
+        ? `Curriculum for ${cls.name}`
+        : activeView === "customize"
+          ? `Customize ${cls.name}`
+          : cls.name),
+    "Teaching"
+  );
 
   const saveClass = useCallback(
     async (patch: Partial<DbClass>) => {
@@ -577,6 +589,34 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     }
   }, [reviewTarget, classProgress]);
 
+  // The curriculum chat. A draft it makes is reviewed on the Curriculum tab,
+  // so one arriving while the teacher is elsewhere takes them there.
+  const agent = useCurriculumAgent({
+    classId,
+    units,
+    onApply: applyCurriculum,
+    onDraft: () => selectView("curriculum"),
+  });
+  const { setOpen: setAgentOpen } = agent;
+
+  // ⌘I / Ctrl+I opens and minimises it, as in an editor.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        setAgentOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setAgentOpen]);
+
+  /** From the chat to the draft: on a phone the chat covers it, so it steps aside. */
+  const showReview = useCallback(() => {
+    selectView("curriculum");
+    if (!window.matchMedia("(min-width: 1024px)").matches) setAgentOpen(false);
+  }, [selectView, setAgentOpen]);
+
   if (loading || !cls) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -733,7 +773,22 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         <NavCapsule tabs={navTabs} activeId={activeView} />
       </div>
 
-      <div className="max-w-7xl mx-auto w-full px-5 sm:px-6 py-8 sm:py-10 space-y-10">
+      {/* Room for the chat beside the class when it is docked — exactly as
+          wide as it has been dragged, so nothing sits under it. Below `lg`
+          it covers the page whole instead, and nothing moves. */}
+      <div
+        // A size container: the class inside lays itself out for the width it
+        // actually has beside the chat (the `cq-*` variants), not for the
+        // window's — at 1280px with the chat open, it has ~600.
+        style={{
+          paddingRight: agent.open && agent.docked ? agent.width : 0,
+          containerType: "inline-size",
+        }}
+        className={cn(
+          !agent.resizing && "transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        )}
+      >
+      <div className="max-w-7xl mx-auto w-full px-5 cq-sm:px-6 py-8 cq-sm:py-10 space-y-10">
         <div>
           {editingName ? (
             <input
@@ -773,10 +828,10 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
         {activeView === "classroom" && (
           <div key="classroom" className="page-in space-y-10">
-        <div className="list-in grid grid-cols-2 sm:grid-cols-3 border-y border-slate-200 dark:border-slate-800 sm:divide-x divide-slate-200 dark:divide-slate-800">
+        <div className="list-in grid grid-cols-2 cq-sm:grid-cols-3 border-y border-slate-200 dark:border-slate-800 cq-sm:divide-x divide-slate-200 dark:divide-slate-800">
           <StatCard label="Students" value={totalStudents} sub="enrolled" icon={<Users className="w-4 h-4 text-primary" />} onClick={() => setOpenModal("students")} />
           <StatCard label="Avg Progress" value={`${Math.round(avgProgress * 100)}%`} sub="complete" icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} onClick={() => setOpenModal("progress")} />
-          <StatCard className="col-span-2 sm:col-span-1" label="Sections" value={sections.length} sub="subunits" icon={<LayoutGrid className="w-4 h-4 text-primary" />} onClick={() => setOpenModal("sections")} />
+          <StatCard className="col-span-2 cq-sm:col-span-1" label="Sections" value={sections.length} sub="subunits" icon={<LayoutGrid className="w-4 h-4 text-primary" />} onClick={() => setOpenModal("sections")} />
         </div>
 
         {sections.length > 0 && (
@@ -788,8 +843,8 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               goes (the page heading carries the same control, on the same
               state), and below `md` the keys move above the search.
             */}
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="hidden xl:block min-w-0">
+            <div className="flex flex-col gap-3 cq-xl:flex-row cq-xl:items-center cq-xl:justify-between">
+              <div className="hidden cq-xl:block min-w-0">
                 <UnitNav
                   index={activeUnitIndex}
                   count={units.length}
@@ -798,7 +853,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                   onChange={setActiveUnitIndex}
                 />
               </div>
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-2">
+              <div className="flex flex-col gap-2 cq-md:flex-row cq-md:items-center cq-md:justify-end cq-md:gap-2">
                 <TableKeys sections={sections} />
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -807,7 +862,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                     placeholder="Search students..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 w-full md:w-48"
+                    className="pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 w-full cq-md:w-48"
                   />
                 </div>
               </div>
@@ -1114,7 +1169,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
             <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 mb-4">
               Section Breakdown
             </h2>
-            <div className="list-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-2">
+            <div className="list-in grid grid-cols-1 cq-sm:grid-cols-2 cq-lg:grid-cols-3 gap-x-10 gap-y-2">
               {classStats.map((stat) => (
                 <div key={stat.sectionId} className="py-3">
                   <div className="mb-3">
@@ -1146,10 +1201,10 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           <CurriculumPanel
             classId={classId}
             units={cls.units}
-            importInstructions={cls.importInstructions}
+            review={agent.review}
+            chatOpen={agent.open}
+            onOpenChat={() => agent.setOpen(true)}
             onUpdate={(units) => saveClass({ units })}
-            onSaveInstructions={(importInstructions) => saveClass({ importInstructions })}
-            onApply={applyCurriculum}
           />
           </div>
         )}
@@ -1170,6 +1225,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         )}
 
       </div>
+      </div>
+
+      <AgentPanel agent={agent} units={units} onReview={showReview} />
 
       <ConfirmDialog
         open={pendingRemoval !== null}
@@ -1525,7 +1583,7 @@ function StatCard({ label, value, sub, icon, onClick, className }: {
     <button
       type="button"
       onClick={onClick}
-      className={cn("group px-1 sm:px-5 py-4 sm:first:pl-1 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/60", className)}
+      className={cn("group px-1 cq-sm:px-5 py-4 cq-sm:first:pl-1 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/60", className)}
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-medium text-slate-500">{label}</span>
