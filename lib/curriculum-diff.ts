@@ -1161,6 +1161,18 @@ export function orderRemaps(remaps: SectionRemap[]): SectionRemap[] {
   return [...out, ...deferred];
 }
 
+/**
+ * The moves that undo applied ones: every batch, newest first, each move
+ * reversed and run backwards. That is already a safe order — it is the
+ * forward order played in reverse, scratch ids and all — so it is not
+ * re-sorted: re-sorting a swap's three moves would put them in a cycle.
+ */
+export function undoRemaps(batches: SectionRemap[][]): SectionRemap[] {
+  return [...batches]
+    .reverse()
+    .flatMap((batch) => [...batch].reverse().map(({ from, to }) => ({ from: to, to: from })));
+}
+
 function newTrack(
   sectionId: string,
   planned: PlannedTrack,

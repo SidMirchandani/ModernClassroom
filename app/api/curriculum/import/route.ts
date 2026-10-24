@@ -179,7 +179,7 @@ THE CONVERSATION
 
 23. "reply" is what you say back in the chat: one to three short sentences, in the first person, spoken to the teacher in plain words. Say what you did — "I read your Algebra II time line and drafted 14 units, Unit 0 to Unit 13, with each test and quiz on the date your sheet gives it." — or answer what they asked. Do not list every unit: the draft is on their screen.
 
-24. When there is A DRAFT YOU HAVE PROPOSED, the teacher is reviewing it on screen right now, and their message is about it. Return in "units" only the units your answer changes, each one complete — every section and checkpoint it should have, as the draft has it with your change made. Units you leave out stay exactly as the draft has them. Do only what was asked.
+24. When there is A DRAFT YOU HAVE PROPOSED, the teacher is reviewing it on screen right now, and their message is about it. Return in "units" only the units your answer changes, each one complete — every section and checkpoint it should have, as the draft has it with your change made. Units you leave out stay exactly as the draft has them. Do only what was asked. THE DRAFT'S CHANGES lists every change in it and whether the teacher has accepted, rejected or not yet decided it; when they ask you to fix, redo or drop some of them ("the rejected ones", "the dates"), change exactly those and leave the rest of the draft as it is. When the teacher points at changes (THE CHANGES THE TEACHER IS POINTING AT), "this", "these", "it" and "them" mean those changes.
 
 25. Without a draft or files, a request to change the curriculum ("move the Unit 3 test to 11/4") returns just the units it changes, complete, as rule 17 says.
 
@@ -943,7 +943,18 @@ class Incomplete extends Error {
  * units is never the answer. Anywhere else an empty answer is a real one — a
  * question answered, or a sheet that matches what the class already has.
  */
-function readProposal(text: string, current: CurriculumUnit[], expectUnits: boolean): Reading {
+function readProposal(
+  text: string,
+  current: CurriculumUnit[],
+  expectUnits: boolean,
+  /**
+   * Hold the units to the outline. Only for a read of files: a follow-up or
+   * a request returns just the units it changes, and a model that lists the
+   * whole year in its outline anyway has not stopped short — on 2026-10-20
+   * a correct one-unit answer was thrown away for "missing" the other ten.
+   */
+  checkOutline: boolean
+): Reading {
   let answer: Answer;
   try {
     answer = JSON.parse(text) as Answer;
@@ -966,7 +977,7 @@ function readProposal(text: string, current: CurriculumUnit[], expectUnits: bool
   const missing = promised.filter((n) => !have.has(n));
   // A unit or two may be a heading with no lessons under it; more than that
   // is a model that stopped early.
-  if (missing.length > Math.max(1, Math.floor(promised.length * 0.15))) {
+  if (checkOutline && missing.length > Math.max(1, Math.floor(promised.length * 0.15))) {
     console.warn(`[import] answer is missing units ${missing.join(", ")} of its outline`);
     throw new Incomplete(proposal);
   }
@@ -1030,6 +1041,34 @@ interface Turn {
 }
 
 /** The conversation so far, newest kept when it runs long. */
+/** A change in the draft, as the chat describes it. */
+interface DescribedChange {
+  label: string;
+  detail: string;
+  decision?: string;
+}
+
+/** Changes the browser describes — what the teacher pointed at, or where the review stands. Capped. */
+function readChanges(raw: FormDataEntryValue | null): DescribedChange[] {
+  try {
+    const parsed = JSON.parse(typeof raw === "string" && raw ? raw : "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (c): c is DescribedChange =>
+          c !== null && typeof c === "object" && typeof c.label === "string" && typeof c.detail === "string"
+      )
+      .slice(0, 400)
+      .map((c) => ({
+        label: c.label.slice(0, 200),
+        detail: c.detail.slice(0, 600),
+        decision: typeof c.decision === "string" ? c.decision.slice(0, 20) : undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 function readHistory(raw: FormDataEntryValue | null): Turn[] {
   try {
     const parsed = JSON.parse(typeof raw === "string" && raw ? raw : "[]") as unknown;
@@ -1282,9 +1321,13 @@ export async function POST(request: Request) {
   const files = form.getAll("files").filter((f): f is File => f instanceof File);
   const history = readHistory(form.get("history"));
   const draft = readDraft(form.get("draft"));
+  const pointedAt = readChanges(form.get("mentions"));
+  const reviewState = readChanges(form.get("review"));
   if (draft === "bad") return bad("Could not read the draft", 400);
 
-  if (files.length === 0 && !message) return bad("Attach a file or write a message", 400);
+  if (files.length === 0 && !message && pointedAt.length === 0) {
+    return bad("Attach a file or write a message", 400);
+  }
   if (files.length > MAX_FILES) return bad(`At most ${MAX_FILES} files at a time`, 400);
 
   const total = files.reduce((sum, f) => sum + f.size, 0);
@@ -1368,7 +1411,8 @@ export async function POST(request: Request) {
     storedInstructions = cls.import_instructions ?? "";
   }
 
-  const smallTalk = read.length === 0 && !draft && message.length <= 60 && SMALL_TALK.test(message);
+  const smallTalk =
+    read.length === 0 && !draft && pointedAt.length === 0 && message.length <= 60 && SMALL_TALK.test(message);
   const conversation: Part[] =
     history.length > 0
       ? [
@@ -1399,6 +1443,24 @@ export async function POST(request: Request) {
               null,
               1
             )}`,
+          },
+          ...(reviewState.length > 0
+            ? [
+                {
+                  text: `THE DRAFT'S CHANGES — and what the teacher has decided about each\n${reviewState
+                    .map((c) => `- [${c.decision ?? "undecided"}] ${c.detail}`)
+                    .join("\n")}`,
+                },
+              ]
+            : []),
+        ]
+      : []),
+    ...(pointedAt.length > 0
+      ? [
+          {
+            text: `THE CHANGES THE TEACHER IS POINTING AT — their message is about these\n${pointedAt
+              .map((c) => `- ${c.detail}`)
+              .join("\n")}`,
           },
         ]
       : []),
@@ -1501,7 +1563,7 @@ export async function POST(request: Request) {
               }
 
               const finish = (): Reading => {
-                if (!smallTalk) return readProposal(text, current, expectUnits);
+                if (!smallTalk) return readProposal(text, current, expectUnits, read.length > 0);
                 let reply = "";
                 try {
                   reply = String((JSON.parse(text) as { reply?: unknown }).reply ?? "").trim();

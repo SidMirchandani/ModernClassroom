@@ -147,6 +147,37 @@ export function carryDecisions(hunks: Hunk[], decisions: Decisions): Decisions {
   return out;
 }
 
+/**
+ * A hunk in words, for when the teacher points at it in the chat: a short
+ * label for the chip ("3.8 Linear Inequalities") and the detail the model is
+ * given ("Unit 3 · 3.8 — Date: 10/22 → 10/23").
+ */
+export function describeHunk(hunk: Hunk, set: ChangeSet): { label: string; detail: string } {
+  const [kind, unitKey, childKey] = hunk.key.split("|");
+  const unit = set.plan.units.find((u) => u.key === unitKey);
+  const unitTitle = unit?.proposed?.title ?? unit?.existing?.title ?? "Unit";
+  let label = unitTitle;
+  if (kind === "sec") {
+    const section = unit?.sections.find((s) => s.key === childKey);
+    label = [section?.proposed?.number ?? section?.existing?.id, section?.proposed?.title ?? section?.existing?.title]
+      .filter(Boolean)
+      .join(" ");
+  } else if (kind === "cp") {
+    const checkpoint = unit?.checkpoints.find((c) => c.key === childKey);
+    label = checkpoint?.proposed?.title ?? checkpoint?.existing?.title ?? "Checkpoint";
+  }
+  const detail = hunk.changes
+    .map((c) =>
+      c.before === null
+        ? `${c.field}: add ${c.after}`
+        : c.after === null
+          ? `${c.field}: remove ${c.before}`
+          : `${c.field}: ${c.before} → ${c.after}`
+    )
+    .join("; ");
+  return { label: label || unitTitle, detail: `${kind === "unit" ? unitTitle : `${unitTitle} · ${label}`} — ${detail}` };
+}
+
 /** "3 units · 14 changes", for the chat's summary of an edit. */
 export function describeSet(set: ChangeSet, hunks: Hunk[]): string {
   const added = set.changes.filter((c) => c.kind === "unit-add").length;

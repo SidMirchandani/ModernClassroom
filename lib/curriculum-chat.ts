@@ -1,5 +1,7 @@
+import type { CurriculumUnit } from "./db/types";
 import type { CurriculumProposal } from "./curriculum-diff";
 import type { Decisions } from "./curriculum-review";
+import type { SectionRemap } from "./store/types";
 
 /**
  * The curriculum chat: a teacher's conversations with the assistant that
@@ -44,6 +46,19 @@ export interface ReviewState {
   decisions: Decisions;
   accepted?: number;
   total?: number;
+  /**
+   * The curriculum just before this draft was applied, and the section moves
+   * applying it made — what reverting to an earlier message puts back.
+   */
+  before?: CurriculumUnit[];
+  remaps?: SectionRemap[];
+}
+
+/** A change in the draft the teacher pointed at, as it read when they did. */
+export interface Mention {
+  key: string;
+  label: string;
+  detail: string;
 }
 
 export interface UserMessage {
@@ -52,6 +67,8 @@ export interface UserMessage {
   at: number;
   text: string;
   fileIds: string[];
+  /** Changes in the draft this message is about. */
+  mentions?: Mention[];
 }
 
 export interface AssistantMessage {

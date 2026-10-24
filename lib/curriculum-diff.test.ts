@@ -3,6 +3,7 @@ import {
   applyChanges,
   buildChangeSet,
   orderRemaps,
+  undoRemaps,
   shapeProposal,
   type CurriculumProposal,
 } from "./curriculum-diff";
@@ -539,5 +540,33 @@ describe("checkpoints a sheet never mentions", () => {
     const kinds = buildChangeSet(curriculum(), proposal).changes.map((c) => c.kind);
     expect(kinds).toContain("checkpoint-add");
     expect(kinds).toContain("checkpoint-remove");
+  });
+});
+
+describe("undoRemaps", () => {
+  /** Runs moves over a map of section id → the work filed under it. */
+  function run(work: Record<string, string>, moves: { from: string; to: string }[]) {
+    const out = { ...work };
+    for (const { from, to } of moves) {
+      out[to] = out[from];
+      delete out[from];
+    }
+    return out;
+  }
+
+  it("puts every student's work back where it was, across a shift and a swap", () => {
+    const work = { "3.3": "a", "3.4": "b", "3.5": "c", "4.1": "x", "4.2": "y" };
+    const shift = orderRemaps([
+      { from: "3.3", to: "3.4" },
+      { from: "3.4", to: "3.5" },
+      { from: "3.5", to: "3.6" },
+    ]);
+    const swap = orderRemaps([
+      { from: "4.1", to: "4.2" },
+      { from: "4.2", to: "4.1" },
+    ]);
+    const moved = run(run(work, shift), swap);
+    expect(moved).not.toEqual(work);
+    expect(run(moved, undoRemaps([shift, swap]))).toEqual(work);
   });
 });

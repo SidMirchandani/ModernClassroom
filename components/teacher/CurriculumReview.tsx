@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  AtSign,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -445,6 +446,8 @@ function HunkBox({
   keys,
   onSelect,
   onDecide,
+  onMention,
+  mentioned,
   children,
 }: {
   hunk: Hunk;
@@ -452,6 +455,9 @@ function HunkBox({
   keys: { accept: string; reject: string } | null;
   onSelect: () => void;
   onDecide: (decision: Decision) => void;
+  /** Points the chat's next message at this change. */
+  onMention: () => void;
+  mentioned: boolean;
   children: ReactNode;
 }) {
   return (
@@ -470,6 +476,21 @@ function HunkBox({
         </p>
       )}
       <div className="absolute right-2 -bottom-3.5 z-10 flex items-center gap-1">
+        {/* "About this…" — the change goes into the chat as a chip, so the
+            next message can be about it exactly. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMention();
+          }}
+          disabled={mentioned}
+          title={mentioned ? "In your next message" : "Ask about this in the chat"}
+          className="h-6 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-100 shadow-sm disabled:opacity-60 transition-colors"
+        >
+          <AtSign className="w-3 h-3" />
+          {mentioned ? "Added" : "Ask"}
+        </button>
         <button
           type="button"
           onClick={(e) => {
@@ -590,6 +611,8 @@ export function CurriculumReview({ review }: { review: AgentReview }) {
         keys={keys}
         onSelect={() => setCurrentKey(hunk.key)}
         onDecide={(decision) => decideOne(hunk, decision)}
+        onMention={() => review.mention(hunk.key)}
+        mentioned={review.mentioned.has(hunk.key)}
       >
         {children}
       </HunkBox>

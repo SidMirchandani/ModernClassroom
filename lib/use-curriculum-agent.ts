@@ -7,6 +7,7 @@ import type { SectionRemap } from "./store";
 import {
   applyChanges,
   buildChangeSet,
+  undoRemaps,
   type ChangeSet,
   type CurriculumProposal,
 } from "./curriculum-diff";
@@ -15,6 +16,7 @@ import {
   buildHunks,
   carryDecisions,
   decisionOf,
+  describeHunk,
   type Decision,
   type Decisions,
   type Hunk,
@@ -32,6 +34,7 @@ import {
   type Chat,
   type ChatFile,
   type ChatMessage,
+  type Mention,
   type ReviewState,
   type UserMessage,
 } from "./curriculum-chat";
@@ -74,6 +77,7 @@ export interface QueuedMessage {
   id: string;
   text: string;
   files: File[];
+  mentions: Mention[];
 }
 
 export interface AgentReview {
@@ -89,6 +93,9 @@ export interface AgentReview {
   decide: (key: string, decision: Decision) => void;
   decideAll: (decision: Decision) => void;
   retry: () => void;
+  /** Points the next message at this change. */
+  mention: (key: string) => void;
+  mentioned: ReadonlySet<string>;
 }
 
 interface Options {
@@ -126,7 +133,12 @@ function historyOf(messages: ChatMessage[], files: ChatFile[]) {
       const names = message.fileIds
         .map((id) => files.find((f) => f.id === id)?.name)
         .filter(Boolean);
-      const text = [message.text, names.length > 0 ? `(attached: ${names.join(", ")})` : ""]
+      const about = (message.mentions ?? []).map((m) => m.label);
+      const text = [
+        message.text,
+        names.length > 0 ? `(attached: ${names.join(", ")})` : "",
+        about.length > 0 ? `(about: ${about.join("; ")})` : "",
+      ]
         .filter(Boolean)
         .join("\n");
       return text ? [{ role: "teacher" as const, text }] : [];
@@ -183,6 +195,8 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState("");
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  // Changes in the draft the next message is about.
+  const [mentions, setMentions] = useState<Mention[]>([]);
   // A turn finished while the panel was minimised: its tab shows a dot.
   const [unseen, setUnseen] = useState(false);
   // The turn this visit started most recently — the one whose reply types out.
@@ -382,10 +396,21 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
       setApplying(true);
       setApplyError("");
       try {
+        // The curriculum as it stood, kept with the draft: an edit to an
+        // earlier message can put it back, the way an editor restores a
+        // checkpoint.
+        const before = structuredClone(unitsRef.current);
         const { units: next, remaps } = applyChanges(unitsRef.current, set, ids);
         await onApply(next, remaps);
         failedRef.current = null;
-        setReview(pending, { ...pending.message.review!, status: "applied", accepted, total: hunks.length });
+        setReview(pending, {
+          ...pending.message.review!,
+          status: "applied",
+          accepted,
+          total: hunks.length,
+          before,
+          remaps,
+        });
       } catch (err) {
         failedRef.current = attempt;
         const message = err instanceof Error ? err.message : "";
@@ -448,9 +473,25 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
         body.append("classId", classId);
         body.append("message", user.text);
         body.append("history", JSON.stringify(historyOf(chat.messages.slice(0, turnAt), chat.files)));
+        if (user.mentions?.length) {
+          body.append("mentions", JSON.stringify(user.mentions.map(({ label, detail }) => ({ label, detail }))));
+        }
         const underReview = findPending(chatsRef.current);
         if (underReview?.message.proposal) {
           body.append("draft", JSON.stringify(underReview.message.proposal));
+          // Where the teacher has got to with it — so "fix the ones I
+          // rejected" means something.
+          const draftSet = buildChangeSet(unitsRef.current, underReview.message.proposal);
+          const decided = underReview.message.review?.decisions ?? {};
+          body.append(
+            "review",
+            JSON.stringify(
+              buildHunks(draftSet).map((hunk) => ({
+                ...describeHunk(hunk, draftSet),
+                decision: decisionOf(hunk, decided) ?? "undecided",
+              }))
+            )
+          );
         }
         if (isDemoMode()) {
           body.append("demo", "1");
@@ -584,11 +625,16 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
 
   /** Sends a message, with any new files, in the open chat — or a new one. */
   const send = useCallback(
-    async (text: string, files: File[], options: { fresh?: boolean } = {}) => {
+    async (text: string, files: File[], options: { fresh?: boolean; mentions?: Mention[] } = {}) => {
+      const about = options.mentions ?? mentionsRef.current;
+      if (!options.mentions) {
+        mentionsRef.current = [];
+        setMentions([]);
+      }
       // Mid-turn, a message waits its turn rather than being refused.
       if (abortRef.current) {
-        if (text.trim() || files.length > 0) {
-          setQueue((q) => [...q, { id: uuidv4(), text, files }]);
+        if (text.trim() || files.length > 0 || about.length > 0) {
+          setQueue((q) => [...q, { id: uuidv4(), text, files, mentions: about }]);
         }
         return;
       }
@@ -608,6 +654,7 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
         at: Date.now(),
         text: text.trim(),
         fileIds: metas.map((m) => m.id),
+        ...(about.length > 0 ? { mentions: about } : {}),
       };
       const now = Date.now();
       const chat: Chat = base
@@ -636,12 +683,39 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
     if (running || holdQueue.current || queue.length === 0) return;
     const [next, ...rest] = queue;
     setQueue(rest);
-    void send(next.text, next.files);
+    void send(next.text, next.files, { mentions: next.mentions });
   }, [running, queue, send]);
 
   const unqueue = useCallback((id: string) => {
     setQueue((q) => q.filter((m) => m.id !== id));
   }, []);
+
+  const mentionsRef = useRef<Mention[]>([]);
+  const mention = useCallback(
+    (key: string) => {
+      if (!set || mentionsRef.current.some((m) => m.key === key)) return;
+      const hunk = hunks.find((h) => h.key === key);
+      if (!hunk) return;
+      mentionsRef.current = [...mentionsRef.current, { key, ...describeHunk(hunk, set) }];
+      setMentions(mentionsRef.current);
+      setOpen(true);
+    },
+    [set, hunks, setOpen]
+  );
+  const unmention = useCallback((key: string) => {
+    mentionsRef.current = mentionsRef.current.filter((m) => m.key !== key);
+    setMentions(mentionsRef.current);
+  }, []);
+  /** The open changes, for the composer's @ list. */
+  const openChanges = useMemo(
+    () =>
+      set
+        ? hunks
+            .filter((h) => !decisionOf(h, decisions))
+            .map((h) => ({ key: h.key, ...describeHunk(h, set) }))
+        : [],
+    [set, hunks, decisions]
+  );
 
   const sendQueued = useCallback(
     (id: string) => {
@@ -650,7 +724,7 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
       if (!item) return;
       holdQueue.current = false;
       setQueue((q) => q.filter((m) => m.id !== id));
-      void send(item.text, item.files);
+      void send(item.text, item.files, { mentions: item.mentions });
     },
     [queue, send]
   );
@@ -660,8 +734,32 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
    * edit does: everything after it is dropped — a draft it made included —
    * and the conversation goes on from the new wording.
    */
+  /** The drafts accepted after a message, oldest first — what reverting to it undoes. */
+  const appliedAfter = useCallback((messageId: string) => {
+    const chat = chatsRef.current.find((c) => c.messages.some((m) => m.id === messageId));
+    if (!chat) return [];
+    const at = chat.messages.findIndex((m) => m.id === messageId);
+    return chat.messages
+      .slice(at + 1)
+      .filter(
+        (m): m is AssistantMessage =>
+          m.role === "assistant" && m.review?.status === "applied" && Array.isArray(m.review.before)
+      );
+  }, []);
+
+  /** Whether editing this message could also put the curriculum back. */
+  const canRevert = useCallback((messageId: string) => appliedAfter(messageId).length > 0, [appliedAfter]);
+
+  /**
+   * Rewrites an earlier message and answers it again from there. With
+   * `revert`, the curriculum first goes back to how it stood before that
+   * message: the earliest accepted draft after it kept a copy, and the
+   * section moves every accepted draft made are undone in reverse, so student
+   * work follows its sections back. Anything changed since — the teacher's
+   * own edits too — goes with it; the edit box says so before they choose.
+   */
   const editMessage = useCallback(
-    async (messageId: string, text: string) => {
+    async (messageId: string, text: string, options: { revert?: boolean } = {}) => {
       if (abortRef.current) return;
       const chat = chatsRef.current.find((c) => c.messages.some((m) => m.id === messageId));
       if (!chat) return;
@@ -670,10 +768,32 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
       if (original.role !== "user") return;
       const user: UserMessage = { ...original, text: text.trim(), at: Date.now() };
       if (!user.text && user.fileIds.length === 0) return;
+
+      if (options.revert) {
+        const applied = appliedAfter(messageId);
+        if (applied.length > 0) {
+          const undo = undoRemaps(applied.map((m) => m.review!.remaps ?? []));
+          try {
+            await onApply(applied[0].review!.before!, undo);
+            // The class re-renders with it in a moment; the turn that follows
+            // starts now, and must read the curriculum as it is after the revert.
+            unitsRef.current = applied[0].review!.before!;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "";
+            setApplyError(
+              /stale/i.test(message)
+                ? "The curriculum changed elsewhere — reload, then try again."
+                : "The curriculum could not be put back."
+            );
+            return;
+          }
+        }
+      }
+
       commit({ ...chat, updatedAt: Date.now(), messages: [...chat.messages.slice(0, at), user] }, true);
       await runTurn(chat.id, user);
     },
-    [commit, runTurn]
+    [appliedAfter, commit, onApply, runTurn]
   );
 
   /** Runs a failed or stopped turn again, from the message that asked for it. */
@@ -745,6 +865,8 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
           decide,
           decideAll,
           retry: () => void finish(true),
+          mention,
+          mentioned: new Set(mentions.map((m) => m.key)),
         }
       : null;
 
@@ -767,6 +889,13 @@ export function useCurriculumAgent({ classId, units, onApply, onDraft }: Options
     stop,
     retry,
     editMessage,
+    canRevert,
+    mentions,
+    mention,
+    unmention,
+    openChanges,
+    /** Why a revert or a save did not happen. */
+    applyError,
     queue,
     unqueue,
     sendQueued,

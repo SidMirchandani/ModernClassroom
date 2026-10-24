@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUp,
+  AtSign,
   Check,
   ChevronRight,
   Clock3,
@@ -23,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import type { CurriculumUnit } from "@/lib/db/types";
-import type { AgentStep, AssistantMessage, Chat, UserMessage } from "@/lib/curriculum-chat";
+import type { AgentStep, AssistantMessage, Chat, Mention, UserMessage } from "@/lib/curriculum-chat";
 import type { Hunk } from "@/lib/curriculum-review";
 import { AGENT_WIDTH, type AgentReview, type CurriculumAgent } from "@/lib/use-curriculum-agent";
 import { isDemoMode } from "@/lib/demo-seed";
@@ -411,19 +412,45 @@ function FileChip({ name }: { name: string }) {
 }
 
 /** The teacher's own message: a bubble on the right, editable in place. */
+function MentionChip({ label, onRemove }: { label: string; onRemove?: () => void }) {
+  return (
+    <li className="fade-in inline-flex items-center gap-1 max-w-full h-6 pl-1.5 pr-1 rounded-md bg-primary/10 text-primary dark:text-primary-glow text-xs">
+      <AtSign className="w-3 h-3 shrink-0" />
+      <span className="truncate max-w-[13rem]">{label}</span>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="shrink-0 w-4 h-4 rounded flex items-center justify-center hover:bg-primary/15 transition-colors"
+          aria-label={`Remove ${label}`}
+        >
+          <X className="w-3 h-3" />
+        </button>
+      )}
+    </li>
+  );
+}
+
 function UserTurn({
   message,
   chat,
   busy,
+  canRevert,
   onEdit,
 }: {
   message: UserMessage;
   chat: Chat;
   busy: boolean;
-  onEdit: (text: string) => void;
+  /** Changes from after this message were accepted: editing it can undo them. */
+  canRevert: boolean;
+  onEdit: (text: string, revert: boolean) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.text);
+  // Asked as soon as the edit opens, answered by sending: like restoring a
+  // checkpoint in an editor, going back to a message can take the
+  // curriculum back with it.
+  const [revert, setRevert] = useState(true);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const files = message.fileIds
     .map((id) => chat.files.find((f) => f.id === id))
@@ -440,11 +467,18 @@ function UserTurn({
     const text = draft.trim();
     if (!text && files.length === 0) return;
     setEditing(false);
-    if (text !== message.text) onEdit(text);
+    onEdit(text, canRevert && revert);
   }
 
   return (
     <div className="group flex flex-col items-end gap-1.5 pl-6">
+      {(message.mentions ?? []).length > 0 && (
+        <ul className="flex flex-wrap justify-end gap-1">
+          {message.mentions!.map((m) => (
+            <MentionChip key={m.key} label={m.label} />
+          ))}
+        </ul>
+      )}
       {files.length > 0 && (
         <ul className="flex flex-wrap justify-end gap-1.5">
           {files.map((file) => (
@@ -473,6 +507,20 @@ function UserTurn({
             }}
             className="block w-full resize-none bg-transparent border-0 px-3.5 pt-2.5 pb-1 text-sm leading-relaxed text-slate-900 dark:text-slate-100 focus-visible:!shadow-none focus-visible:outline-none"
           />
+          {canRevert && (
+            <label className="mx-2 mb-1 flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 px-2.5 py-2 text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={revert}
+                onChange={(e) => setRevert(e.target.checked)}
+                className="mt-0.5 rounded border-amber-300 dark:border-amber-700"
+              />
+              <span>
+                <span className="font-medium">Also put the curriculum back to how it was before this message.</span>{" "}
+                Changes accepted since — and anything you edited after them — are undone.
+              </span>
+            </label>
+          )}
           <div className="flex items-center justify-end gap-1 px-2 pb-2">
             <button
               type="button"
@@ -499,6 +547,7 @@ function UserTurn({
                 type="button"
                 onClick={() => {
                   setDraft(message.text);
+                  setRevert(true);
                   setEditing(true);
                 }}
                 disabled={busy}
@@ -628,6 +677,10 @@ function Composer({
   running,
   onSend,
   onStop,
+  mentions,
+  openChanges,
+  onMention,
+  onUnmention,
 }: {
   files: File[];
   onFilesChange: (files: File[]) => void;
@@ -635,11 +688,49 @@ function Composer({
   running: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
+  mentions: Mention[];
+  /** The draft's undecided changes, for "@". */
+  openChanges: Mention[];
+  onMention: (key: string) => void;
+  onUnmention: (key: string) => void;
 }) {
   const [text, setText] = useState("");
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const tooLarge = totalMegabytes(files) > MAX_UPLOAD_MB;
-  const canSend = !tooLarge && (text.trim() !== "" || files.length > 0);
+  const canSend = !tooLarge && (text.trim() !== "" || files.length > 0 || mentions.length > 0);
+
+  // "@" opens a list of the draft's open changes, filtered as you type, the
+  // way an editor lets you @ a file. Picking one turns "@quad" into a chip.
+  const [at, setAt] = useState<{ start: number; query: string } | null>(null);
+  const [highlight, setHighlight] = useState(0);
+  const choices = at
+    ? openChanges
+        .filter((c) => !mentions.some((m) => m.key === c.key))
+        .filter((c) => `${c.label} ${c.detail}`.toLowerCase().includes(at.query.toLowerCase()))
+        .slice(0, 6)
+    : [];
+
+  function readAt(value: string, caret: number) {
+    const match = value.slice(0, caret).match(/(^|\s)@([^\s@]*)$/);
+    setAt(match ? { start: caret - match[2].length - 1, query: match[2] } : null);
+    setHighlight(0);
+  }
+
+  function pick(key: string) {
+    if (!at) return;
+    const caret = at.start + at.query.length + 1;
+    setText((t) => (t.slice(0, at.start) + t.slice(caret)).replace(/ {2,}/g, " "));
+    setAt(null);
+    onMention(key);
+    areaRef.current?.focus();
+  }
+
+  // A change added from the curriculum ("Ask") lands here, ready to type about.
+  const mentionCount = useRef(mentions.length);
+  useEffect(() => {
+    if (mentions.length > mentionCount.current) areaRef.current?.focus();
+    mentionCount.current = mentions.length;
+  }, [mentions.length]);
 
   // Grows with what is typed, to a point, then scrolls.
   useLayoutEffect(() => {
@@ -653,10 +744,47 @@ function Composer({
     if (!canSend) return;
     onSend(text);
     setText("");
+    setAt(null);
   }
 
   return (
+    <div className="relative">
+    {choices.length > 0 && (
+      <ul
+        role="listbox"
+        aria-label="Changes in the draft"
+        className="fade-in absolute bottom-full left-0 right-0 mb-2 z-20 p-1 rounded-xl border border-slate-200 dark:border-slate-700 float-pane-raised shadow-lg"
+      >
+        <li className="px-2.5 pt-1 pb-1.5 text-[11px] font-medium text-slate-400">Open changes</li>
+        {choices.map((c, i) => (
+          <li key={c.key} role="option" aria-selected={i === highlight}>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pick(c.key);
+              }}
+              onMouseEnter={() => setHighlight(i)}
+              className={cn(
+                "w-full flex flex-col items-start px-2.5 py-1.5 rounded-lg text-left",
+                i === highlight && "bg-slate-100 dark:bg-slate-800"
+              )}
+            >
+              <span className="text-sm text-slate-800 dark:text-slate-100 truncate max-w-full">{c.label}</span>
+              <span className="text-xs text-slate-400 truncate max-w-full">{c.detail}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
     <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm transition-[border-color,box-shadow] duration-200 focus-within:border-primary/50 focus-within:shadow-[0_0_0_4px_rgb(var(--primary)/0.1)]">
+      {mentions.length > 0 && (
+        <ul className="flex flex-wrap gap-1 px-2.5 pt-2.5">
+          {mentions.map((m) => (
+            <MentionChip key={m.key} label={m.label} onRemove={() => onUnmention(m.key)} />
+          ))}
+        </ul>
+      )}
       {files.length > 0 && (
         <ul className="flex flex-wrap gap-1.5 px-2.5 pt-2.5">
           {files.map((file, index) => (
@@ -683,14 +811,39 @@ function Composer({
         rows={1}
         value={text}
         aria-label="Message"
-        placeholder={running ? "Queue a message" : "Message"}
-        onChange={(e) => setText(e.target.value)}
+        placeholder={running ? "Queue a message" : openChanges.length > 0 ? "Message — @ to point at a change" : "Message"}
+        onChange={(e) => {
+          setText(e.target.value);
+          readAt(e.target.value, e.target.selectionStart ?? e.target.value.length);
+        }}
         onKeyDown={(e) => {
+          if (choices.length > 0) {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              setHighlight((h) => (h + (e.key === "ArrowDown" ? 1 : choices.length - 1)) % choices.length);
+              return;
+            }
+            if (e.key === "Enter" || e.key === "Tab") {
+              e.preventDefault();
+              pick(choices[highlight].key);
+              return;
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setAt(null);
+              return;
+            }
+          }
+          if (e.key === "Backspace" && text === "" && mentions.length > 0) {
+            onUnmention(mentions[mentions.length - 1].key);
+            return;
+          }
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
           }
         }}
+        onBlur={() => setAt(null)}
         className="block w-full resize-none bg-transparent border-0 px-3.5 pt-3 pb-1 text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:!shadow-none focus-visible:outline-none"
       />
       <div className="flex items-center gap-1 px-2 pb-2">
@@ -728,6 +881,7 @@ function Composer({
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }
@@ -833,9 +987,10 @@ export function AgentPanel({
               message={message}
               chat={activeChat!}
               busy={running}
-              onEdit={(text) => {
+              canRevert={agent.canRevert(message.id)}
+              onEdit={(text, revert) => {
                 stick.current = true;
-                void agent.editMessage(message.id, text);
+                void agent.editMessage(message.id, text, { revert });
               }}
             />
           ) : (
@@ -1096,6 +1251,9 @@ export function AgentPanel({
               ))}
             </ul>
           )}
+          {agent.applyError && !review && (
+            <p className="px-1 text-xs text-rose-600 dark:text-rose-400">{agent.applyError}</p>
+          )}
           <Composer
             files={files}
             onFilesChange={setFiles}
@@ -1103,6 +1261,10 @@ export function AgentPanel({
             running={running}
             onSend={(text) => send(text)}
             onStop={agent.stop}
+            mentions={agent.mentions}
+            openChanges={agent.openChanges}
+            onMention={agent.mention}
+            onUnmention={agent.unmention}
           />
           <input
             ref={inputRef}

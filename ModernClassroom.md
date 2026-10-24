@@ -250,6 +250,24 @@ accepted it, row by row if they want to.
   queued one. The empty chat shows the logo, a line on what it does, and
   starting points (Attach files, Summarize this curriculum, and — only in the
   demo's own classes — Try a sample time line).
+- **Editing can restore a checkpoint.** When changes were accepted after the
+  message being edited, the edit box asks (ticked by default) whether to put
+  the curriculum back to how it stood before that message, as an editor
+  restores a checkpoint. Every applied draft keeps a copy of the curriculum
+  from just before it (`review.before`) and the section moves it made
+  (`review.remaps`); reverting writes back the earliest such copy and undoes
+  every accepted draft's moves, newest first, each reversed (`undoRemaps`,
+  tested — never re-sorted, which would tangle a swap), so student work
+  follows its sections home. It says plainly that the teacher's own edits
+  since are undone too.
+- **The teacher can point at the draft's open changes.** Each undecided hunk
+  has **Ask**, and typing **@** in the composer lists them, filtered as you
+  type (↑↓, Enter or Tab to pick, Backspace on an empty box drops the last).
+  Picked changes ride on the message as chips. The route is sent what they
+  point at (THE CHANGES THE TEACHER IS POINTING AT — "this" and "these" mean
+  them) and, with any draft, every change and whether it is accepted,
+  rejected or undecided (THE DRAFT'S CHANGES), so "redo the ones I rejected"
+  has something to act on.
 - **Follow-ups know the context.** Each turn sends the conversation so far
   (what the teacher said, what was replied, what they accepted), **the draft
   under review**, and every file attached in the chat (newest first, within
@@ -310,8 +328,9 @@ plans side by side** (two textbooks, a platform, a framework), one column is
 the class's sequence — the one numbered through the year in order with its own
 headings and assessments, unless the teacher's notes name another — and every
 other column becomes a resource track on that day's section. An answer whose
-units fall short of its own outline (more than 15% missing), or that is empty
-for an empty class, is retried on another model; if every model falls short,
+units fall short of its own outline (more than 15% missing) — checked only
+when files were read, since a follow-up returns just the units it changes —
+or that is empty for an empty class, is retried on another model; if every model falls short,
 the fullest partial answer is offered with a note to check it. Then
 `shapeProposal` (`lib/curriculum-diff.ts`, tested) enforces the part that can
 be checked in code: sections are regrouped by their unit number whatever the
@@ -1163,7 +1182,7 @@ That file is committed pointing at `.next`, which is what a deploy produces, so
 
 10. **`ClassTeacherView.tsx` is large** (~1,150 lines: grid, gate, review modal, help modal, invites, stat modals). Splitting out a `ProgressGrid` is the next worthwhile cut.
 
-11. **Test coverage is two modules deep.** `lib/curriculum-diff.ts` and `lib/curriculum-review.ts` have 38 vitest specs between them (`npm test`) because their failure loses student work silently. `class-progress.ts` and `section-tracks.ts` are pure and are the next highest-value things to cover — especially the legacy-migration determinism, which has the same failure mode.
+11. **Test coverage is two modules deep.** `lib/curriculum-diff.ts` and `lib/curriculum-review.ts` have 39 vitest specs between them (`npm test`) because their failure loses student work silently. `class-progress.ts` and `section-tracks.ts` are pure and are the next highest-value things to cover — especially the legacy-migration determinism, which has the same failure mode.
 
 12. **The import's demo rate limit is per-process and in-memory.** Eight runs an hour per IP, held in a `Map` that resets whenever the server does. Fine for one host; wrong the moment it runs on more than one.
 
@@ -1186,6 +1205,7 @@ House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). Th
 | `5.5` | 2026-10-08 | Imports build one unit per unit number: the prompt gives the model a skeleton (the number before the dot is the unit; semesters and tabs are never units; quizzes and tests are dated checkpoints in the unit they assess), and `shapeProposal` regroups sections by number in code whatever the model returns. Undated-place checkpoints are placed by date; sheets drop trailing empty columns and the per-file budget is 400k characters |
 | `5.6` | 2026-10-08 | Imports read real teacher timelines: the model writes an outline of the whole year first and is held to it (short answers retry on another model, or come back flagged), side-by-side plans pick one column as the class's sequence and turn the others into tracks, units keep the year's teaching order by date, Lite models are tried last, and a model out of free-tier quota is skipped until it resets. The theme circle runs as a CSS animation, so it no longer snaps to the end halfway on phones. New units are numbered ("Unit 3: Linear Models"); notes speak to the teacher in the first person about gaps only, shown under "A note for you · not added to your curriculum" |
 | `6.0` | 2026-10-20 | The curriculum is built in a chat docked beside the class, like an editor's agent panel: minimisable (⌘I), with follow-ups that know the conversation and the draft under review, new chats and past chats kept per class. Each turn streams what it is actually doing — files read, units planned, each unit written — then replies in a sentence or two, with notes only when something could not be placed. Drafts are reviewed the Cursor way: red/green rows with dates, Accept/Reject per row, a bar to step through and accept or reject all. Unit and section numbers are copied exactly from the teacher's files; a sheet that never mentions quizzes no longer offers to delete them. The panel docks at a draggable width with the class laid out for the room it actually has (container queries), and minimises to a tab on the screen's edge. Tab titles read "Curriculum for Algebra II, Honors - Teaching - Modern Classroom". The chat types its replies out, says what it is doing in the present tense and what it did in the past, skips reading the curriculum for small talk, and lets the teacher edit, copy, retry and queue messages; the side tab's dot is amber while working and blue when there is something new. Asked for a subunit, it fills it in — objectives, and Learn and Practice on each resource — and any subunit in a draft opens to show exactly what it holds and what changes. Placeholders are plain ("Name", "Date"); the dev server runs on port 5000 |
+| `6.1` | 2026-10-24 | Editing an earlier chat message can put the curriculum back to how it stood before it — each accepted draft keeps a copy and its section moves, undone newest first so student work follows its sections. Open changes in a draft can be pointed at (Ask on a change, or @ in the composer) and ride on the message as chips; the model is told what they point at and what has been accepted, rejected or left undecided. A follow-up's one-unit answer is no longer thrown away for missing the rest of the year's outline |
 | `5.2` | 2026-10-06 | The RLS helpers moved out of the exposed API, so a signed-in user can no longer probe other accounts' class memberships |
 | `5.1` | 2026-10-06 | Keep-awake workflow working: repo secrets set, and an anonymous heartbeat to ping, since real tables correctly refuse anonymous reads |
 | `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |
