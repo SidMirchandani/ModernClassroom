@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  AtSign,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -19,14 +18,14 @@ import {
   type ProposedActivity,
 } from "@/lib/curriculum-diff";
 import { decisionOf, reviewRows, type Decision, type Hunk } from "@/lib/curriculum-review";
-import type { AgentReview } from "@/lib/use-curriculum-agent";
+import type { ImportReview } from "@/lib/use-curriculum-import";
 import { TRACK_KIND_LABELS } from "@/lib/section-tracks";
 import type { CheckpointKind } from "@/lib/types";
 import { CHECKPOINT_KIND_META } from "@/components/CheckpointRow";
 import { cn } from "@/lib/utils";
 
 /**
- * A draft from the chat, written over the curriculum the way an editor shows
+ * A draft from an import, written over the curriculum the way an editor shows
  * an agent's edits: removed rows in red, added rows in green, a changed row as
  * the old line over the new one. Each hunk — one row — carries its own Reject
  * and Accept, and a bar at the bottom steps through what is left. A decided
@@ -446,8 +445,6 @@ function HunkBox({
   keys,
   onSelect,
   onDecide,
-  onMention,
-  mentioned,
   children,
 }: {
   hunk: Hunk;
@@ -455,9 +452,6 @@ function HunkBox({
   keys: { accept: string; reject: string } | null;
   onSelect: () => void;
   onDecide: (decision: Decision) => void;
-  /** Points the chat's next message at this change. */
-  onMention: () => void;
-  mentioned: boolean;
   children: ReactNode;
 }) {
   return (
@@ -476,21 +470,6 @@ function HunkBox({
         </p>
       )}
       <div className="absolute right-2 -bottom-3.5 z-10 flex items-center gap-1">
-        {/* "About this…" — the change goes into the chat as a chip, so the
-            next message can be about it exactly. */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onMention();
-          }}
-          disabled={mentioned}
-          title={mentioned ? "In your next message" : "Ask about this in the chat"}
-          className="h-6 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-100 shadow-sm disabled:opacity-60 transition-colors"
-        >
-          <AtSign className="w-3 h-3" />
-          {mentioned ? "Added" : "Ask"}
-        </button>
         <button
           type="button"
           onClick={(e) => {
@@ -524,7 +503,7 @@ function isTyping(target: EventTarget | null): boolean {
 
 // ── the review ──────────────────────────────────────────────────────────────
 
-export function CurriculumReview({ review }: { review: AgentReview }) {
+export function CurriculumReview({ review }: { review: ImportReview }) {
   const { set, hunks, decisions } = review;
   const byKey = useMemo(() => new Map(hunks.map((h) => [h.key, h])), [hunks]);
   const open = hunks.filter((h) => !decisionOf(h, decisions));
@@ -581,7 +560,7 @@ export function CurriculumReview({ review }: { review: AgentReview }) {
   );
 
   // The editor's keys: ⌘⏎ / ⌘⌫ for the current hunk, with ⇧ for all of them,
-  // ⌥↑ / ⌥↓ to move. Not while typing — the chat's own Enter is its send.
+  // ⌥↑ / ⌥↓ to move. Not while typing in a field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target) || review.applying) return;
@@ -611,8 +590,6 @@ export function CurriculumReview({ review }: { review: AgentReview }) {
         keys={keys}
         onSelect={() => setCurrentKey(hunk.key)}
         onDecide={(decision) => decideOne(hunk, decision)}
-        onMention={() => review.mention(hunk.key)}
-        mentioned={review.mentioned.has(hunk.key)}
       >
         {children}
       </HunkBox>

@@ -194,110 +194,122 @@ The demo never touches the server and has no account. Signing in leaves it.
 > time they approved a submission. Any writer that touches "all" of something
 > should merge, not sweep.
 
-### The curriculum chat — `components/teacher/AgentPanel.tsx`, `lib/use-curriculum-agent.ts`, `app/api/curriculum/import/`
+### The curriculum — reading files in, editing by hand — `lib/use-curriculum-import.ts`, `lib/curriculum-edit.ts`, `app/api/curriculum/import/`
 
-Teachers already keep their year in a spreadsheet. A class's curriculum is
-built and changed through a **chat docked beside the class**, shaped like an
-editor's agent panel (Cursor's): attach those files — Word documents, `.xlsx`,
-`.csv`, PDFs, photos of a printed plan — or just ask for a change, and follow
-up as many times as needed. It only ever *proposes*: the draft is written over
-the curriculum in the main space, and nothing is saved until the teacher has
-accepted it, row by row if they want to.
+Teachers already keep their year in a spreadsheet. **AI does one thing here:
+reading those files in** — Word documents, `.xlsx`, `.csv`, PDFs, photos of a
+printed plan. Every other change to a curriculum is the teacher's own, made
+with ordinary controls. (Until 6.2 this was a chat docked beside the class; it
+was removed because nearly everything asked of it was a plain edit, and every
+chat turn spent a request — see *What it costs* below.)
 
-- **The panel** (`AgentPanel`) is fixed to the right below the navbar. At
-  `lg` and up it docks: **drag its left edge** to resize it (320–760px, always
-  leaving the class 520px; double-click the edge to reset, arrow keys when it
-  is focused), and the class's content takes exactly that much padding, so
-  nothing ever sits under it. Below `lg` it covers the screen whole — never a
-  panel half over the page. Minimised, it leaves a **tab on the right edge**
-  just below the navbar (below the tab row on a phone), as narrow as the
-  page's side margin and reaching out on hover, with an **amber dot while a
-  turn runs** and a **blue dot when there is something new** (a reply that
-  finished while it was minimised, or a draft waiting); **⌘I / Ctrl+I**
-  toggles it too. **Every class opens with it docked** — it is how a class
-  is worked on, so it is not remembered minimised — except on a phone, where
-  it would cover the class and so starts minimised. The width is remembered
-  per device.
-- **Every turn shows the work as it happens.** The route streams NDJSON: what
-  it read (`Read  Time Line.xlsx · 3 sheets, 184 rows`, `Read  what you already
-  have · 11 units, 72 subunits`), `Think` until the model's first word, `Plan  the
-  year · 13 units` filling in unit by unit from the outline as it streams,
-  `Write  Unit 7: Quadratics · 7 of 13`, `Retry` when a model drops out, then
-  `Check`; the browser adds `Compare  with what you already have · 15 changes`. Every
-  line is something that actually happened — none of it is a canned
-  animation. Verbs are present tense while running (*Reading, Thinking,
-  Planning, Writing*) and past once done (*Read, Thought, Planned, Wrote*);
-  the running one shimmers (`.shimmer-text`). When the turn ends the steps
-  fold into one line, *Worked for 34s ›*, that opens them again.
-- **Small talk skips the curriculum.** "hi", "thanks", "what can you do" —
-  pleasantries with no number in them (`SMALL_TALK`) — are answered from the
-  conversation alone with a reply-only schema, and the chat shows no *Read
-  what you already have* for them, because nothing was read.
-- **The reply types out as it is written.** The route parses the `reply`
-  field out of the half-finished JSON as it streams (`partialReply`) and
-  sends it whole each time; the chat types toward it with a caret
-  (`useTypewriter`, off under reduced motion). Notes appear once it is done.
-- **Then the assistant speaks.** The answer carries a `reply` — one to three
-  sentences, first person, to the teacher — and, rarely, `notes`, shown apart
-  under "Note · not added to your curriculum". A draft appears as an **edit
-  card** (units touched, `+n −m` each) with Review · Reject all · Accept all.
-- **Messages behave like a chat app's.** The teacher's are bubbles on the
-  right with **Edit** (rewrites it and answers again from there, dropping
-  everything after it — a draft it made included) and **Copy**; replies have
-  Copy and, on the last one, **Answer again**. A message sent while a turn is
-  running **queues** above the composer and goes out when the turn ends;
-  **Stop** holds the queue until the teacher sends something or sends a
-  queued one. The empty chat shows the logo, a line on what it does, and
-  starting points (Attach files, Summarize this curriculum, and — only in the
-  demo's own classes — Try a sample time line).
-- **Editing can restore a checkpoint.** When changes were accepted after the
-  message being edited, the edit box asks (ticked by default) whether to put
-  the curriculum back to how it stood before that message, as an editor
-  restores a checkpoint. Every applied draft keeps a copy of the curriculum
-  from just before it (`review.before`) and the section moves it made
-  (`review.remaps`); reverting writes back the earliest such copy and undoes
-  every accepted draft's moves, newest first, each reversed (`undoRemaps`,
-  tested — never re-sorted, which would tangle a swap), so student work
-  follows its sections home. It says plainly that the teacher's own edits
-  since are undone too.
-- **The teacher can point at the draft's open changes.** Each undecided hunk
-  has **Ask**, and typing **@** in the composer lists them, filtered as you
-  type (↑↓, Enter or Tab to pick, Backspace on an empty box drops the last).
-  Picked changes ride on the message as chips. The route is sent what they
-  point at (THE CHANGES THE TEACHER IS POINTING AT — "this" and "these" mean
-  them) and, with any draft, every change and whether it is accepted,
-  rejected or undecided (THE DRAFT'S CHANGES), so "redo the ones I rejected"
-  has something to act on.
-- **Follow-ups know the context.** Each turn sends the conversation so far
-  (what the teacher said, what was replied, what they accepted), **the draft
-  under review**, and every file attached in the chat (newest first, within
-  the 4 MB limit). With a draft out, the model returns only the units it
-  changes and the route merges them into the draft (`mergeDraft`, by unit
-  number); a question returns no units at all, and the draft stays as it was.
-  Without files or a draft, a request ("move the Unit 3 test to 11/4") is
-  answered with just the units it changes.
-- **The demo sends its curriculum from the browser** (`slim`), with every
-  activity's title and instructions but no attachments — attachments can be
-  whole files as data URLs. It once dropped the activities too, which left
-  the demo with no format for a new subunit to copy.
-- **The demo's chats belong to the visit.** Entering the demo (`seedDemo`)
-  and leaving it (`exitDemoMode`) both clear every `demo-` class's chats
-  (`clearDemoChats`), the way the rest of the demo world is rebuilt — so a
-  new visit never opens on an old conversation.
-- **Chats are kept per class** in this browser's IndexedDB
-  (`lib/curriculum-chat.ts`: chat records, and the files in a store of their
-  own so a chat can be re-saved without rewriting its megabytes). New chat and
-  past chats sit in the panel's header; a class keeps its 30 most recent. A
-  turn cut off by a reload comes back as stopped, with Try again.
-- **One draft at a time per class**, whichever chat made it: it is what is on
-  the curriculum, so it is what any follow-up is about. A newer draft
-  *supersedes* the old one, and decisions carry over only to rows that still
-  propose exactly the same thing.
+**Reading files in — the import dialog** (`components/teacher/ImportDialog.tsx`,
+`components/teacher/FileDrop.tsx`, `lib/use-curriculum-import.ts`). The
+teachers this is for are often not at home in software, so everything here is
+large, worded and in steps — no icon-only controls. The top of the Curriculum
+tab is always one big card, *Build your curriculum from a file* (an empty
+class) or *Update your curriculum from a file*, saying what it does, with one
+large **Upload a file** button. It opens a dialog in two numbered steps,
+**1 Choose your file — 2 We read it**:
 
-The chat is teacher-only and curriculum-only by construction: it lives inside
-`ClassTeacherView`, which `ClassPageClient` renders only when the class role is
-teacher, and the route re-checks `classes.teacher_id` server-side so a crafted
-POST from a student is refused rather than trusted.
+- **Choosing** (`FileDrop`, shared with the new-class page): a large dashed
+  area — *Drag your file here*, *or*, a full-size **Choose a file from my
+  computer** button, and *Works with Word, Excel, PDF, or a photo of a printed
+  page*. Chosen files are full rows with their own **Remove** button; the area
+  shrinks to *Add another file*. Over 4 MB together (Vercel's limit is 4.5)
+  says so and blocks. An optional *Anything we should know?* field (no
+  placeholder), *Try a sample file* in demo classes only, then **Read my
+  file** / **Build my curriculum**.
+
+It only ever *proposes*: the draft is written over the curriculum for review,
+and nothing is saved until the teacher accepts it.
+
+- **The work shows as a checklist of plain sentences.** The route streams
+  NDJSON step events; the dialog turns each into a sentence with a tick —
+  *Opened Time Line.xlsx (3 sheets, 184 rows)*, *Looked at your current
+  curriculum*, *Read your file*, *Found 13 units*, *Matching lessons and
+  dates — 7 of 13*, *Checked every unit*, *Compared with your current
+  curriculum — 15 changes* — with the stages still to come shown greyed, so
+  it is clear how far along it is. A retry reads *It needed a second try —
+  still going*. Every line is something that actually happened.
+- **It can run in the background.** *Close and keep going* closes the
+  dialog; the work carries on, the Curriculum tab's button says *Reading your
+  file…*, and the draft lands on the curriculum when it is ready (from any
+  tab: a draft takes the teacher to Curriculum). *Stop* ends it.
+- **Then a done box** — *Done — n changes found* and a one-line reply — and,
+  rarely, `notes`, set apart under *A note for you — this isn't added to your
+  curriculum*: only for stretches of the year with no lessons, or rows that
+  could not be placed. Then **Look at the changes** (or *Choose a different
+  file* / *Try again*).
+- **Undo.** Once the last row of a draft is decided and the accepted rows are
+  saved, a banner says *Saved n changes from your file* with **Undo these
+  changes**. The import kept the curriculum from just
+  before (`review.before`) and the section moves it made (`review.remaps`);
+  undoing writes the copy back and reverses the moves (`undoRemaps`, tested —
+  newest first, each reversed, never re-sorted, which would tangle a swap),
+  so student work follows its sections home. It is offered **only while the
+  curriculum still has the shape the import left** (`review.after`, a
+  fingerprint of ids, titles, dates, references and where each quiz sits) —
+  any edit since, and Undo is gone rather than quietly throwing that edit
+  away.
+- **The same files twice cost nothing.** Each import stores a SHA-256 of its
+  files' bytes, its note and the curriculum it was read against
+  (`cacheKey`). Sending the same files against the same curriculum reuses
+  that reading — *This is the same file as last time…* — with no request at
+  all.
+- **Imports are kept per class** in this browser's IndexedDB
+  (`lib/curriculum-chat.ts`, whose records are still shaped as the
+  two-message chats they began as): the files, the draft and the decisions,
+  so a reload mid-review loses nothing. A class keeps its 30 most recent. An
+  import cut off by a reload comes back as stopped, with *Try again*. The
+  demo's are cleared on entering and leaving it (`clearDemoChats`).
+- **One draft at a time per class**; the dialog asks for the one on the
+  curriculum to be finished first.
+- **The demo sends its curriculum from the browser** (`slim`), without
+  attachments, which can be whole files as data URLs.
+
+**Editing by hand — the edit form and labelled buttons**
+(`components/teacher/SubunitEditDialog.tsx`, `lib/curriculum-edit.ts`,
+tested). Under the table's header: *Click any subunit to change its name, date
+or references.* Each subunit chip is a button with a pencil; clicking it opens
+**Edit subunit 10.3**, a form of large labelled fields — *Name*, *Date* (with
+the date spelled out underneath, "Wednesday, October 14", to check against a
+calendar) and *Where it is in each resource* — and nothing is saved until
+**Save changes**, which stays disabled until something has changed. *Open the
+full editor — activities, files and targets* is one link away. Under each
+unit's name is a **Move dates ▾** button, and at the end of each unit a dashed
+**+ Add a subunit**. None of it uses AI:
+
+- **Add a subunit** — at a unit's end (its *+ Add a subunit*), or after any
+  subunit (*Add a subunit after this one* in its form, which keeps anything
+  typed but not yet saved). It is numbered in sequence and the subunits after it are
+  renumbered along *through the import's own diff engine* (`insertSubunit`
+  builds a proposal and runs `buildChangeSet` / `applyChanges`), so the work
+  under every moved subunit moves with it, and its quizzes and tests follow.
+  It comes **in the unit's own format**: every resource its neighbours have;
+  the next reference where a resource's run in step (`Ch 12.5`, `Ch 12.6` →
+  `Ch 12.7`; `nextReference`), or the new title where a resource is named
+  after its lessons — but never a number already taken by the lesson pushed
+  along, and never a guess; and Learn and Practice where the unit writes them
+  to a pattern (`conformToClass` — "Ch 12.7", then "Practice" / "Assigned
+  practice for Ch 12.7."). Its date defaults to the next school day after the
+  subunit before. It opens in the form with its name selected. In a
+  unit already numbered with gaps it takes the next number past the highest.
+- **Move dates by school days** (`shiftDateText`): in the form, *1 school day
+  earlier* / *later* change the date field (saved with the rest); *Move
+  dates* moves a whole unit — subunits, quizzes and tests together — a school
+  day or a week, earlier or later. Weekends are skipped, every date in "10/12 or 10/13" moves, a
+  weekday name moves with its date, and the year comes from the school year
+  (August to July), so "3/22" is the spring.
+- **Delete this subunit** asks first, in the form itself (*Yes, delete it* /
+  *No, keep it*). A quiz or test that sat after the subunit moves to
+  the one before rather than going with it; a unit left empty goes; student
+  work stays filed. It does not renumber what follows.
+
+The curriculum is teacher-only by construction: it lives inside
+`ClassTeacherView`, which `ClassPageClient` renders only when the class role
+is teacher, and the route re-checks `classes.teacher_id` server-side so a
+crafted POST from a student is refused rather than trusted.
 
 **The route** (`app/api/curriculum/import/route.ts`) is where the Gemini key
 lives and the only place it lives. It reads the class from the database rather
@@ -312,9 +324,11 @@ on a real timeline they stop after a unit or four and call it finished. The answ
 from one stuck in Google's queue: no first word in 20s, or 25s of silence
 mid-answer, and that model is dropped — but a model that is writing gets as
 long as it needs, because a full year is 20–60s of output. When Google is busy
-the route moves to a *different* model rather than waiting on the same one, and
-it **hedges**: if the model it is waiting on is still silent at 12s, it starts
-the next one alongside and takes whichever finishes first, aborting the other.
+the route moves to a *different* model rather than waiting on the same one. It
+can also **hedge** — start a second model alongside one still silent at 12s and
+take whichever finishes first — but only with `GEMINI_HEDGE=1`: a hedge spends a
+second request, from a free tier's twenty a day or a paid key's bill, and the
+watchdog already drops a model that never starts.
 An answer cut off partway or not in the asked-for shape is retried on another
 model rather than shown as an error. The prompt gives the model a **skeleton**: it
 writes an `outline` of every unit first (number and title), then the units in
@@ -328,9 +342,8 @@ plans side by side** (two textbooks, a platform, a framework), one column is
 the class's sequence — the one numbered through the year in order with its own
 headings and assessments, unless the teacher's notes name another — and every
 other column becomes a resource track on that day's section. An answer whose
-units fall short of its own outline (more than 15% missing) — checked only
-when files were read, since a follow-up returns just the units it changes —
-or that is empty for an empty class, is retried on another model; if every model falls short,
+units fall short of its own outline (more than 15% missing), or that is empty
+for an empty class, is retried on another model; if every model falls short,
 the fullest partial answer is offered with a note to check it. Then
 `shapeProposal` (`lib/curriculum-diff.ts`, tested) enforces the part that can
 be checked in code: sections are regrouped by their unit number whatever the
@@ -347,7 +360,21 @@ timeout. A model that came back busy is **cooled** for five minutes (moved to
 the back of the queue, never removed), so the next import goes straight to one
 that is working: on 2026-10-06 that took repeat imports from ~45s to ~1s. Every
 failed attempt logs one line (`[import] gemini-3.8-flash failed (HTTP 503) after
-3282ms`), which is what to read in the Vercel logs when an import fails.
+3282ms`), which is what to read in the Vercel logs when an import fails — and
+every answer logs what it used (`[import] gemini-3.5-flash used 18748 in, 2700
+out (0 thinking) — about $0.048 at paid rates`), counts only, never content.
+
+**What it costs.** Measured on 2026-11-01: the demo's 3-unit sample against a
+72-subunit class was 18.7k tokens in and 2.7k out — about **$0.05** at paid
+Flash rates ($1.50 / $7.50 per million from January 2027). Output is the
+expensive side, and the request was trimmed for it in 6.2: the answer's tracks
+carry only where the lesson sits (`kind`, `label`, `reference`) — no
+objectives, Learn or Practice, which files almost never hold and which cost a
+`null` per field per row — and the curriculum the model is shown carries
+references but not activities. With the chat gone the only calls are reads of
+files, and a repeated read is free. On the free tier, Google's 20 requests a
+day per model, spread across the chain's Flash models, comes to roughly 20–40
+class setups a day; day-to-day editing makes no calls at all.
 
 Every import spends the operator's Gemini quota, so every caller is limited:
 the demo to 8 an hour per address, a signed-in teacher to 30 an hour per
@@ -361,8 +388,8 @@ walks it.
 > request body tops out at 4.5 MB, and anything bigger gets the platform's own
 > non-JSON 413 before the route runs. The old 15 MB limit was a promise the
 > platform broke, and the browser then tried to parse an HTML error page as
-> JSON. The chat's composer now checks the size before sending, and the chat
-> reads a non-JSON 413/504 into a sentence a teacher can act on.
+> JSON. The import dialog now checks the size before sending, and reads a
+> non-JSON 413/504 into a sentence a teacher can act on.
 
 > ⚠️ **Overload is per model, so never retry the same one.** The first version
 > tried the configured model twice, then one sibling, then gave up — and on
@@ -410,31 +437,17 @@ student work. Two rules it exists to keep:
 > still reads `3.3::textbook` on section `3.4` — that is correct, and it is why
 > history survives.
 
-**A draft can fill a subunit in, not just name it.** A proposed track carries
-`objectives` (its learning targets) and two activities, `learn` and
-`practice` (a title and a sentence or two of instructions), which become the
-track's blocks. Asked to add or fill in a subunit, the model writes it in **exactly the
-format of the subunits around it** — it sees every subunit's objectives and
-activities as the teacher wrote them (instructions cut to 120 characters) —
-and code then holds it to that format (`conformToClass`, tested). The format
-is read from the subunit's **own unit** (a class can be written two ways — the
-demo's hand-authored Unit 3 has objectives, its other units are plain "Ch 12.6"
-/ "Practice" / "Assigned practice for Ch 12.6."), falling back to the class.
-Fields the unit leaves empty stay empty (no invented objectives); an activity
-whose every example follows one pattern — with `{ref}` for the resource's
-reference — gets that pattern; and on a **new** subunit an activity the
-pattern decides entirely is written by code if the model left it out.
-References: a sequence that runs in step with the subunits is continued (Ch
-12.7 for 10.7); a reference that is the activity's own name is named;
-anything else stays null. Never page or problem numbers, video titles or
-links. Content read from the teacher's files is kept as the files have it. On an existing resource it can only **fill an empty slot**
-(`contentToAdd`): the targets if there are none, a Learn if there is none, a
-Practice if there is none — offered as a `track-content` change and added
-beside the teacher's own blocks, never over them, so the track's id and every
-mark filed under it stay put. The model is shown which slots are filled.
-This matters beyond tidiness: a track with no Learn or Practice is
-**invisible to students** (`isTrackEmpty`), so an imported resource with only
-a reference used to show nothing until the teacher filled it in by hand.
+**Content in a proposal.** A proposed track can carry `objectives` and two
+activities, `learn` and `practice` (a title and instructions), which become
+the track's blocks — a track with no Learn or Practice is **invisible to
+students** (`isTrackEmpty`). Imports no longer ask for them (above); they are
+how a hand-added subunit arrives filled in (`insertSubunit` →
+`conformToClass`, which holds content to the unit's own format: fields the unit
+leaves empty stay empty, an activity whose every example follows one pattern —
+`{ref}` for the reference — gets it, and on a new subunit an activity the
+pattern decides entirely is written in). On an existing resource, content can
+only **fill an empty slot** (`contentToAdd`, a `track-content` change) —
+beside the teacher's own blocks, never over them.
 
 > ⚠️ **Silence is not a change.** A field the proposal leaves null keeps the
 > teacher's existing wording. Only substance they can see is ever offered, so
@@ -477,13 +490,13 @@ twice.
 When the **last** hunk is decided, the accepted ones are saved together
 through `store.applyCurriculum` with the class's version, so a class edited
 elsewhere mid-review is refused rather than overwritten (the bar then offers
-Try again). Decisions are saved with the chat as they are made, so a reload
-mid-review loses nothing, and they are keyed by row and stamped with what the
-row proposed: the set is rebuilt against the live curriculum on every change,
-and a follow-up that alters a row asks about it again.
+Try again). Decisions are saved with the import as they are made, so a
+reload mid-review loses nothing, and they are keyed by row and stamped with
+what the row proposed: the set is rebuilt against the live curriculum on every
+change, and a row that now proposes something else is asked about again.
 
 The demo can run it. The reading is real — a real call, a real diff — and only
-the class it changes is local. The chat's empty state offers **Try a sample
+the class it changes is local. The import dialog offers **Try a sample
 time line** (in the demo's own classes only), which builds a CSV out of the class's own timeline with a few
 deliberate edits (`lib/sample-timeline.ts`), so a visitor with no spreadsheet
 of their own still sees the honest result: a handful of changed rows and
@@ -581,19 +594,23 @@ a write queued offline under `3.3` still lands after `3.3` became `3.4`.
 
 ### Starting a class — `app/dashboard/new/`, `lib/pending-import.ts`
 
-A class starts from what the teacher already has. The new-class page asks for a
-name, the teacher's materials (time line, syllabus, a photo of a printed plan)
-and anything we should know — then **Create class**. There are no
-ready-made courses to pick from any more; "Start with an empty class" is the
-only other door.
+A class starts from what the teacher already has. The new-class page is
+numbered steps: **1 Name your class** (one large field), then **2 How would
+you like to start?** — two large cards, **From my plan** (upload a pacing
+guide or calendar and we set it up) or **Start blank** (type the units in by
+hand). *From my plan* shows `FileDrop` and the optional *Anything we should
+know?*. One large button finishes it — **Create my class and read my plan** or
+**Create my class** — and while it cannot be pressed, the reason sits beside
+it (*Give your class a name first.*, *Choose your file to continue.*). There
+are no ready-made courses to pick from any more.
 
 The draft is made in the new class's own Curriculum tab, not on the new-class
 page: the import route only reads for a class that exists and that the caller
 teaches, and the Curriculum tab is where every proposal is reviewed anyway. So
 the page creates the class **blank** (`createClassForTeacher(id, { name, blank:
 true })` — no units at all), parks the files in `setPendingImport(classId, …)`
-and moves to `?view=curriculum`, where the chat (`useCurriculumAgent`) takes
-them on arrival, opens, and sends them as the first message of a new chat. The
+and moves to `?view=curriculum`, where `useCurriculumImport` takes them on
+arrival, opens the import dialog and starts the read. The
 teacher's first sight of their new class is the work happening; nothing
 reaches the class until they accept it.
 
@@ -613,13 +630,10 @@ reaches the class until they accept it.
 > builds the request — an import started on arrival runs before the effect
 > that sets the `demo` state has.
 
-`MaterialsPicker` is the new-class page's "attach files and say what matters"
-(the chat has its own, smaller composer of the same shape). It is a **composer**, the shape
-people know from chat apps: one field for the notes, attached files as chips
-inside it, attach on the left of its bottom bar and the send button on the
-right, and the whole thing a drop target. An earlier open layout — a separate
-attach button, file rows and an underlined text field — did not read as
-somewhere to type, and its pieces drifted apart.
+`FileDrop` is the one way a file is chosen, on the new-class page and in the
+import dialog. It replaced `MaterialsPicker`, a chat-style composer (a notes
+field with file chips inside and a small attach icon), which read fine to
+people used to chat apps and was easy to miss for everyone else.
 
 `lib/course-templates.ts` remains only as the source of the demo's three seeded
 classes (see *Demo data*). Its subunits are numbered by the class unit, never
@@ -633,7 +647,7 @@ AI is told to follow as well.
 app/
   page.tsx                    Landing + AuthPanel
   dashboard/                  The app — class list, class view, subunit editor
-    new/                      Start a class: name, materials, notes → AI draft (or empty)
+    new/                      Start a class: 1 name, 2 from my plan (→ AI draft) or blank
   demo/                       Asks tour-or-no-tour, seeds the store, then enters
 components/
   AppNavbar.tsx / NavCapsule.tsx   Fixed h-14 bar · the segmented tab pill
@@ -655,8 +669,10 @@ components/
     SectionSidebar.tsx        One unit's sections, checkpoints interleaved
   teacher/
     ClassTeacherView.tsx      ⭐ the progress grid, gate, review + help flows
-    AgentPanel.tsx            ⭐ the curriculum chat, docked right (steps, edit card, history)
-    CurriculumPanel.tsx       The Curriculum tab: the table, or the draft under review
+    ImportDialog.tsx          ⭐ reading files in: 1 choose your file, 2 a checklist as we read it, the result
+    FileDrop.tsx              The big drop area + "Choose a file from my computer", shared with new/
+    CurriculumPanel.tsx       The Curriculum tab: the upload card, the table, Undo — or the draft under review
+    SubunitEditDialog.tsx     One subunit's form: name, date, references, add after, delete
     CurriculumReview.tsx      ⭐ a draft as red/green hunks with Accept/Reject, the review bar
     SubunitTracksEditor.tsx   ⭐ author resources, targets, Learn/Practice blocks
     SubunitScheduleEditor.tsx Soft due date
@@ -670,11 +686,12 @@ lib/
   class-progress.ts           ⭐ unlock / status / review logic — the only copy
   todos.ts                    ⭐ due-date parsing + the three to-do buckets
   course-templates.ts         The demo's three seeded courses (not offered to teachers)
-  pending-import.ts           Hands a new class's files to its chat
+  pending-import.ts           Hands a new class's files to its import dialog
   curriculum-diff.ts          ⭐ proposal → change set → applied curriculum (tested)
   curriculum-review.ts        ⭐ change set → hunks, decisions, reading order (tested)
-  curriculum-chat.ts          Chats and their files, per class, in IndexedDB
-  use-curriculum-agent.ts     ⭐ the chat's turns, streaming, and the draft under review
+  curriculum-chat.ts          Imports and their files, per class, in IndexedDB
+  use-curriculum-import.ts    ⭐ an import: streaming, the draft under review, Undo, reuse
+  curriculum-edit.ts          ⭐ hand edits: add a subunit, move dates by school days, remove (tested)
   sample-timeline.ts          The demo's sample CSV, built from the class
   use-page-title.ts           The tab title, most specific part first
   class-appearance.ts         ⭐ the eight accents and twelve class glyphs
@@ -1094,7 +1111,7 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 - **Resource hues are category identity only** — indigo textbook · violet AP Classroom · teal guided notes · amber extra · slate custom. They appear on the icon tile, the editor badge and the objective dot, never on chrome and never on a status. Attachments share one neutral treatment (`ATTACHMENT_CLASS`).
 - **Buttons are three weights and nothing else** — `.btn-primary` (solid **ink** — black on light, white on dark — no border, no shadow; a filled brand-blue block was the loudest thing on every screen, so blue is kept for links, the active tab and "new" badges) for the one action a screen is for, `.btn-secondary` (1px border, no fill) for an equal alternative, `.btn-ghost` for minor actions, plus `.btn-danger`. Size is `.btn-sm` / `.btn-md` / `.btn-lg`, so height and radius are decided once. **A filled button never also carries a border, and an outlined one never carries a fill** — mixing the two is what made the app read as half-designed. A primary that is not ready yet turns **neutral grey**, not faded blue — a washed-out brand colour read as broken, worst of all in dark mode — while one that is working (`aria-busy`) keeps its full colour.
 - **Flat by design, after Supabase.** One flat page colour (white, `#0b0f16` in dark). Every surface is `.surface` / `.card`: solid fill, a 1px `slate-200` (`slate-800` in dark) border, **no shadow**. Interactive cards answer the pointer with their border only — no lift, no glow. The class colour is spent sparingly: the primary button, the active tab, the student's class strip, a heading's accent line. Only true overlays (modals, dropdowns) carry a shadow.
-- **Motion does a job or it does not happen.** Two curves in `:root` — `--ease-out` for anything arriving, `--ease-spring` for anything the hand moved. What stayed: a short fade-and-rise when a view changes (`.page-in`, `.list-in`), one sliding pill per tab bar (`useSlidingPill`, in `NavCapsule` and `SubunitViewToggle`), sections that slide to their exact height (`<Collapse>`, grid rows 0fr→1fr), stat numbers that count up (`useCountUp`), bars that grow in (`.bar-fill`), a light passing over the chat's running step (`.shimmer-text`), and the theme switch spreading from the toggle as a circle (View Transitions API). All of it inside `prefers-reduced-motion: no-preference`.
+- **Motion does a job or it does not happen.** Two curves in `:root` — `--ease-out` for anything arriving, `--ease-spring` for anything the hand moved. What stayed: a short fade-and-rise when a view changes (`.page-in`, `.list-in`), one sliding pill per tab bar (`useSlidingPill`, in `NavCapsule` and `SubunitViewToggle`), sections that slide to their exact height (`<Collapse>`, grid rows 0fr→1fr), stat numbers that count up (`useCountUp`), bars that grow in (`.bar-fill`), a light passing over the import's running step (`.shimmer-text`), and the theme switch spreading from the toggle as a circle (View Transitions API). All of it inside `prefers-reduced-motion: no-preference`.
 - **Flat, but it answers the cursor** — the other half of what makes Supabase and Vercel feel alive. `<PointerTracker />` (one listener in the root layout, one write per frame, off on touch screens) feeds `--mx`/`--my` to every `[data-pointer]`, `.card-interactive` and `.edge-glow` under the pointer. With it: a card's 1px edge lights in the brand colour where the cursor is (`::after`, masked to the border); the line-art grid in a landing tile brightens in a circle beneath the cursor (`.line-grid-hot`); each landing vignette plays its change on hover (`.swap-a` / `.swap-b` — a student finishing, a help flag raised, offline changes landing), falling back to a slow loop on touch screens; the landing nav shares one highlight that glides between links (`<HoverNav>`); course cells go from grey to ink and reveal a detail line; and arrows nudge toward where they point.
 
 > ⚠️ **The theme circle must run on an even curve, with every other transition off.** It first ran on a strong ease-out and looked like it stalled three-quarters of the way: the circle covered most of the screen at once, then crawled through the far corner. And because the new snapshot is live, cards and buttons were still easing their own colours inside the circle as it grew. `ThemeToggle` now uses a symmetric ease-in-out and puts `theme-switching` on `<html>` (all transitions `none`) until the view transition finishes. The circle itself is a **CSS animation** (`theme-reveal` on `:root.theme-switching::view-transition-new(root)`, centre and radius passed as `--vt-x`/`--vt-y`/`--vt-r`), not `element.animate()` from script: a transition ends when its own animations do (~250ms), and one added from script did not always hold it open — on phones the circle got halfway and the page snapped. Declared in CSS it is one of the transition's animations. Note that browsers skip view transitions on a hidden page — test it with the window in front.
@@ -1117,23 +1134,28 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 - **Helpers**: `.surface`, `.card` / `.card-interactive`, `.panel-inset`, `.eyebrow` / `.eyebrow-muted`, `.page-in`, `.list-in`, `.fade-in`, `.bar-fill`, `.scan-line`; on the landing, `.ink` / `.muted-ink` for two-tone copy, `.line-grid` / `.line-grid-hot` for tile line-art, `.edge-glow` for a cursor-lit edge.
 - **UI chrome is Title Case**; prose is sentence case.
 - **Spacious, not empty — one rhythm.** 40px (`space-y-10`) between the major sections of a screen; ~12px from a section heading to its content; list rows at an even 14–16px with hairlines between. Fewer, larger gaps rather than many small ones: when a screen feels cluttered the fix is usually to remove an element (the dashboard's per-row Duplicate button moved into the ⋯ menu; the class code lost its label) before adding space around it.
-- **Say less.** A label that can stand alone does: no subtitles under headings, no example text in placeholders (*"Notes (optional)"*), no sentences explaining what a button will do. The dashboard heading is *"Classes"*; the chat is a header, a conversation and a composer. If a screen needs a paragraph to be understood, the screen is what needs fixing.
-- **The product says "we", never "AI".** (The chat's assistant speaks for itself, as "I", in its replies and notes — but the chrome around it is "Chat", "Open chat", "New chat".) Teachers are wary of AI, so no screen, button, placeholder or error names it: *"we build the class"*, *"anything we should know"*, *"we'll suggest the changes"*, **Create class**. No ✨ sparkle icons on the import either — that glyph is the industry's AI badge. Errors a teacher can see talk about their files (*"We're busier than usual — give it a minute"*), never about models, keys or providers; the operator's detail goes to the server log. The one exception is the privacy policy and terms, which must name Google's Gemini API exactly as the processor of uploaded documents — under calmer headings (*"How your documents are read"*), but with the disclosure itself unchanged.
+- **Say less.** A label that can stand alone does: no subtitles under headings, no example text in placeholders (*"Notes (optional)"*), no sentences explaining what a button will do. The dashboard heading is *"Classes"*; the import dialog is a title, a composer and a button. If a screen needs a paragraph to be understood, the screen is what needs fixing.
+- **The product says "we", never "AI".** (An import's one-line reply and its notes speak as "I" — but the chrome around them is "Upload a file", "Read my file".) Teachers are wary of AI, so no screen, button, placeholder or error names it: *"we build the class"*, *"anything we should know"*, *"we'll suggest the changes"*, **Create my class**. No ✨ sparkle icons on the import either — that glyph is the industry's AI badge. Errors a teacher can see talk about their files (*"We're busier than usual — give it a minute"*), never about models, keys or providers; the operator's detail goes to the server log. The one exception is the privacy policy and terms, which must name Google's Gemini API exactly as the processor of uploaded documents — under calmer headings (*"How your documents are read"*), but with the disclosure itself unchanged.
 
 > ⚠️ **`tailwind.config.ts` must scan `./lib`.** The status chips and resource palettes are plain `.ts` modules. They were silently dropped from the build once — chips rendered with no text in dark mode — until `lib` was added to `content`.
 
 ### Responsive rules worth knowing
 
 > ⚠️ **Inside a class, breakpoints are the container's, not the window's.**
-> With the chat docked, a 1280px window leaves the class ~600px — and the
-> `xl:` row of unit picker, keys and search squeezed into it and clipped. The
-> class view's content wrapper is a size container (`container-type:
-> inline-size`), and what is inside it — `ClassTeacherView`'s content,
-> `CurriculumTable`, `ClassCustomize` — uses **`cq-sm` / `cq-md` / `cq-lg` /
-> `cq-xl`** (custom variants in `tailwind.config.ts`, same widths as the screen
+> This began with the 6.0 chat, docked beside the class: a 1280px window left
+> the class ~600px, and the `xl:` row of unit picker, keys and search squeezed
+> into it and clipped. The chat is gone, but the rule stays — the class
+> view can still be narrowed, and a container query asks the right question. The class view's
+> content wrapper is a size container (`container-type: inline-size`), and
+> what is inside it — `ClassTeacherView`'s content, `CurriculumTable`,
+> `CurriculumPanel`, `ClassCustomize` — uses **`cq-sm` /
+> `cq-md` / `cq-lg` / `cq-xl`** (custom variants in `tailwind.config.ts`, same widths as the screen
 > breakpoints) where it would use `sm:`…`xl:`. The navbar and anything portalled
 > (modals, popovers) stay on screen breakpoints. A `cq-` class outside any
-> container never matches, so use it only inside the class view.
+> container never matches, so use it only inside the class view. And a grid
+> that becomes one column below a `cq-` breakpoint needs that column clamped
+> (`grid-cols-[minmax(0,1fr)]`): an unclamped one grows to its widest child
+> and pushed the phone layout 130px off the screen.
 
 - **Tab titles read from the most specific place outwards**, ` - `-separated:
   *Modern Classroom* · *Teaching - Modern Classroom* · *Algebra II, Honors -
@@ -1188,7 +1210,7 @@ That file is committed pointing at `.next`, which is what a deploy produces, so
 
 13. **A student's "new since you were last here" marks are per-device.** They live in that browser's localStorage, so the same student on a phone and a laptop is told twice. That is the right trade for a reading mark — it costs a row per person per class to do otherwise — but it is a choice, not an oversight.
 
-14. **Chats live in one browser.** They are in IndexedDB, files and all, so a teacher on a second device starts with no history (the curriculum itself is on the server, as ever). Syncing them would mean storing teachers' documents server-side — deliberately not done.
+14. **Imports live in one browser.** They are in IndexedDB, files and all, so a teacher on a second device has no Undo or reuse for imports made on the first (the curriculum itself is on the server, as ever). Syncing them would mean storing teachers' documents server-side — deliberately not done.
 
 15. **The AI drafts structure, not materials.** It reads units, subunits, dates, checkpoints and resource references out of the teacher's files; the actual documents, answer keys and videos still have to be attached per section.
 
@@ -1206,6 +1228,7 @@ House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). Th
 | `5.6` | 2026-10-08 | Imports read real teacher timelines: the model writes an outline of the whole year first and is held to it (short answers retry on another model, or come back flagged), side-by-side plans pick one column as the class's sequence and turn the others into tracks, units keep the year's teaching order by date, Lite models are tried last, and a model out of free-tier quota is skipped until it resets. The theme circle runs as a CSS animation, so it no longer snaps to the end halfway on phones. New units are numbered ("Unit 3: Linear Models"); notes speak to the teacher in the first person about gaps only, shown under "A note for you · not added to your curriculum" |
 | `6.0` | 2026-10-20 | The curriculum is built in a chat docked beside the class, like an editor's agent panel: minimisable (⌘I), with follow-ups that know the conversation and the draft under review, new chats and past chats kept per class. Each turn streams what it is actually doing — files read, units planned, each unit written — then replies in a sentence or two, with notes only when something could not be placed. Drafts are reviewed the Cursor way: red/green rows with dates, Accept/Reject per row, a bar to step through and accept or reject all. Unit and section numbers are copied exactly from the teacher's files; a sheet that never mentions quizzes no longer offers to delete them. The panel docks at a draggable width with the class laid out for the room it actually has (container queries), and minimises to a tab on the screen's edge. Tab titles read "Curriculum for Algebra II, Honors - Teaching - Modern Classroom". The chat types its replies out, says what it is doing in the present tense and what it did in the past, skips reading the curriculum for small talk, and lets the teacher edit, copy, retry and queue messages; the side tab's dot is amber while working and blue when there is something new. Asked for a subunit, it fills it in — objectives, and Learn and Practice on each resource — and any subunit in a draft opens to show exactly what it holds and what changes. Placeholders are plain ("Name", "Date"); the dev server runs on port 5000 |
 | `6.1` | 2026-10-24 | Editing an earlier chat message can put the curriculum back to how it stood before it — each accepted draft keeps a copy and its section moves, undone newest first so student work follows its sections. Open changes in a draft can be pointed at (Ask on a change, or @ in the composer) and ride on the message as chips; the model is told what they point at and what has been accepted, rejected or left undecided. A follow-up's one-unit answer is no longer thrown away for missing the rest of the year's outline |
+| `6.2` | 2026-11-01 | The chat beside the class is gone; AI reads files and nothing else. *Upload a file* opens an import dialog that shows the work as it happens and can run in the background; the draft is reviewed in the table as before, and a saved import can be undone while nothing has changed since. Everything else is done by hand, with large labelled controls for teachers new to software: click a subunit to edit its name, date and references in a form; *+ Add a subunit* (numbered in sequence, in the unit's own format, students' work moving with any renumber), *Move dates* by school days, and *Delete this subunit*. The new-class page is numbered steps: name the class, then *From my plan* or *Start blank*. Cheaper reads: a leaner answer and request, no second model by default, a free reuse when the same files are sent again, and a token and cost line per read in the log |
 | `5.2` | 2026-10-06 | The RLS helpers moved out of the exposed API, so a signed-in user can no longer probe other accounts' class memberships |
 | `5.1` | 2026-10-06 | Keep-awake workflow working: repo secrets set, and an anonymous heartbeat to ping, since real tables correctly refuse anonymous reads |
 | `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |

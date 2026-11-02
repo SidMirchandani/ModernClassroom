@@ -4,15 +4,17 @@ import type { Decisions } from "./curriculum-review";
 import type { SectionRemap } from "./store/types";
 
 /**
- * The curriculum chat: a teacher's conversations with the assistant that
- * builds and edits their curriculum, kept per class so they can come back to
- * one, follow it up or start a new one.
+ * A class's imports — each one the files a teacher sent, a note, the work as
+ * it happened, and the draft it made with the teacher's decisions on it —
+ * kept so a reload mid-review loses nothing, so an import can be undone, and
+ * so the same files sent again can reuse the answer.
  *
- * Kept in this browser's IndexedDB rather than on the server. A chat holds
- * the teacher's own files, which can run to megabytes and are only needed to
- * answer a follow-up, and IndexedDB stores them as they are — localStorage
- * cannot hold a file at all. The curriculum itself is what lives on the
- * server; the chat is how it got there.
+ * Kept in this browser's IndexedDB rather than on the server: an import
+ * holds the teacher's own files, which can run to megabytes, and IndexedDB
+ * stores them as they are — localStorage cannot hold a file at all. The
+ * curriculum itself is what lives on the server; an import is how it got
+ * there. (The records are still shaped as the two-message "chats" they began
+ * as — what was sent, and what came back — and the database keeps its name.)
  */
 
 export interface ChatFile {
@@ -42,7 +44,7 @@ export interface ReviewState {
    *   rejected   — every hunk was rejected; nothing changed
    *   superseded — a follow-up replaced it with a revised draft
    */
-  status: "pending" | "applied" | "rejected" | "superseded";
+  status: "pending" | "applied" | "rejected" | "superseded" | "undone";
   decisions: Decisions;
   accepted?: number;
   total?: number;
@@ -52,13 +54,8 @@ export interface ReviewState {
    */
   before?: CurriculumUnit[];
   remaps?: SectionRemap[];
-}
-
-/** A change in the draft the teacher pointed at, as it read when they did. */
-export interface Mention {
-  key: string;
-  label: string;
-  detail: string;
+  /** The curriculum's shape right after applying — Undo is only offered while it still has it. */
+  after?: string;
 }
 
 export interface UserMessage {
@@ -67,8 +64,8 @@ export interface UserMessage {
   at: number;
   text: string;
   fileIds: string[];
-  /** Changes in the draft this message is about. */
-  mentions?: Mention[];
+  /** A fingerprint of the files, note and curriculum it was read against — the same one reuses the answer. */
+  cacheKey?: string;
 }
 
 export interface AssistantMessage {

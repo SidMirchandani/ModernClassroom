@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Plus, Pencil, Trash2, ChevronRight, CalendarDays } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronRight, CalendarDays, ChevronDown } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import type { CurriculumUnit } from "@/lib/db/types";
 import type { Checkpoint, CheckpointKind } from "@/lib/types";
 import { emptySection } from "@/lib/curriculum";
 import { Select } from "@/components/Select";
+import { Popover } from "@/components/Popover";
 import { cn } from "@/lib/utils";
 
 interface CurriculumTableProps {
@@ -16,6 +17,16 @@ interface CurriculumTableProps {
   onUpdate: (units: CurriculumUnit[]) => void;
   getSubunitHref?: (subunitId: string) => string;
   onEdit?: () => void;
+  /** Beside the Edit button: reading files in, for one. */
+  actions?: ReactNode;
+  /** One line under the heading saying how the table is used. */
+  hint?: ReactNode;
+  /** With this, a subunit opens its edit form instead of navigating away. */
+  onSelect?: (subunitId: string) => void;
+  /** The choices behind a unit's "Move dates" button. */
+  unitMenu?: (unit: CurriculumUnit, close: () => void) => ReactNode;
+  /** Adds a subunit at the end of a unit, in the unit's own format. */
+  onAddSubunit?: (unitId: string) => void;
 }
 
 const CHECKPOINT_KINDS: CheckpointKind[] = ["quiz", "test", "checkpoint", "project"];
@@ -40,6 +51,11 @@ export function CurriculumTable({
   onUpdate,
   getSubunitHref,
   onEdit,
+  actions,
+  hint,
+  onSelect,
+  unitMenu,
+  onAddSubunit,
 }: CurriculumTableProps) {
   const [editing, setEditing] = useState(false);
 
@@ -162,9 +178,25 @@ export function CurriculumTable({
         className="w-full font-semibold bg-transparent border-b border-primary/50 focus:outline-none"
       />
     ) : (
-      <span className="font-semibold text-primary dark:text-primary-glow">
-        {unit.title}
-      </span>
+      <div className="space-y-2">
+        <span className="block font-semibold text-primary dark:text-primary-glow">{unit.title}</span>
+        {unitMenu && (
+          <Popover
+            label={
+              <>
+                <CalendarDays className="w-3.5 h-3.5" />
+                Move dates
+                <ChevronDown className="w-3.5 h-3.5" />
+              </>
+            }
+            triggerClassName="btn btn-sm btn-secondary"
+            align="left"
+            width={260}
+          >
+            {(close) => unitMenu(unit, close)}
+          </Popover>
+        )}
+      </div>
     );
   }
 
@@ -195,6 +227,20 @@ export function CurriculumTable({
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
+          ) : onSelect ? (
+            // Opens its edit form; the full editor is a link from there.
+            <button
+              key={subunit.id}
+              type="button"
+              onClick={() => onSelect(subunit.id)}
+              title="Click to edit"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left group hover:border-primary/60 hover:text-primary dark:hover:text-primary-glow transition-colors"
+            >
+              <span className="font-mono text-xs text-slate-400">{subunit.id}</span>
+              {subunit.title}
+              {subunit.date && <span className="text-[10px] text-slate-400">{subunit.date}</span>}
+              <Pencil className="w-3 h-3 text-slate-300 group-hover:text-primary" />
+            </button>
           ) : (
             <Link
               key={subunit.id}
@@ -210,14 +256,25 @@ export function CurriculumTable({
             </Link>
           )
         )}
-        <button
-          type="button"
-          onClick={() => addSubunit(unit.id)}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-primary hover:bg-slate-50 dark:hover:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-600"
-          title="Add Subunit"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
+        {onAddSubunit && !editing ? (
+          <button
+            type="button"
+            onClick={() => onAddSubunit(unit.id)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm text-primary dark:text-primary-glow border border-dashed border-primary/40 hover:bg-primary/5 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add a subunit
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => addSubunit(unit.id)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-primary hover:bg-slate-50 dark:hover:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-600"
+            title="Add Subunit"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        )}
       </div>
     );
   }
@@ -344,6 +401,8 @@ export function CurriculumTable({
         <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
           Curriculum
         </h2>
+        <div className="flex items-center gap-2">
+        {actions}
         <button
           type="button"
           onClick={() => setEditing((e) => !e)}
@@ -357,7 +416,11 @@ export function CurriculumTable({
           <Pencil className="w-3 h-3" />
           {editing ? "Done Editing" : "Edit"}
         </button>
+        </div>
       </div>
+      {hint && !editing && (
+        <p className="-mt-1 mb-3 text-[15px] text-slate-500 dark:text-slate-400">{hint}</p>
+      )}
 
       <div className="card overflow-hidden">
         {/* Phone: one card per unit. Three columns fighting over 375px is

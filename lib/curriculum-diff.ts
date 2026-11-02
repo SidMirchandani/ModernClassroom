@@ -777,7 +777,12 @@ function formatOf(sections: Section[]): ClassFormat | null {
  */
 export function conformToClass(
   proposal: CurriculumProposal,
-  current: CurriculumUnit[]
+  current: CurriculumUnit[],
+  /**
+   * Which sections are new, when the caller knows better than a number can:
+   * inserting 10.7 pushes the old 10.7 to 10.8, so "10.7" is already taken.
+   */
+  isFresh?: (section: ProposedSection) => boolean
 ): CurriculumProposal {
   const classFormat = formatOf(current.flatMap((u) => u.subunits ?? []));
   if (!classFormat) return proposal;
@@ -843,7 +848,7 @@ export function conformToClass(
       return {
         ...unit,
         sections: unit.sections.map((section) => {
-          const fresh = !section.existingId && !known.has(norm(section.number));
+          const fresh = isFresh ? isFresh(section) : !section.existingId && !known.has(norm(section.number));
           return {
             ...section,
             objectives: format.usesObjectives ? section.objectives : null,

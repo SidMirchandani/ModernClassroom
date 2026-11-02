@@ -3,7 +3,6 @@ import { applyChanges, buildChangeSet, conformToClass, type CurriculumProposal }
 import {
   acceptedChangeIds,
   buildHunks,
-  carryDecisions,
   decisionOf,
   reviewRows,
   type Decisions,
@@ -71,24 +70,6 @@ describe("buildHunks", () => {
       ["3.2", "Intercepts", "10/3"],
       ["3.3", "Point-Slope Form", "10/6"],
     ]);
-  });
-});
-
-describe("carryDecisions", () => {
-  it("keeps a decision only while its row proposes the same thing", () => {
-    const first = buildHunks(buildChangeSet(units(), draft()));
-    const decisions: Decisions = Object.fromEntries(
-      first.map((h) => [h.key, { decision: "accepted" as const, signature: h.signature }])
-    );
-
-    // A follow-up moves 3.1 to a different day; 3.3 is untouched.
-    const revised = draft();
-    revised.units[0].sections[0].date = "10/5";
-    const second = buildHunks(buildChangeSet(units(), revised));
-    const carried = carryDecisions(second, decisions);
-
-    expect(decisionOf(second[0], carried)).toBeNull();
-    expect(decisionOf(second[1], carried)).toBe("accepted");
   });
 });
 

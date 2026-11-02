@@ -28,8 +28,9 @@ import { getCurrentUnitIndex, getUnitPhase, type UnitPhase } from "@/lib/unit-ph
 import { UnitPhaseBadge } from "./UnitPhaseBadge";
 import { TableProgressGate } from "./TableProgressGate";
 import { CurriculumPanel } from "./CurriculumPanel";
-import { AgentPanel } from "./AgentPanel";
-import { useCurriculumAgent } from "@/lib/use-curriculum-agent";
+import { ImportDialog } from "./ImportDialog";
+import { useCurriculumImport } from "@/lib/use-curriculum-import";
+import { isDemoMode } from "@/lib/demo-seed";
 import { ClassCustomize } from "./ClassCustomize";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
@@ -589,33 +590,18 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     }
   }, [reviewTarget, classProgress]);
 
-  // The curriculum chat. A draft it makes is reviewed on the Curriculum tab,
-  // so one arriving while the teacher is elsewhere takes them there.
-  const agent = useCurriculumAgent({
+  // Reading the teacher's files in — the curriculum's one use of AI. The
+  // draft it makes is reviewed on the Curriculum tab, so one arriving while
+  // the teacher is elsewhere takes them there.
+  const importer = useCurriculumImport({
     classId,
     units,
     onApply: applyCurriculum,
     onDraft: () => selectView("curriculum"),
   });
-  const { setOpen: setAgentOpen } = agent;
-
-  // ⌘I / Ctrl+I opens and minimises it, as in an editor.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "i") {
-        e.preventDefault();
-        setAgentOpen((open) => !open);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setAgentOpen]);
-
-  /** From the chat to the draft: on a phone the chat covers it, so it steps aside. */
-  const showReview = useCallback(() => {
-    selectView("curriculum");
-    if (!window.matchMedia("(min-width: 1024px)").matches) setAgentOpen(false);
-  }, [selectView, setAgentOpen]);
+  // The sample time line is the demo's own: a real class reads real files.
+  const [demoClass, setDemoClass] = useState(false);
+  useEffect(() => setDemoClass(isDemoMode() && classId.startsWith("demo-")), [classId]);
 
   if (loading || !cls) {
     return (
@@ -773,21 +759,10 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         <NavCapsule tabs={navTabs} activeId={activeView} />
       </div>
 
-      {/* Room for the chat beside the class when it is docked — exactly as
-          wide as it has been dragged, so nothing sits under it. Below `lg`
-          it covers the page whole instead, and nothing moves. */}
-      <div
-        // A size container: the class inside lays itself out for the width it
-        // actually has beside the chat (the `cq-*` variants), not for the
-        // window's — at 1280px with the chat open, it has ~600.
-        style={{
-          paddingRight: agent.open && agent.docked ? agent.width : 0,
-          containerType: "inline-size",
-        }}
-        className={cn(
-          !agent.resizing && "transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
-        )}
-      >
+      {/* A size container: the class lays itself out for the width it
+          actually has (the `cq-*` variants) — the subunit inspector beside
+          the curriculum takes some of it. */}
+      <div style={{ containerType: "inline-size" }}>
       <div className="max-w-7xl mx-auto w-full px-5 cq-sm:px-6 py-8 cq-sm:py-10 space-y-10">
         <div>
           {editingName ? (
@@ -1201,10 +1176,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           <CurriculumPanel
             classId={classId}
             units={cls.units}
-            review={agent.review}
-            chatOpen={agent.open}
-            onOpenChat={() => agent.setOpen(true)}
+            importer={importer}
             onUpdate={(units) => saveClass({ units })}
+            onApply={applyCurriculum}
           />
           </div>
         )}
@@ -1227,7 +1201,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
       </div>
       </div>
 
-      <AgentPanel agent={agent} units={units} onReview={showReview} />
+      {/* Here rather than in the Curriculum tab: a read started there keeps
+          going, and can be watched, from any tab. */}
+      <ImportDialog importer={importer} units={units} demoClass={demoClass} />
 
       <ConfirmDialog
         open={pendingRemoval !== null}
