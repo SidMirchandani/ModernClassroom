@@ -33,7 +33,8 @@ export function UserAvatar({
     <div
       data-accent={accent}
       className={cn(
-        "rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center font-bold text-primary dark:text-primary-glow shrink-0",
+        // Filled with the person's colour, initials in white.
+        "rounded-full bg-primary flex items-center justify-center font-bold text-white shrink-0",
         SIZE_CLASSES[size],
         bordered && "border border-slate-200 dark:border-slate-700",
         className

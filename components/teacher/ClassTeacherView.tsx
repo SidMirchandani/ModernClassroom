@@ -24,14 +24,18 @@ import { Popover } from "@/components/Popover";
 import { Tooltip } from "@/components/Tooltip";
 import { checkpointMax, gradeToneClass } from "@/lib/grades";
 import { trackAbbr, TRACK_KIND_COLORS } from "@/lib/section-tracks";
-import { getCurrentUnitIndex, getUnitPhase, type UnitPhase } from "@/lib/unit-phase";
+import { getCurrentUnitIndexByDate, getUnitPhase, type UnitPhase } from "@/lib/unit-phase";
+import { referenceToday } from "@/lib/demo-seed";
 import { UnitPhaseBadge } from "./UnitPhaseBadge";
-import { TableProgressGate } from "./TableProgressGate";
 import { CurriculumPanel } from "./CurriculumPanel";
 import { ImportDialog } from "./ImportDialog";
 import { useCurriculumImport } from "@/lib/use-curriculum-import";
 import { isDemoMode } from "@/lib/demo-seed";
 import { ClassCustomize } from "./ClassCustomize";
+import { ClassroomPanel } from "./ClassroomPanel";
+import { ClassroomGrid } from "./ClassroomGrid";
+import { useClassroom } from "@/lib/use-classroom";
+import { supabaseConfigured } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { Logo } from "@/components/Logo";
@@ -43,7 +47,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getCurrentUser } from "@/lib/auth-client";
 import { store, type SectionRemap } from "@/lib/store";
 import { useClassSync } from "@/lib/use-class-sync";
-import type { CurriculumUnit, DbClass, DbInvite } from "@/lib/db/types";
+import type { CurriculumUnit, DbClass } from "@/lib/db/types";
 import type {
   Checkpoint,
   CheckpointKind,
@@ -66,7 +70,6 @@ import {
   Eye,
   Loader2,
   MoreHorizontal,
-  UserPlus,
   UserMinus,
   RotateCcw,
 } from "lucide-react";
@@ -175,7 +178,6 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const [loading, setLoading] = useState(true);
   const [cls, setCls] = useState<DbClass | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
-  const [invites, setInvites] = useState<DbInvite[]>([]);
   const [classProgress, setClassProgress] = useState<StudentProgress[]>([]);
   const [className, setClassName] = useState("");
   const [editingName, setEditingName] = useState(false);
@@ -189,10 +191,6 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   // committed on blur, so a half-typed "1" of "18" never lands in the store.
   const [gradeDrafts, setGradeDrafts] = useState<Record<string, string>>({});
   const [pointsDrafts, setPointsDrafts] = useState<Record<string, string>>({});
-  const [inviteInput, setInviteInput] = useState("");
-  const [inviting, setInviting] = useState(false);
-  const [inviteError, setInviteError] = useState("");
-  const [blockSectionId, setBlockSectionId] = useState<string | null>(null);
   const [activeUnitIndex, setActiveUnitIndex] = useState(0);
   // The tab lives in the URL as well as in state, so a link can land on
   // Curriculum or Customize — which is how the guided tour walks the class.
@@ -222,7 +220,6 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const sectionColumnRefs = useRef<(HTMLTableCellElement | null)[]>([]);
-  const inviteRowRef = useRef<HTMLTableRowElement>(null);
 
   // Memoised: `handleSaveGrades` closes over it, and a fresh [] each render
   // would rebuild that callback every time.
@@ -231,30 +228,16 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const sections = activeUnit?.subunits ?? [];
   const sectionIds = sections.map((s) => s.id);
   const columns = buildColumns(sections, activeUnit?.checkpoints ?? []);
-  const currentUnitIndex = getCurrentUnitIndex(units, blockSectionId);
+  // Where the class is comes from the calendar: there is no line to drag.
+  const currentUnitIndex = getCurrentUnitIndexByDate(units, referenceToday());
   const unitPhase = getUnitPhase(activeUnitIndex, currentUnitIndex, students.length > 0);
-  const isActiveUnit = unitPhase === "active";
-  const effectiveBlockId =
-    isActiveUnit && blockSectionId
-      ? blockSectionId
-      : isActiveUnit && sectionIds.length > 0
-        ? sectionIds[sectionIds.length - 1]
-        : null;
-  const blockIndex = effectiveBlockId ? sectionIds.indexOf(effectiveBlockId) : -1;
-  const gateActive =
-    isActiveUnit &&
-    blockSectionId !== null &&
-    blockIndex >= 0 &&
-    blockIndex < sections.length - 1;
 
   function getCellStatus(
     studentProgress: StudentProgress | undefined,
     sectionId: string,
     sIdx: number
   ): TeacherSectionStatus {
-    if (unitPhase === "finished") return "complete";
     if (unitPhase === "upcoming") return "not-started";
-    if (gateActive && sIdx > blockIndex) return "not-started";
     if (!studentProgress) return "not-started";
     return getTeacherSectionStatus(studentProgress, sectionId, sections);
   }
@@ -281,7 +264,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const loadData = useCallback(async () => {
     const user = await getCurrentUser();
     if (!user) {
-      router.replace("/?auth=login");
+      router.replace("/");
       return;
     }
     // A reload that fails keeps what is on screen — see ClassStudentView.
@@ -296,14 +279,12 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     }
     setCls(data.class);
     setStudents(data.students);
-    setInvites(data.invites);
-    setBlockSectionId(data.class.blockSectionId);
 
     // A re-read can arrive at any moment — a student marking a step is enough
     // to cause one. It must never move the teacher: not off the unit they are
     // looking at, and not out of the name they are halfway through typing.
     if (!settled.current) {
-      setActiveUnitIndex(getCurrentUnitIndex(data.class.units, data.class.blockSectionId));
+      setActiveUnitIndex(getCurrentUnitIndexByDate(data.class.units, referenceToday()));
       settled.current = true;
     }
     if (!editingNameRef.current) setClassName(data.class.name);
@@ -355,6 +336,12 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     "Teaching"
   );
 
+  // Google Classroom is for real classes: the demo never leaves the browser.
+  const [classroomEnabled, setClassroomEnabled] = useState(false);
+  useEffect(() => setClassroomEnabled(!isDemoMode() && supabaseConfigured()), []);
+  const classroom = useClassroom(classId, classroomEnabled);
+  const { postQuietly } = classroom;
+
   const saveClass = useCallback(
     async (patch: Partial<DbClass>) => {
       const updated = await store.updateClass(classId, patch);
@@ -373,8 +360,10 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     async (units: CurriculumUnit[], remaps: SectionRemap[]) => {
       await store.applyCurriculum(classId, units, remaps, cls?.version ?? null);
       await loadData();
+      // An approved curriculum goes on to Google Classroom by itself.
+      postQuietly();
     },
-    [classId, cls?.version, loadData]
+    [classId, cls?.version, loadData, postQuietly]
   );
 
   const handleNameSave = async () => {
@@ -383,14 +372,6 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
       await saveClass({ name: className.trim() });
     }
   };
-
-  const handleBlockChange = useCallback(
-    async (sectionId: string) => {
-      setBlockSectionId(sectionId);
-      await saveClass({ blockSectionId: sectionId });
-    },
-    [saveClass]
-  );
 
   /** One student's mark on one checkpoint. Empty clears it. */
   const commitGrade = useCallback(
@@ -479,26 +460,6 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     },
     [classProgress, saveClass, saveProgress, units]
   );
-
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteInput.trim()) return;
-    setInviting(true);
-    setInviteError("");
-    try {
-      const user = await getCurrentUser();
-      if (!user) return;
-      const data = await store.inviteToClass(classId, user.id, inviteInput.trim());
-      setStudents(data.students);
-      setInvites(data.invites);
-      setInviteInput("");
-      await loadData();
-    } catch (err) {
-      setInviteError(err instanceof Error ? err.message : "Could not invite");
-    } finally {
-      setInviting(false);
-    }
-  };
 
   const handleApprove = useCallback(async () => {
     if (!reviewTarget) return;
@@ -687,7 +648,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         studentProgressList.length
       : 0;
 
-  const pendingHelpCount = countClassHelpRequests(units, classProgress, blockSectionId);
+  const pendingHelpCount = countClassHelpRequests(units, classProgress, null);
 
   const ClassGlyph = classIcon(cls?.icon);
 
@@ -725,15 +686,11 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors text-sm shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
-              {/* Only where there is room: beside the tab capsule, the label
-                  and the class code together overran it at tablet width. */}
+              {/* Only where there is room: beside the tab capsule. */}
               <span className="hidden lg:inline">Dashboard</span>
             </Link>
             <span className="text-slate-300 dark:text-slate-700 hidden lg:inline">|</span>
             <Logo size={24} showText={false} />
-            <span className="text-sm font-semibold tracking-[0.08em] text-slate-700 dark:text-slate-300 tabular-nums">
-              {cls.code}
-            </span>
           </div>
         }
         center={
@@ -753,8 +710,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         }
       />
 
-      {/* Phone: the capsule needs its own row — sharing the navbar with the
-          class code overflows a 375px screen. */}
+      {/* Phone: the capsule needs its own row on a 375px screen. */}
       <div className="sm:hidden sticky top-14 z-20 flex justify-center px-5 py-2 border-b border-slate-200 dark:border-slate-800 float-pane">
         <NavCapsule tabs={navTabs} activeId={activeView} />
       </div>
@@ -802,6 +758,16 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         </div>
 
         {activeView === "classroom" && (
+          classroomEnabled ? (
+          <div key="classroom-google" className="page-in">
+            <ClassroomGrid
+              classId={classId}
+              unit={activeUnit}
+              classroom={classroom}
+              onOpenCurriculum={() => selectView("curriculum")}
+            />
+          </div>
+          ) : (
           <div key="classroom" className="page-in space-y-10">
         <div className="list-in grid grid-cols-2 cq-sm:grid-cols-3 border-y border-slate-200 dark:border-slate-800 cq-sm:divide-x divide-slate-200 dark:divide-slate-800">
           <StatCard label="Students" value={totalStudents} sub="enrolled" icon={<Users className="w-4 h-4 text-primary" />} onClick={() => setOpenModal("students")} />
@@ -845,16 +811,6 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
 
             <div data-tour="progress-table" className="card overflow-hidden">
               <div ref={tableScrollRef} className="relative overflow-x-auto">
-                {effectiveBlockId && isActiveUnit && sections.length > 0 && (
-                  <TableProgressGate
-                    blockSectionId={effectiveBlockId}
-                    onChange={handleBlockChange}
-                    containerRef={tableScrollRef}
-                    columnRefs={sectionColumnRefs}
-                    sectionIds={sectionIds}
-                    endRef={inviteRowRef}
-                  />
-                )}
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-slate-800">
@@ -1041,10 +997,9 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                             const cfg = STATUS_CONFIG[status];
                             const isReview = status === "review";
                             const isHelp = status === "help";
-                            const beyondGate = gateActive && sIdx > blockIndex;
 
                             return (
-                              <td key={section.id} className={cn("px-2 py-3", beyondGate && "opacity-60")}>
+                              <td key={section.id} className="px-2 py-3">
                                 <div className="flex flex-col items-center gap-1.5">
                                   <span
                                     className={cn(
@@ -1065,7 +1020,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                                   <TrackStatusDots
                                     section={section}
                                     sectionProgress={studentProgress?.sections[section.id]}
-                                    accessible={!beyondGate && unitPhase !== "upcoming"}
+                                    accessible={unitPhase !== "upcoming"}
                                     onTrackClick={(trackId) =>
                                       openTrackTarget(student.id, section.id, trackId)
                                     }
@@ -1081,61 +1036,10 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
                       );
                     })}
 
-                    <tr
-                      ref={inviteRowRef}
-                      className="bg-slate-50 dark:bg-slate-800/30 border-t-2 border-dashed border-slate-200 dark:border-slate-700"
-                    >
-                      <td colSpan={columns.length + 2} className="px-4 py-3">
-                        <form onSubmit={handleInvite} className="flex items-center gap-3">
-                          <UserPlus className="w-4 h-4 text-slate-400 shrink-0" />
-                          <input
-                            type="text"
-                            value={inviteInput}
-                            onChange={(e) => setInviteInput(e.target.value)}
-                            placeholder="Invite student by email or username…"
-                            className="flex-1 text-sm bg-transparent focus:outline-none placeholder:text-slate-400"
-                          />
-                          <button
-                            type="submit"
-                            disabled={inviting || !inviteInput.trim()}
-                            className="btn btn-sm btn-primary"
-                          >
-                            {inviting ? "Inviting…" : "Invite"}
-                          </button>
-                        </form>
-                        {inviteError && (
-                          <p className="text-xs text-rose-600 dark:text-rose-400 mt-2 ml-7">
-                            {inviteError}
-                          </p>
-                        )}
-                        {invites.length > 0 && (
-                          <p className="text-xs text-slate-400 mt-2 ml-7">
-                            Pending: {invites.map((i) => i.emailOrUsername).join(", ")}
-                          </p>
-                        )}
-                      </td>
-                    </tr>
                   </tbody>
                 </table>
               </div>
             </div>
-            {isActiveUnit && (
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-600">
-              Drag the{" "}
-              <span className="text-rose-500 dark:text-rose-400">red line</span> to set how far
-              students can progress
-              {gateActive ? (
-                <>
-                  {" "}
-                  — currently open through{" "}
-                  <span className="text-slate-500">{blockSectionId}</span>
-                </>
-              ) : (
-                " (fully open)"
-              )}
-              .
-            </p>
-            )}
           </>
         )}
 
@@ -1169,17 +1073,13 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           </div>
         )}
           </div>
+          )
         )}
 
         {activeView === "curriculum" && (
-          <div key="curriculum" data-tour="curriculum" className="page-in">
-          <CurriculumPanel
-            classId={classId}
-            units={cls.units}
-            importer={importer}
-            onUpdate={(units) => saveClass({ units })}
-            onApply={applyCurriculum}
-          />
+          <div key="curriculum" data-tour="curriculum" className="page-in space-y-5">
+          {!importer.review && <ClassroomPanel classroom={classroom} />}
+          <CurriculumPanel units={cls.units} importer={importer} />
           </div>
         )}
 
@@ -1187,7 +1087,6 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
           <div key="customize" className="page-in">
           <ClassCustomize
             name={cls.name}
-            code={cls.code}
             color={cls.color}
             icon={cls.icon}
             onChange={(patch) => {
@@ -1218,8 +1117,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         body={
           <>
             <strong>{pendingRemoval?.name}</strong> comes off the roster and stops seeing
-            this class. Their work is kept, so joining again with the class code brings it
-            back.
+            this class. Their work is kept, so adding them back brings it back.
           </>
         }
       />

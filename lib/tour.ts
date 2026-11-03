@@ -49,11 +49,11 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "class-card",
     place: "Dashboard",
-    title: "A class, and its join code",
+    title: "A class",
     href: "/dashboard?tab=teaching",
     anchor: "class-card",
     body:
-      "Students join with the six-digit code — copy it with the button beside it. Duplicate copies the whole curriculum into a fresh class for another period, without the students or their progress.",
+      "Each class you teach, with its progress at a glance. Duplicate copies the whole curriculum into a fresh class for another period, without the students or their progress.",
   },
   {
     id: "class-nav",
@@ -91,15 +91,6 @@ export const TOUR_STEPS: TourStep[] = [
     anchor: "table-keys",
     body:
       "Three keys: the resource letters, the colours a graded column can take, and the colours of the assessment titles. Hovering any chip or title explains it in place, too.",
-  },
-  {
-    id: "progress-gate",
-    place: "Teacher view",
-    title: "How far the class may go",
-    href: `/dashboard/class/${TOUR_CLASS_ID}`,
-    anchor: "progress-gate",
-    body:
-      "Drag the red line to open or close the course. Everything past it is locked for students however fast they work — self-paced, but not unbounded.",
   },
   {
     id: "curriculum",

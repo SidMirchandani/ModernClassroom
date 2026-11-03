@@ -112,7 +112,7 @@ export default async function Home({
         points={[
           "Textbook, AP Classroom and notes tracked apart",
           "“I’m stuck” is a state on a specific resource",
-          "A gate you set for how far the class may run ahead",
+          "Each lesson posted to Google Classroom on its own date",
         ]}
         mock={<TracksMock />}
       />
@@ -169,10 +169,8 @@ export default async function Home({
               It moves with it. Nothing is lost.
             </Faq>
             <Faq q="Is student information ever sent anywhere?">
-              No. Only the documents you attach are read.
-            </Faq>
-            <Faq q="Do students need accounts?">
-              Yes — they sign up themselves with your class code.
+              Only the documents you attach are read, and your class&apos;s posts and turn-ins move between here
+              and your own Google Classroom.
             </Faq>
             <Faq q="What if I want to stop using it?">
               Delete your account from the profile menu. Everything goes with it.

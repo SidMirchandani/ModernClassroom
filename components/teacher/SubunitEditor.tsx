@@ -41,7 +41,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   const loadData = useCallback(async () => {
     const user = await getCurrentUser();
     if (!user) {
-      router.replace("/?auth=login");
+      router.replace("/");
       return;
     }
     // As on the class page: a class that cannot be loaded sends the teacher

@@ -28,7 +28,7 @@ export function ClassPageClient({ classId }: { classId: string }) {
     (async () => {
       const currentUser = await getCurrentUser();
       if (!currentUser) {
-        router.replace("/?auth=login");
+        router.replace("/");
         return;
       }
       // A class that cannot be loaded — gone, not yours, or the server

@@ -2,7 +2,7 @@
 
 import type { PublicUser } from "./db/types";
 import { randomAccent } from "./class-appearance";
-import { isDemoMode, exitDemoMode } from "./demo-seed";
+import { isDemoMode, exitDemoMode, leaveDemoOnFreshVisit } from "./demo-seed";
 import { supabase } from "./supabase/client";
 import { acceptInvites } from "./store/remote";
 import { store, syncedStoreIfActive } from "./store";
@@ -23,6 +23,8 @@ function describe(err: { message: string } | null, fallback: string): string {
 }
 
 export async function getCurrentUser(): Promise<PublicUser | null> {
+  // Before anything asks "who is this": a stale demo must not answer.
+  leaveDemoOnFreshVisit();
   return store.getCurrentUser();
 }
 
@@ -78,6 +80,37 @@ export async function signupUser(data: {
 
   const user = await store.getCurrentUser();
   if (!user) throw new Error("Account created, but the profile could not be loaded");
+  return user;
+}
+
+/**
+ * "Continue with Google", for logging in and signing up alike: Supabase makes
+ * the account on a first visit, and the profile trigger names it from what
+ * Google sends.
+ *
+ * It goes through our own `/api/google/signin` rather than Supabase's hosted
+ * page, so Google's account chooser names this site and not `….supabase.co`.
+ * That route sets the session; `/auth/callback` finishes.
+ *
+ * It signs in and nothing more — connecting Google Classroom is its own step,
+ * so a plain sign-in never asks for access to anyone's classes.
+ */
+export function signInWithGoogle(): void {
+  if (isDemoMode()) exitDemoMode();
+  window.location.assign("/api/google/signin");
+}
+
+/** The far side of Google: the session is already set; the usual sign-in steps. */
+export async function finishGoogleSignIn(): Promise<PublicUser> {
+  const {
+    data: { session },
+  } = await supabase().auth.getSession();
+  if (!session) throw new Error("Could not sign in with Google");
+
+  await acceptInvites().catch(() => undefined);
+
+  const user = await store.getCurrentUser();
+  if (!user) throw new Error("Signed in, but the profile could not be loaded");
   return user;
 }
 

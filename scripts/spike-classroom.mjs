@@ -14,7 +14,7 @@
 //   node --env-file=.env.local scripts/spike-classroom.mjs cleanup
 //
 // Needs a "Desktop app" OAuth client from Google Cloud in .env.local:
-//   GOOGLE_CLIENT_ID=...   GOOGLE_CLIENT_SECRET=...
+//   SPIKE_GOOGLE_CLIENT_ID=...   SPIKE_GOOGLE_CLIENT_SECRET=...
 //
 // The first run opens Google's consent page and listens on 127.0.0.1 for the
 // redirect. The refresh token and the created item's id are kept in
@@ -31,9 +31,9 @@ const SCOPES = [
   "https://www.googleapis.com/auth/classroom.coursework.students",
 ];
 
-const { GOOGLE_CLIENT_ID: clientId, GOOGLE_CLIENT_SECRET: clientSecret } = process.env;
+const { SPIKE_GOOGLE_CLIENT_ID: clientId, SPIKE_GOOGLE_CLIENT_SECRET: clientSecret } = process.env;
 if (!clientId || !clientSecret) {
-  console.error("Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.local first.");
+  console.error("Set SPIKE_GOOGLE_CLIENT_ID and SPIKE_GOOGLE_CLIENT_SECRET in .env.local first.");
   process.exit(1);
 }
 

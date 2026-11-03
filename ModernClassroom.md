@@ -2,19 +2,21 @@
 
 > **Master doc — the north star for this project.** Everything else (README, comments, code) should agree with this. Where code and doc conflict, the code wins and this doc gets fixed.
 >
-> Repo: [SidMirchandani/ModernClassroom](https://github.com/SidMirchandani/ModernClassroom) (public) · Last commit: `ModernClassroom v1.3: Update: Add master doc` · Last reviewed: 2026-08-17
+> Repo: [SidMirchandani/ModernClassroom](https://github.com/SidMirchandani/ModernClassroom) (public) · Last commit: `ModernClassroom v6.3: Update: Plan The Google Classroom Connection` · Last reviewed: 2026-11-03 (the working tree after v6.3 — the Google Classroom connection is built but not yet committed)
 
 ## What it is
 
-A self-paced classroom dashboard built around one teacher's actual way of running a course: a whole-year timeline broken into 42-minute lessons, and **three parallel resources per section** — an approved textbook, AP Classroom, and a guided-notes series — that cover the same objectives in *different orders* and can never be forced onto one shared numbering.
+A classroom dashboard built around one teacher's actual way of running a course: a whole-year timeline broken into 42-minute lessons, and **three parallel resources per section** — an approved textbook, AP Classroom, and a guided-notes series — that cover the same objectives in *different orders* and can never be forced onto one shared numbering.
 
-Students open a section and see one button per resource. Each button expands into that resource's own learning targets, its **Learn** material, and its **Practice** deliverable, with its own status. Teachers author the curriculum, watch a live grid that shows *which resource* each student is stuck on, review submitted work, and drag a **progress gate** that caps how far the class can move ahead.
+A real class now lives in **Google Classroom**. The teacher uploads her year plan, reviews it row by row, and the app posts it into the Classroom class she already has — each unit a topic, each resource's practice an assignment, scheduled on its date — then reads her students' turn-ins back into a grid of who has done what. Students never sign in here; they keep using Classroom. See *The Google Classroom connection* below, and [`docs/Classroom-Connect.md`](docs/Classroom-Connect.md) for the plan and the reasoning.
+
+The self-paced student experience this app began as is still in the code and is what the **demo** shows: students open a section and see one button per resource, each expanding into its own learning targets, **Learn** material and **Practice** deliverable with its own status, and the teacher's table shows *which resource* each student is stuck on.
 
 The pitch on the landing page: *"Your classroom, modernized."*
 
 ## Who it's for
 
-Teachers running a self-paced or mastery-based course off multiple non-aligned resources, who want visibility without collecting work by hand — and students who want to move at their own speed without getting lost or racing ahead of the class.
+Teachers running a course off multiple non-aligned resources whose students already live in Google Classroom, and who want the year posted there from one plan, and visibility into who has turned in what, without collecting or re-posting work by hand.
 
 ---
 
@@ -52,23 +54,36 @@ no order — all of them open the moment the section does.
 
 ### Checkpoints
 
-Section dates are **soft due dates** — free text, shown as "Due 10/14", and they
-never lock anything. Pacing is enforced by the gate alone.
+Section dates are **free text** — "10/14", "Tue 10/12", "10/12 or 10/13" — shown
+to students as "Due 10/14". Nothing in the curriculum locks on a date; but in a
+class on Google Classroom the date is what *posts* the item (the first
+month/day in the text, `parseCurriculumDate` in `lib/classroom/plan.ts`), and
+the date alone decides where the class is in the year (`getCurrentUnitIndexByDate`,
+below). In the demo's student view, pacing is still held by the progress gate
+(`blockSectionId`) — see *Progress rules*.
 
 `Checkpoint` is a dated marker anchored *between* sections (`afterSectionId`),
 matching how the timeline sheet reads: Quiz 3A after 3.5, Quiz 3B after 3.7,
 Unit Test at the end. `kind` ∈ `quiz · test · checkpoint · project`. Dates are
-**free text** so `"10/12 or 10/13"` survives intact. Checkpoints are informational —
-pacing is enforced by the gate, not by dates.
+**free text** so `"10/12 or 10/13"` survives intact. In Google Classroom a
+checkpoint posts as a graded assignment, out of `maxPoints` (default 100).
 
-### Checkpoint grades
+### Checkpoint grades (the demo's table)
 
-Checkpoints are the one thing in the app that carries a **mark** rather than a
-status. `Checkpoint.maxPoints` is what it is scored out of (default 100), and a
+Checkpoints are the one thing in the self-paced app that carries a **mark** rather
+than a status. `Checkpoint.maxPoints` is what it is scored out of (default 100), and a
 student's result is a `CheckpointGrade` — `{ score, outOf }` — kept in
 `StudentProgress.checkpoints`, keyed by checkpoint id.
 
-Grading happens **in the table itself** — no dialog. Each checkpoint gets its own
+> ⚠️ **Grading on every item is designed, not built.** [ADR-011](docs/adapt/decisions/ADR-011-grades-live-in-classroom.md)
+> decides that a real class's grades live in Classroom's own gradebook, one per
+> resource, as draft marks until a column is returned — and nothing of it is
+> written yet (that is milestone M4). Today `ClassroomGrid` shows turn-in
+> status only; no grade is read or written back, though the cache already
+> holds `assigned_grade` / `draft_grade` for when it is. What follows describes
+> the demo's own table.
+
+Grading in that table happens **in the table itself** — no dialog. Each checkpoint gets its own
 column, positioned after the subunit it follows; the column header carries an
 editable "out of" box and every cell under it is a number field. Type, tab away,
 saved. Drafts are held while typing and committed on blur, so a half-typed "1"
@@ -89,7 +104,7 @@ The heart of the app; every rule lives here and nowhere else.
 - **Across tracks:** parallel. Stuck on the textbook? Keep going in AP Classroom.
 - **Across sections:** section *N* is reachable only when every prior section is *finished* — every **required** track done-or-help.
 - **A section is complete** when every required track has all its steps `done` (not `help`).
-- **The progress gate** (`blockSectionId`) hard-caps access regardless of speed.
+- **The progress gate** (`blockSectionId`) hard-caps access regardless of speed. It is **student-side only now**: `isBeyondBlock`, `canAccessSection`, the section sidebar, `CourseOverview` and the student view still read it, and it stays in the data model (`DbClass.blockSectionId`, the `classes.block_section_id` column, the demo seed's `3.6`). But no teacher screen sets or draws it — `TableProgressGate`, the draggable red line, is deleted — the teacher's help count passes `null` for it, and neither the Classroom plan nor the sync consults it. A real class's gate is therefore always `null`; only the demo's seeded classes carry one, which is why the demo's student view still locks sections past `3.6`.
 - **Access is always judged against the whole course**, never one unit's list. Passing a single unit's sections makes `isBeyondBlock` miss the gate entirely and unlocks the first section of every later unit — this was a real bug in `CourseOverview`.
 - **Teacher review loop:** practice `done` with `practiceApproved !== true` surfaces as **Review** on that track. The teacher approves it (optionally with a grade) or sends *that track* back — reverting practice to `available`, dropping the proof, and flagging `sentBackForReview`.
 - **Legacy progress** written before tracks (flat `learn/practice/extra`) is migrated on read by `migrateSectionProgress()` onto the `::custom` and `::extra` tracks that legacy curricula migrate to.
@@ -113,6 +128,21 @@ Because roles are per-class and the demo account holds both, the **Teaching**
 tab opens each class as the teacher and **Enrolled** opens the same class as a
 student (`?as=student`). No persona switcher — the tabs are the switch. The back
 link carries `?tab=` so you return to the side you came from.
+
+**A demo lasts only for the visit that opened it** (`leaveDemoOnFreshVisit` in
+`lib/demo-seed.ts`). `getCurrentUser()` calls it first, once per page load, and
+it leaves the demo (`exitDemoMode`) when the page was arrived at fresh — a typed
+address, a bookmark, a link from another site, i.e. a navigation that is neither
+a reload nor back/forward and whose referrer is not this origin. A reload, back
+and forward, or a click inside the app keep it. `seedDemo()` marks the check as
+done, so entering the demo on purpose is never mistaken for a stale one. Without
+it a signed-out visitor was silently signed in as Demo days after a visit.
+Signing in with Google also exits the demo first.
+
+The demo is also the one place the **old teacher progress table** survives —
+real classes use `ClassroomGrid` (see *The Google Classroom connection*) —
+and the one place the Google connection is off: `ClassTeacherView` enables it
+only when `!isDemoMode() && supabaseConfigured()`.
 
 > ⚠️ Anything reading a class for the student must pass `"student"` to
 > `getClassDetail`. A teacher enrolled in their own class otherwise gets the
@@ -168,11 +198,13 @@ would never succeed, and one bad row must not block the rest.
 | `mc-force-offline` | Set to `"1"` in devtools to rehearse losing the connection |
 
 **Accounts are Supabase Auth** (`lib/auth-client.ts`): email and password, no
-confirmation step, sign-in **by email**. The username stays as a display and
-invite handle — signing in by username would need a lookup that lets anyone
-test whether an address has an account. A database trigger builds the profile
-row from the signup metadata, minting the username by the app's own scheme
-(last name + first initial, then a number if taken).
+confirmation step, sign-in **by email** — or **Continue with Google** (below).
+The username stays as a display handle — signing in by username would need a
+lookup that lets anyone test whether an address has an account. A database
+trigger builds the profile row from the signup metadata, minting the username by
+the app's own scheme (last name + first initial, then a number if taken); for a
+Google account it falls back through `given_name` / `family_name` / `full_name`
+(migration `0010`).
 
 The demo never touches the server and has no account. Signing in leaves it.
 
@@ -194,14 +226,18 @@ The demo never touches the server and has no account. Signing in leaves it.
 > time they approved a submission. Any writer that touches "all" of something
 > should merge, not sweep.
 
-### The curriculum — reading files in, editing by hand — `lib/use-curriculum-import.ts`, `lib/curriculum-edit.ts`, `app/api/curriculum/import/`
+### The curriculum — reading files in is the one way to change it — `lib/use-curriculum-import.ts`, `app/api/curriculum/import/`
 
 Teachers already keep their year in a spreadsheet. **AI does one thing here:
 reading those files in** — Word documents, `.xlsx`, `.csv`, PDFs, photos of a
-printed plan. Every other change to a curriculum is the teacher's own, made
-with ordinary controls. (Until 6.2 this was a chat docked beside the class; it
-was removed because nearly everything asked of it was a plain edit, and every
-chat turn spent a request — see *What it costs* below.)
+printed plan. And **an updated file is the only way to change a curriculum**:
+there is no editing it by hand any more (see *Reading it* below). (Until 6.2 this
+was a chat docked beside the class; it was removed because nearly everything
+asked of it was a plain edit, and every chat turn spent a request — see *What
+it costs* below. The hand editing that replaced it was itself removed on
+2026-11-03: with the plan living in Classroom, one way to change it leaves
+nothing to set off by accident, and to move something she changes its date in
+her file.)
 
 **Reading files in — the import dialog** (`components/teacher/ImportDialog.tsx`,
 `components/teacher/FileDrop.tsx`, `lib/use-curriculum-import.ts`). The
@@ -268,43 +304,30 @@ and nothing is saved until the teacher accepts it.
 - **The demo sends its curriculum from the browser** (`slim`), without
   attachments, which can be whole files as data URLs.
 
-**Editing by hand — the edit form and labelled buttons**
-(`components/teacher/SubunitEditDialog.tsx`, `lib/curriculum-edit.ts`,
-tested). Under the table's header: *Click any subunit to change its name, date
-or references.* Each subunit chip is a button with a pencil; clicking it opens
-**Edit subunit 10.3**, a form of large labelled fields — *Name*, *Date* (with
-the date spelled out underneath, "Wednesday, October 14", to check against a
-calendar) and *Where it is in each resource* — and nothing is saved until
-**Save changes**, which stays disabled until something has changed. *Open the
-full editor — activities, files and targets* is one link away. Under each
-unit's name is a **Move dates ▾** button, and at the end of each unit a dashed
-**+ Add a subunit**. None of it uses AI:
+**Reading it — `CurriculumTable`.** Under the upload card the curriculum is
+shown to be read, never edited (`components/teacher/CurriculumTable.tsx`): one
+row per unit, each subunit a plain chip with its number, title and date, and
+each quiz or test sitting **inline, after the subunit it follows** (checkpoints
+pinned to no subunit come first; one naming a subunit that is gone goes last
+rather than vanishing). There is no Edit, no click-to-edit, no *+ Add a
+subunit*, no *Move dates* and no delete: `SubunitEditDialog` is deleted, and
+the table takes only `units`. To change anything — a name, a date, a
+reference, a new lesson — the teacher uploads an updated file and reviews the
+changes row by row.
 
-- **Add a subunit** — at a unit's end (its *+ Add a subunit*), or after any
-  subunit (*Add a subunit after this one* in its form, which keeps anything
-  typed but not yet saved). It is numbered in sequence and the subunits after it are
-  renumbered along *through the import's own diff engine* (`insertSubunit`
-  builds a proposal and runs `buildChangeSet` / `applyChanges`), so the work
-  under every moved subunit moves with it, and its quizzes and tests follow.
-  It comes **in the unit's own format**: every resource its neighbours have;
-  the next reference where a resource's run in step (`Ch 12.5`, `Ch 12.6` →
-  `Ch 12.7`; `nextReference`), or the new title where a resource is named
-  after its lessons — but never a number already taken by the lesson pushed
-  along, and never a guess; and Learn and Practice where the unit writes them
-  to a pattern (`conformToClass` — "Ch 12.7", then "Practice" / "Assigned
-  practice for Ch 12.7."). Its date defaults to the next school day after the
-  subunit before. It opens in the form with its name selected. In a
-  unit already numbered with gaps it takes the next number past the highest.
-- **Move dates by school days** (`shiftDateText`): in the form, *1 school day
-  earlier* / *later* change the date field (saved with the rest); *Move
-  dates* moves a whole unit — subunits, quizzes and tests together — a school
-  day or a week, earlier or later. Weekends are skipped, every date in "10/12 or 10/13" moves, a
-  weekday name moves with its date, and the year comes from the school year
-  (August to July), so "3/22" is the spring.
-- **Delete this subunit** asks first, in the form itself (*Yes, delete it* /
-  *No, keep it*). A quiz or test that sat after the subunit moves to
-  the one before rather than going with it; a unit left empty goes; student
-  work stays filed. It does not renumber what follows.
+> ⚠️ **Hand-editing code that is still in the repo, deliberately unreachable.**
+> `lib/curriculum-edit.ts` (add a subunit in the unit's own format, move dates
+> by school days, remove one — built on the import's own diff engine, so student
+> work followed every renumber) keeps its tests but nothing in the UI calls it.
+> `components/teacher/SubunitEditor.tsx` — the full per-subunit editor for
+> resources, targets and Learn/Practice blocks, at
+> `/dashboard/class/<id>/subunit/<subunit>` — no longer has a link from the
+> class page, so it is **reachable only by typing its address**. Neither is a supported
+> teacher flow.
+> Likewise **Start blank** on the new-class page now makes a class with the
+> placeholder *Unit 1 / Subunit 1.1* that cannot be edited from the class page
+> — and, because an import never deletes a unit its file does not mention (see
+> *Starting a class*), a plan uploaded later lands beside that placeholder.
 
 The curriculum is teacher-only by construction: it lives inside
 `ClassTeacherView`, which `ClassPageClient` renders only when the class role
@@ -374,7 +397,8 @@ objectives, Learn or Practice, which files almost never hold and which cost a
 references but not activities. With the chat gone the only calls are reads of
 files, and a repeated read is free. On the free tier, Google's 20 requests a
 day per model, spread across the chain's Flash models, comes to roughly 20–40
-class setups a day; day-to-day editing makes no calls at all.
+class setups a day; browsing a class makes no calls at all, and the Classroom
+connection spends none of it (it never touches Gemini).
 
 Every import spends the operator's Gemini quota, so every caller is limited:
 the demo to 8 an hour per address, a signed-in teacher to 30 an hour per
@@ -440,14 +464,19 @@ student work. Two rules it exists to keep:
 **Content in a proposal.** A proposed track can carry `objectives` and two
 activities, `learn` and `practice` (a title and instructions), which become
 the track's blocks — a track with no Learn or Practice is **invisible to
-students** (`isTrackEmpty`). Imports no longer ask for them (above); they are
-how a hand-added subunit arrives filled in (`insertSubunit` →
-`conformToClass`, which holds content to the unit's own format: fields the unit
-leaves empty stay empty, an activity whose every example follows one pattern —
-`{ref}` for the reference — gets it, and on a new subunit an activity the
-pattern decides entirely is written in). On an existing resource, content can
-only **fill an empty slot** (`contentToAdd`, a `track-content` change) —
-beside the teacher's own blocks, never over them.
+students** (`isTrackEmpty`). Imports no longer ask for them (above), and no
+screen builds them by hand now (`insertSubunit` → `conformToClass` in the
+unreachable `lib/curriculum-edit.ts` was how a hand-added subunit arrived
+filled in). On an existing resource, content can only **fill an empty slot**
+(`contentToAdd`, a `track-content` change) — beside the teacher's own blocks,
+never over them.
+
+> ⚠️ **An imported lesson has no Learn or Practice blocks, and still has to
+> post.** A lesson that comes from a file is a title, a date and the resources;
+> nothing is written into any track. The Classroom plan therefore treats a
+> track with no blocks as *the lesson itself* and posts it as an assignment
+> (see *The Google Classroom connection*); a plan that only posted Learn and
+> Practice would post nothing for an imported class.
 
 > ⚠️ **Silence is not a change.** A field the proposal leaves null keeps the
 > teacher's existing wording. Only substance they can see is ever offered, so
@@ -493,7 +522,9 @@ elsewhere mid-review is refused rather than overwritten (the bar then offers
 Try again). Decisions are saved with the import as they are made, so a
 reload mid-review loses nothing, and they are keyed by row and stamped with
 what the row proposed: the set is rebuilt against the live curriculum on every
-change, and a row that now proposes something else is asked about again.
+change, and a row that now proposes something else is asked about again. In a
+class that already posts to Google Classroom, a saved curriculum then goes on
+to Classroom by itself (`postQuietly` in `ClassTeacherView.applyCurriculum`).
 
 The demo can run it. The reading is real — a real call, a real diff — and only
 the class it changes is local. The import dialog offers **Try a sample
@@ -508,7 +539,10 @@ A class is two people looking at the same thing from opposite sides, so both
 sides move on their own. A student marking a step appears in the teacher's grid;
 a teacher moving a date appears on the student's list. Supabase Realtime carries
 the signal for `progress`, `checkpoint_grades`, `enrollments` and `classes`
-(migration `0005`).
+(migration `0005`) and, for a class on Google Classroom, `classroom_roster` and
+`classroom_submissions` (migration `0012`) — which is how a pull made on the
+teacher's laptop shows up on the projector (`lib/use-classroom-grid.ts`; the
+same rule applies: the nudge only triggers a re-read).
 
 > ⚠️ **An event is only ever a nudge to re-read.** No payload from the socket is
 > trusted as data; the re-read goes back through the store, the cache and
@@ -535,20 +569,24 @@ so the snapshot is taken silently and nothing is flagged.
 
 ### The database — `supabase/migrations/`
 
-Seven tables, all behind row-level security, and a small set of RPCs that are
+Eleven tables, all behind row-level security, and a small set of RPCs that are
 the only way anything is written.
 
 | Table | Notes |
 |---|---|
 | `profiles` | One per account. **No email column** — it lives in `auth.users`, so a classmate cannot read yours |
-| `classes` | `units` as `jsonb`; `version` bumps on every curriculum write |
+| `classes` | `units` as `jsonb`; `version` bumps on every curriculum write. Also `block_section_id` (the gate; student-side only now), and the Classroom columns: `classroom_course_id`, `posting_rule` (`0009`) and `classroom_sync_started_at`, the per-class posting lock (`0011`) |
 | `enrollments` | `(class, student)` |
-| `invites` | A handle held until that person has an account |
+| `invites` | A handle held until that person has an account. No screen creates one now |
 | `progress` | `(class, student, section, track)` → state |
 | `checkpoint_grades` | Teacher-authoritative |
 | `section_aliases` | Where a renumbered section went |
+| `google_connections` | A teacher's Google refresh token. **RLS on, no policies, all privileges revoked** — service role only (`0009`) |
+| `classroom_links` | Curriculum item → the Classroom item made for it; teacher-only policy (`0009`) |
+| `classroom_roster` | The Classroom class's students, as a cache; teacher-only, in the realtime publication (`0012`) |
+| `classroom_submissions` | Their turn-ins per item, as a cache; teacher-only, in the realtime publication (`0012`) |
 
-RPCs: `create_class`, `join_class`, `invite_to_class`, `accept_invites`,
+RPCs: `create_class`, `join_class`, `invite_to_class` (these two have no screen calling them now), `accept_invites`,
 `upsert_track_progress`, `set_checkpoint_grade`, `apply_curriculum`,
 `class_summaries`, `delete_account`. All `security definer`, all refuse an
 anonymous caller, each checks its own permission. The security advisor lists
@@ -595,14 +633,33 @@ a write queued offline under `3.3` still lands after `3.3` became `3.4`.
 ### Starting a class — `app/dashboard/new/`, `lib/pending-import.ts`
 
 A class starts from what the teacher already has. The new-class page is
-numbered steps: **1 Name your class** (one large field), then **2 How would
-you like to start?** — two large cards, **From my plan** (upload a pacing
-guide or calendar and we set it up) or **Start blank** (type the units in by
-hand). *From my plan* shows `FileDrop` and the optional *Anything we should
-know?*. One large button finishes it — **Create my class and read my plan** or
-**Create my class** — and while it cannot be pressed, the reason sits beside
-it (*Give your class a name first.*, *Choose your file to continue.*). There
-are no ready-made courses to pick from any more.
+numbered steps, and the first is where the class lives:
+
+1. **Where will this class live?** — two large cards: **Create a new class**
+   (from scratch; it can be connected to Google Classroom later) or **Use my
+   Google Classroom class**.
+2. *(Google path only)* **Choose your Google Classroom class.** The page asks
+   `GET /api/google` for the teacher's Classroom classes; if Google is not
+   connected yet it shows **Connect Google Classroom**, which goes out and comes
+   back to `/dashboard/new?from=google` with `?google=` saying how it went
+   (*declined* and *failed* each get a sentence). A course that another of the
+   teacher's classes already posts into is listed but cannot be chosen — a
+   Classroom class takes one app class, because its links point there. Choosing
+   one fills in the class name from it, unless the teacher has typed their own.
+3. **Name your class** (one large field).
+4. **What should go in it?** — two large cards, **From my plan** (upload a
+   pacing guide or calendar and we set it up) or **Start blank**. *From my
+   plan* shows `FileDrop` and the optional *Anything we should know?*.
+
+The demo has no first question (it never leaves the browser, so it has no
+Google to offer) and the steps renumber to match (`step()` in the page). One
+large button finishes it — **Create my class and read my plan** or **Create my
+class** — and while it cannot be pressed, the reason sits beside it (*Give your
+class a name first.*, *Choose how you'd like to start.*, *Choose your file to
+continue.*). There are no ready-made courses to pick from any more. On the
+Google path, creating the class then saves the chosen course with
+`POST /api/classroom`; if that call does not land, the Curriculum tab's Google
+card asks again.
 
 The draft is made in the new class's own Curriculum tab, not on the new-class
 page: the import route only reads for a class that exists and that the caller
@@ -620,7 +677,10 @@ reaches the class until they accept it.
 > a unit the files do not mention — that is what keeps a partial upload from
 > wiping the rest of the year. So the old placeholder "Unit 1 / Subunit 1.1"
 > would survive beside every unit the AI proposed. `blank` exists for exactly
-> this; an empty class started by hand still gets the placeholder.
+> this; a class created with **Start blank** still gets the placeholder — and,
+> with no hand editing left, nothing on the class page can remove it. The
+> card's own copy (*Type in your units and subunits yourself*) is out of step
+> with that.
 
 > ⚠️ **The hand-off is module memory, on purpose.** `File` objects cannot go
 > into storage or survive a reload, and do not need to: it is a client-side
@@ -641,14 +701,104 @@ by the textbook — `9.1` is the first subunit of Unit 9 whatever chapter covers
 it; the chapter lives in that resource's `reference` — which is the rule the
 AI is told to follow as well.
 
+### The Google Classroom connection — `lib/classroom/`, `lib/google/`, `app/api/classroom/`, `app/api/google/`
+
+A real class lives in Google Classroom; this app posts the curriculum into it and reads the students back. The plan, the problem it solves, the milestones and the decisions are in [`docs/Classroom-Connect.md`](docs/Classroom-Connect.md) and the ADAPT records under [`docs/adapt/`](docs/adapt/) (`decisions/ADR-004` … `ADR-011`) — this section is what the code does and what cost time, not a second copy of that plan.
+
+**Where it stands.** The sign-in, the connection, the mapping and posting (M1, M2) and the roster-and-turn-ins grid (M3) are built. **M3 has not yet been verified live with a real student's turn-in.** **Grading on every item (M4, ADR-011) is designed and not built**: no grade is read into the grid or written back to Classroom. Pushing wording changes to items already posted (M5) is likewise not built — see *Updating* below for what does move. The demo never uses any of this (`classroomEnabled` is `!isDemoMode() && supabaseConfigured()`).
+
+#### Continue with Google — signing in
+
+`AuthPanel` offers **Continue with Google** above the email form, for log in and sign up alike: Supabase makes the account on a first visit, and the profile trigger names it (migration `0010`). It does **not** use Supabase's hosted redirect — that makes Google's account chooser name `….supabase.co`. It goes through **our own routes** instead:
+
+1. `signInWithGoogle()` (`lib/auth-client.ts`; it leaves the demo first) sends the browser to `GET /api/google/signin`, which sets a 10-minute httpOnly cookie holding a `state` and a `nonce` (path `/api/google/signin`) and redirects to Google with `SIGNIN_SCOPES` — **`openid email profile` only** — `prompt=select_account` and the nonce *hashed* (SHA-256).
+2. Google returns to `GET /api/google/signin/callback`, which checks the state, trades the code for an **id token** (`exchangeForIdToken`), and hands it to Supabase with `signInWithIdToken({ provider: "google", token, nonce })`. The raw nonce going to Supabase is how it knows the token was asked for here and not replayed. The Supabase client for this one call is `sessionClient(response)`, whose cookies are written onto the redirect — everywhere else the browser client owns the session.
+3. The redirect lands on `/auth/callback` (`app/auth/callback/page.tsx`, a client page), which calls `finishGoogleSignIn()` — read the session, accept any invites (best effort), load the profile — and moves on to `/dashboard`. A cancelled or failed trip shows one sentence and *Back to sign in*.
+
+It needs Supabase's Google provider enabled (ADR-004). A plain sign-in asks **no Classroom scopes**, so signing in never asks for access to anyone's classes; connecting Classroom is its own step (below), and whether to merge the two consents is still open in ADR-004.
+
+#### Connecting — consent, tokens, who can read them
+
+**Connect Google Classroom** (`GET /api/google/connect?returnTo=…`) sends the signed-in teacher to Google's consent page for `CLASSROOM_SCOPES`: `openid`, `email`, and `classroom.courses.readonly`, `classroom.rosters.readonly`, `classroom.topics`, `classroom.coursework.students`, `classroom.courseworkmaterials`. It asks for `access_type=offline` and `prompt=consent` every time — Google hands out a refresh token only on a fresh consent, and the teacher may be reconnecting after disconnecting. A state cookie (path `/api/google`) ties the answer to the browser and carries the page to return to — only a path on this site, never an address someone put in the link. `GET /api/google/callback` exchanges the code and writes the **refresh token** to `google_connections` with the service role; it never reaches the browser, and every outcome returns to the starting page with `?google=connected|declined|failed`.
+
+> ⚠️ **Refresh tokens live in `google_connections`, which has row-level security on and no policies — and every privilege revoked from `anon` and `authenticated`.** No signed-in caller can read or write it, by design: the token is the keys to her Classroom. Only the server, with `SUPABASE_SERVICE_ROLE_KEY` (`adminClient()`), touches it, and only after `userClient()` has said who is asking. A table with RLS on and no policies looks broken in the Supabase dashboard — it is not. `teacherToken()` turns the refresh token into a short-lived access token for each request; if Google no longer honours the grant (revoked from her Google account) the connection row is deleted and the app asks her to connect again rather than failing forever.
+
+**Disconnect** (`POST /api/google/disconnect`) revokes the grant at Google, deletes the connection, and **wipes the cached roster and turn-ins** for all that teacher's classes (ADR-009). It deliberately leaves what was posted in Classroom — it is her course — **and `classroom_links`**, so reconnecting carries on rather than posting everything twice. The route that reports status before any class exists is `GET /api/google` (connected? which Classroom classes, and which of them another of her classes already posts into) — it is what the new-class page reads.
+
+A class posts into **one** Classroom course for good: its links point there, so `POST /api/classroom` refuses to change it (409), and a course already used by another of her classes is offered greyed out.
+
+#### On screen
+
+- **Curriculum tab — `ClassroomPanel`** (hidden while a draft is under review). *Not connected*: one large **Connect Google Classroom** button. *Connected*: who it is connected as, a **Disconnect** link, **Which Google Classroom class is this?** (a `Select`, chosen once), **When should students see each lesson?** — the two posting rules, *On the lesson day* and *When the unit starts* — and a large **Post to Google Classroom** (**Update Google Classroom** once anything is posted) beside a one-line summary (*n posted · n scheduled*, or after a run *Done — n added, n updated…*, or *Everything is already in Google Classroom.*). It renders nothing when the status route is unreachable. Written like the upload card beside it: sentences and large labelled buttons.
+- **Classroom tab — `ClassroomGrid`**, for any real class (see *The grid*).
+- **New class** — the page's first choice (see *Starting a class*).
+
+`useClassroom` (`lib/use-classroom.ts`) is the teacher view's side. Posting happens two ways: the teacher presses the button and sees how it went, or it happens by itself — **after an approved curriculum is saved**, quietly (`postQuietly`): a failure is retried 30 seconds later, up to three times, and never shown (ADR-008). Runs from one tab are queued so a second request waits for the first.
+
+#### The mapping and the posting rules — `lib/classroom/plan.ts`
+
+Pure: no network and no clock of its own — the route hands in the time, the time zone and what Classroom already has.
+
+| Modern Classroom | Google Classroom | Item key (`classroom_links.item_key`) |
+|---|---|---|
+| Unit | Topic (name cut to 100 chars) | `unit:<unit id>` |
+| A resource's **Learn** | Material | `learn:<track id>` |
+| A resource's **Practice** | Assignment | `practice:<track id>` |
+| A resource with **no blocks at all** (how an import arrives) | One assignment titled `3.1 Title · Resource`, its reference as the description | `practice:<track id>` — the Practice key, so filling Practice in later updates this item instead of making a twin |
+| A lesson with **no resources** | One assignment for the lesson | `lesson:<section id>` |
+| Checkpoint (quiz, test…) | Assignment, graded out of `maxPoints` (default 100) | `checkpoint:<id>` |
+
+Keys are built from ids that survive a re-import, which is what lets an updated file find the items it already posted. A unit with nothing to post gets no topic. Descriptions carry the reference and each block's title and text, and up to 20 `http(s)` attachments become links.
+
+- **When an item appears.** Each has a **post date** and a **due date**, both from the curriculum's date text (the first `M/D`, placed in the school year — August to July). The rule picks the post date: *lesson day* (the item's own date) or *unit start* (the unit's earliest dated lesson). A post time is **7:00 am** and work is due **11:59 pm**, in the teacher's own browser time zone (`Intl`, sent with the request). A date that has already passed — and **no date at all** — posts at once; otherwise the item is **scheduled**, which Classroom stores as a *draft with a `scheduledTime`* and publishes itself on that morning, so nothing of ours has to be running (**proven 2026-11-03**). A due date already past is simply left off. The database also allows a `manual` rule; the app does not offer it.
+- **Order.** Classroom stacks what was created most recently on top, so items are created last lesson first, and units last unit first, which leaves the course reading from the first lesson down.
+- **A lesson with nothing written into it still posts.** See the ⚠️ under *The diff engine*.
+
+#### Posting — `lib/classroom/sync.ts`, `POST /api/classroom/sync`
+
+The route takes `{classId, timeZone}`, checks the caller teaches the class (`teacherClass`), and runs `runSync`: first a **tidy**, then the plan's calls **one at a time in plan order** — topics first, because their work needs the ids they return — **saving each created item to `classroom_links` the moment it exists**, so a run cut short by the time limit or by Google loses nothing. `maxDuration` is 300s and no new call starts in the last 20; the reply says how many calls are `remaining` and the browser runs it again (up to 12 times) until none are.
+
+**Updating.** `planSync` creates what has no link. An item **already posted as a draft or scheduled** is moved to its new state or date when its target differs (the rule changed, or its date did). A **published** item is left alone — Classroom cannot un-publish — a topic is never touched, and one the teacher deleted in Classroom (a 404, recorded as `GONE`) is **never recreated**: Classroom wins (ADR-008). So changed wording on an item already in Classroom is **not** pushed (M5), and neither is removing a posted lesson.
+
+> ⚠️ **Two simultaneous posts duplicated items — hence the lock and `tidy`.** The first real test posted nine quizzes twice: two runs at once both planned from the same empty set of links and both created everything. Two defences now exist, and both are load-bearing:
+> - **A per-class lock.** `sync` claims `classes.classroom_sync_started_at` with a conditional update before it starts and clears it when done; a second caller gets `409 {busy: true}` and the browser waits four seconds and asks again. A claim older than `maxDuration` is a dead run and may be taken over (migration `0011`).
+> - **`tidy`** runs at the top of every sync, for what the lock cannot prevent. It lists the course's items *this app made* (`listOwnWork`, by `associatedWithDeveloper`) and compares them with the links: an item made but **never recorded** (a save that failed) is **adopted** — recorded, not posted again; an **untracked exact twin** (same title, same topic) of a tracked item is **deleted**. Anything else unrecognised is left exactly where it is.
+
+> ⚠️ **Classroom's Classwork page hides older items behind "View more", so counting items by eye looks short.** Do not conclude posting dropped items from how long Classwork looks; count by `classroom_links` (or the panel's *n posted · n scheduled*).
+
+> ⚠️ **Only the Google Cloud project that created an item can edit it.** The API will only touch items made by the OAuth client's own project (`associatedWithDeveloper`) — which is why `listOwnWork` filters on it and why everything the teacher posts by hand stays hers and is never modified. It also means the links are the only way back to an item (ADR-007), and that moving the app to a different Google Cloud project would strand what was already posted: the new project could neither edit nor tidy it.
+
+> ⚠️ **Imported lessons post as assignments, not as Learn/Practice.** An imported lesson has no blocks (above); posting only Learn and Practice would post nothing. A resource with no blocks becomes one assignment; a lesson with no resources becomes one for the lesson.
+
+#### The grid — `lib/classroom/grid.ts`, `POST /api/classroom/pull`
+
+The **Classroom tab** shows one unit at a time (the unit navigator; the current unit comes from dates — `getCurrentUnitIndexByDate`): **students down the side** (Classroom's roster, sorted by name, with the avatar), **what they can turn in across the top**, and in each cell a plain word. Columns follow the curriculum: each lesson's resources, then the quizzes and tests that come after it (`gridColumns`). A column's key is the **same key the plan posts under**, which is how a turn-in finds its column. A Learn material has nothing to turn in, so no column.
+
+Cells say: *Not posted yet* · *Not yet* · *Turned in* · *Turned in late* · *Returned* · *Missing* (posted, past the end of its date, nothing turned in). "Posted" means published, or scheduled for a time that has passed — our record only says it was scheduled, and Classroom published it on its own. An **Overall** column is the share of what has been posted that the student has handed in. **Grades are not shown** (see the ⚠️ under *Checkpoint grades*): a cell is turn-in status only.
+
+**The pull** (`POST /api/classroom/pull`, 60s) fetches the roster (`listStudents`) and **every submission in one call** (`courseWork/-/studentSubmissions`), and writes them to the cache tables `classroom_roster` and `classroom_submissions`. It writes **only what changed** (`diffRows`), so an unchanged class writes nothing and other screens hear only real news; a student who left Classroom's roster is removed. A submission to an item with **no link** — work she posted by hand — has no column and is left out. A connection made before the app asked for the roster permission, or a Classroom 403, answers `needsReconnect`, and the grid asks her once to **Reconnect** and "tick every box" (Google lets people untick scopes) rather than showing an error.
+
+`useClassroomGrid` draws from the cache at once, then pulls (ADR-008: **on open and on the Refresh button**, which also shows *Updated 9:41*), and listens on Realtime so a pull made on another of her screens shows up here too; several row events collapse into one re-read 300ms later. A failed pull leaves the cache on screen with an error line, and is left for Refresh rather than retried.
+
+#### Data and privacy
+
+Student names and turn-ins here are a **cache of what Classroom says**, keyed by Classroom's own user id — students have no account here. They are teacher-only under RLS (`private.is_class_teacher`), and they go when the class is deleted (cascade) or Google is disconnected. Classroom's responses are parsed on the server. The students' view stays Google Classroom's.
+
+**Tests:** `lib/classroom/plan.test.ts` (21) and `grid.test.ts` (12) cover the mapping, posting rules, tidy, the cell statuses and the diff; the routes and OAuth are not tested. `scripts/spike-classroom.mjs` is the M1 spike (a Desktop-app client, `SPIKE_GOOGLE_CLIENT_*`).
+
 ### Layout
 
 ```
 app/
   page.tsx                    Landing + AuthPanel
-  dashboard/                  The app — class list, class view, subunit editor
-    new/                      Start a class: 1 name, 2 from my plan (→ AI draft) or blank
+  dashboard/                  The app — class list, class view (the subunit editor is by direct address only)
+    new/                      Start a class: new or from Google Classroom, name, from my plan (→ AI draft) or blank
   demo/                       Asks tour-or-no-tour, seeds the store, then enters
+  auth/callback/page.tsx      Where "Continue with Google" lands: finish signing in, then /dashboard
+  api/
+    curriculum/import/        ⭐ reads files in (Gemini key lives here)
+    classroom/                ⭐ GET/POST status + choices · sync (post) · pull (roster + turn-ins)
+    google/                   ⭐ connect · callback · disconnect · GET status · signin · signin/callback
 components/
   AppNavbar.tsx / NavCapsule.tsx   Fixed h-14 bar · the segmented tab pill
   Select.tsx / Popover.tsx    ⭐ portal-rendered dropdown · portal-rendered panel
@@ -668,18 +818,19 @@ components/
     StepPanel.tsx             Learn or Practice inside a track (status + proof upload)
     SectionSidebar.tsx        One unit's sections, checkpoints interleaved
   teacher/
-    ClassTeacherView.tsx      ⭐ the progress grid, gate, review + help flows
+    ClassTeacherView.tsx      ⭐ the class's three tabs; the demo's progress table, review + help flows
+    ClassroomGrid.tsx         ⭐ the Classroom tab of a real class: roster × turn-ins, one unit at a time
+    ClassroomPanel.tsx        ⭐ the Google card on the Curriculum tab: connect, choose class, posting rule, post
     ImportDialog.tsx          ⭐ reading files in: 1 choose your file, 2 a checklist as we read it, the result
     FileDrop.tsx              The big drop area + "Choose a file from my computer", shared with new/
     CurriculumPanel.tsx       The Curriculum tab: the upload card, the table, Undo — or the draft under review
-    SubunitEditDialog.tsx     One subunit's form: name, date, references, add after, delete
     CurriculumReview.tsx      ⭐ a draft as red/green hunks with Accept/Reject, the review bar
-    SubunitTracksEditor.tsx   ⭐ author resources, targets, Learn/Practice blocks
-    SubunitScheduleEditor.tsx Soft due date
+    SubunitEditor.tsx         The per-subunit editor — reachable only by direct address
+    SubunitTracksEditor.tsx   ⭐ author resources, targets, Learn/Practice blocks (SubunitEditor's)
+    SubunitScheduleEditor.tsx Soft due date (SubunitEditor's)
     SubunitObjectivesEditor.tsx / ObjectiveListEditor.tsx
-    CurriculumTable.tsx       Units · subunits · checkpoints (all editable)
+    CurriculumTable.tsx       Units · subunits · checkpoints inline after their subunit — read-only
     ClassCustomize.tsx        ⭐ the Customize tab — name, icon, colour
-    TableProgressGate.tsx     The draggable red line
 lib/
   types.ts                    ⭐ Section / ResourceTrack / Checkpoint / TrackProgress
   section-tracks.ts           ⭐ track helpers + legacy migration (deterministic ids)
@@ -691,7 +842,12 @@ lib/
   curriculum-review.ts        ⭐ change set → hunks, decisions, reading order (tested)
   curriculum-chat.ts          Imports and their files, per class, in IndexedDB
   use-curriculum-import.ts    ⭐ an import: streaming, the draft under review, Undo, reuse
-  curriculum-edit.ts          ⭐ hand edits: add a subunit, move dates by school days, remove (tested)
+  curriculum-edit.ts          Hand edits: add a subunit, move dates by school days, remove (tested; no screen calls it)
+  classroom/                  ⭐ plan.ts (mapping, posting rules, tidy) · sync.ts · grid.ts · api.ts · server.ts (plan and grid tested)
+  google/oauth.ts             Google OAuth: Classroom consent, sign-in, tokens
+  use-classroom.ts            ⭐ the teacher view's side of the connection: status, choices, posting
+  use-classroom-grid.ts       ⭐ the grid's data: cache, pull on open, live nudges
+  unit-phase.ts               Finished / Active / Upcoming; `getCurrentUnitIndexByDate` (teacher) and the gate-based one (student)
   sample-timeline.ts          The demo's sample CSV, built from the class
   use-page-title.ts           The tab title, most specific part first
   class-appearance.ts         ⭐ the eight accents and twelve class glyphs
@@ -702,18 +858,30 @@ lib/
   tour.ts                     ⭐ the tour's stops, in order
   store/                      ⭐ the data layer: local · remote · outbox · synced
   supabase/client.ts          The browser Supabase client (cookie session)
+  supabase/server.ts          Server clients: `userClient` (as the caller, RLS), `sessionClient` (sets the sign-in cookies), `adminClient` (service role)
   db/types.ts                 Row and DTO shapes (the store speaks these)
 ```
 
-### The teacher's progress table
+### The teacher's progress table — the demo's
+
+> A real class's Classroom tab is `ClassroomGrid` (see *The Google Classroom
+> connection*). **This table is the demo's**: `ClassTeacherView` renders it only
+> when Google is not enabled for the class (`classroomEnabled` false). It is the
+> self-paced model's grid, kept whole so the demo shows the product it began as.
 
 One row per student, one column per subunit in the **selected unit**, plus a
 column for every checkpoint in it. The chrome around it:
 
-- **A class nobody has joined is "Not Started"**, every unit of it. With no
-  gate set the class counts as open through its last unit, which used to
-  badge every earlier unit "Finished" on day one; `getUnitPhase` takes
-  whether anyone is enrolled.
+- **Where the class is comes from the calendar, not a line.**
+  `getCurrentUnitIndexByDate` (`lib/unit-phase.ts`) picks the last unit whose
+  first dated lesson is on or before today (the first unit before the year
+  starts) — the demo reads its own pinned clock, `referenceToday()`, so its
+  classes sit in Unit 3. It chooses which unit is shown on open and each unit's
+  badge (`getUnitPhase`). Dates are read by the same `parseCurriculumDate` the
+  Classroom plan uses. (The student side still derives the current unit from
+  the gate.)
+- **A class nobody has joined is "Not Started"**, every unit of it;
+  `getUnitPhase` takes whether anyone is enrolled.
 - **The unit selector appears twice** — under the class name and again above the
   table, where the status-filter chips used to be. Both are the same `UnitNav`
   on the same state, so moving the unit in one place moves it in the other. (The
@@ -736,8 +904,10 @@ column for every checkpoint in it. The chrome around it:
   at most (`titleColumnWidth`), clamped so one wordy subunit cannot push the
   grid off the screen. Past that the table scrolls, which is what the sticky
   column is for.
-- **The red gate line** is positioned from the section columns' refs; checkpoint
-  columns sit between them without disturbing it.
+- **There is no gate line.** The draggable red line (`TableProgressGate`) is
+  deleted, nothing past the gate is dimmed, and every unit but an upcoming one
+  is accessible to the chips. Nor is there an invite row under the table: the
+  teacher does not add students here.
 
 ### Navigating a class — the strip, the sidebar, the To-Do
 
@@ -779,17 +949,21 @@ Three ways a class or a roster seat ends, and they are not equally destructive:
 
 - **A student leaves** a class from the `···` on its dashboard card.
 - **A teacher removes a student** from the `···` beside their name in the
-  progress table.
+  progress table — the demo's table; a real class's roster is Google Classroom's,
+  and the Classroom grid has no such menu.
 - **A teacher deletes a class** from the `···` on its dashboard card. The class,
-  its curriculum, its roster, its invites and everyone's work go with it.
+  its curriculum, its roster, its invites, everyone's work, and the links and
+  cached roster and turn-ins for Google Classroom go with it (the Classroom
+  items already posted stay in Classroom — it is the teacher's course).
 
 The first two are the *same* store operation — `unenrollStudent()` drops the
 enrolment row and nothing else. **The progress row is deliberately left
 behind:** it is invisible to everyone while that person is off the roster (the
 teacher's grid reads progress against the roster, and `saveAllClassProgress`
-merges rather than sweeps), and rejoining with the class code brings the year's
-work back. A removal made in error is not a year lost — which is why the dialog
-says so.
+merges rather than sweeps), and putting the person back on the roster brings the
+year's work back. A removal made in error is not a year lost — which is why the
+dialog says so. (No screen adds students now — no class code, no invite — so
+the dialog's *adding them back* is a promise about the data, not a button.)
 
 `deleteClass()` is the one that cannot be taken back, so it names the class and
 its student count before it asks. Every one of the three goes through
@@ -800,7 +974,9 @@ its student count before it asks. Every one of the three goes through
 A third tab beside **Classroom** and **Curriculum**, teacher-only. It sets the
 class name, its **glyph** (twelve subject icons) and its **colour** (eight), and
 the choices ride on the class itself, so a colour picked by the teacher is the
-colour every student in that class sees — and only that class.
+colour every student in that class sees — and only that class. The tab holds
+the name, glyph and colour and nothing else: the class code that used to sit
+beside the name is gone, with invites.
 
 Both are ids into fixed maps, never free text: `color` and `icon` on `DbClass`,
 each optional. It is a fixed set of eight rather than a hex field because every
@@ -830,7 +1006,9 @@ rather than asked to choose; accounts made before the setting (and the seeded
 classmates) fall back to one derived from the user id, which is effectively
 random but stable across renders. It rides on the same `data-accent` attribute,
 set on the avatar itself, so your initials stay yours on a page wearing a
-different colour. Blue therefore needs its own `[data-accent="blue"]` block even
+different colour. **The avatar (`UserAvatar`) is filled with that accent
+(`bg-primary`) and the initials are white**; it used to be a pale disc with
+accent-coloured initials. Blue therefore needs its own `[data-accent="blue"]` block even
 though `:root` already carries it — with no rule to match, an avatar asking for
 blue inherits the class's palette instead of overriding it. And because the
 choice is made in a menu floating over a page that also shows your name,
@@ -889,6 +1067,14 @@ Three things it deliberately does **not** do:
   became URL-addressable (`?view=curriculum`, `?view=customize`) so the tour
   navigates by link like anything else. That deep-linking is useful on its own.
 
+> ⚠️ **Two stops describe things the teacher side no longer has.** The tour is
+> walked in the demo, so its teacher stops land on the demo's own progress table —
+> but `lib/tour.ts` still has a *progress-gate* stop whose `data-tour="progress-gate"`
+> anchor went with the deleted red line (the ring finds nothing to hold), and the
+> *class-card* stop still tells the visitor that "students join with the six-digit
+> code" and to "copy it with the button beside it", which the dashboard card no
+> longer has. Both want rewriting.
+
 The panel places itself in whichever half of the screen the ring is not; when
 the ring fills the height — the table, the curriculum — it steps sideways
 instead. Anchors must be **real boxes**: `display: contents` was tried on one
@@ -904,6 +1090,8 @@ the three real courses instantiated from the templates:
 | Algebra II, Honors | `algebra-2` template, Unit 3 replaced with the fully-authored sections | `3.6` |
 | AP Precalculus | `ap-precalculus` template | `3.6` |
 | AP Statistics | `ap-statistics` template | `3.6` |
+
+(The gate is the *student's* limit only: the teacher's table no longer draws or sets it.)
 
 **Every class opens in Unit 3** — units 1 and 2 signed off, the class a few
 sections into the third, the gate at `3.6` and the signed-in student at `3.3`.
@@ -946,7 +1134,7 @@ with everything past the gate locked and unclickable.
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in the two Supabase values
+cp .env.example .env.local   # then fill in the two Supabase values (the rest only for Gemini and Google)
 npm run dev
 ```
 
@@ -958,12 +1146,17 @@ Then open http://localhost:5000. Scripts: `dev`, `build`, `start`, `lint` (broke
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Browser. Project settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser. The publishable key — safe there, every table is behind RLS |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server only.** The service role, which bypasses RLS. Used for **one table**, `google_connections` (teachers' Google refresh tokens), through `adminClient()` in `lib/supabase/server.ts` — and only after the route has checked who is asking with `userClient()`. Never `NEXT_PUBLIC_`. Project settings → API → service_role. Without it, connecting and posting to Google Classroom fail |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Server only.** A Google OAuth **"Web application"** client, used both for **Connect Google Classroom** and for **Continue with Google**. Authorised redirect URIs must include `<origin>/api/google/callback` **and** `<origin>/api/google/signin/callback` for every origin the app runs on (`http://localhost:5000` and the production site). `credentials()` throws if either is unset |
+| `SPIKE_GOOGLE_CLIENT_ID` / `SPIKE_GOOGLE_CLIENT_SECRET` | Optional, commented out in `.env.example`. A Google OAuth **"Desktop app"** client used only by the M1 spike, `scripts/spike-classroom.mjs`. Test with a personal Gmail, never a school account |
+| `NEXT_PUBLIC_SITE_URL` | The public origin, for canonical URLs, Open Graph and the sitemap. Leave unset in development; set in production |
 | `GEMINI_API_KEY` | **Server only.** The curriculum import route. Never `NEXT_PUBLIC_` |
 | `GEMINI_MODEL` | Optional, and best left unset. When set it is tried *before* the measured order (`PREFERRED_MODELS`), so pinning a busy model makes every import start on it — `gemini-3.8-flash` here was part of why imports failed on 2026-10-08. A retired name degrades to "used a different model", not to a broken import |
 
 `.env.local` is gitignored; `.env.example` is the template. **`/demo` needs none
 of them** — it is entirely local, which is also what makes it the fallback when
-Supabase is not configured.
+Supabase is not configured. (`GEMINI_HEDGE=1`, described under the import route,
+is the one other optional switch and is not in `.env.example`.)
 
 **Verified 2026-10-04** (v4.3): `npm run build` and `npm test` (18 specs) pass.
 Supabase was found **paused** and restored — see known issue 1. Against the
@@ -1007,10 +1200,13 @@ querying as each role rather than by reading the policies.
 
 `/` is two pages at one address. With `?auth=login` or `?auth=signup` it is the
 sign-in card and nothing else — a returning user came here to get in, not to
-read a pitch — and every in-app redirect (`router.replace("/?auth=login")`)
-still lands exactly where it did. Without it, `/` is the marketing page: what
-the thing is, the resource-track idea, the import, and what makes it safe to
-put a class in.
+read a pitch. Without it, `/` is the marketing page: what the thing is, the
+resource-track idea, the import, and what makes it safe to put a class in. **A
+signed-out visit to any dashboard route redirects to `/`**, the marketing page —
+not to `/?auth=login` as it once did. (`ClassPageClient`, `DashboardClient`,
+`SubunitEditor`, the teacher view and the new-class page all do `router.replace("/")`.
+Only the Google sign-in's failure page still links *Back to sign in* to
+`/?auth=login`.)
 
 The pitch leads with how a class starts — attach your materials and the AI
 drafts the curriculum (there are no ready-made courses on offer) — and shows
@@ -1055,7 +1251,7 @@ them is clickable; the prose beside each carries the meaning.
 actually does, not a template. Both are worth re-reading whenever behaviour
 changes, because they make specific claims:
 
-- no analytics, no third-party scripts, nothing sold or shared — **verified**: the only outbound hosts in the codebase are curriculum resource links (Desmos, DeltaMath, Khan, YouTube);
+- no analytics, no third-party scripts, nothing sold or shared — **verified** when written: the only outbound hosts were curriculum resource links (Desmos, DeltaMath, Khan, YouTube). That is no longer the whole list: the server now also talks to Google (the OAuth endpoints and `classroom.googleapis.com`) on a teacher's behalf, and **neither page says so** — `/privacy` names Gemini as the processor of uploaded files and nothing about Google Classroom, student names and turn-ins cached from it, or the stored refresh token. Re-read both pages before a real class connects (see *The Google Classroom connection*, *Data and privacy*);
 - **no student data is ever sent to the AI** — the import posts curriculum structure and the teacher's own files, and nothing else;
 - access is enforced by row-level security, not by the interface.
 
@@ -1198,13 +1394,13 @@ That file is committed pointing at `.next`, which is what a deploy produces, so
 
 7. **One conflict is not resolved, by choice.** The same *track* edited offline by a student and online by their teacher is last-write-wins. Per-track rows make this rare — it needs two people on the same resource of the same subunit within one offline window — and the alternative is merge UI nobody would read.
 
-8. **A class created offline shows `······` as its code** until it syncs. The server mints the code, and it cannot do that while unreachable.
+8. **A class's six-digit code still exists, and nothing shows it.** The server mints `classes.code`, and a class created offline carries a placeholder until it syncs — but no dashboard card, Customize tab or other screen displays it now, and there is no join box. It is dead weight until invites or joining return (or the column goes).
 
 9. **8 npm advisories** at install (1 critical, 6 high, 1 moderate) — all in transitive dependencies of `next`, `browserslist` and `eslint@8`, none from the Gemini or SheetJS additions. `eslint@8` and `glob@7` are EOL.
 
-10. **`ClassTeacherView.tsx` is large** (~1,150 lines: grid, gate, review modal, help modal, invites, stat modals). Splitting out a `ProgressGrid` is the next worthwhile cut.
+10. **`ClassTeacherView.tsx` is large** (~1,480 lines: the demo's progress table, review modal, help modal, stat modals, plus the three tabs and the Classroom wiring). Most of it is the demo's table now; splitting out a `ProgressGrid` is the next worthwhile cut, and deleting it would follow if the demo ever moves to the Classroom grid.
 
-11. **Test coverage is two modules deep.** `lib/curriculum-diff.ts` and `lib/curriculum-review.ts` have 39 vitest specs between them (`npm test`) because their failure loses student work silently. `class-progress.ts` and `section-tracks.ts` are pure and are the next highest-value things to cover — especially the legacy-migration determinism, which has the same failure mode.
+11. **Test coverage is four modules deep.** `lib/curriculum-diff.ts`, `lib/curriculum-review.ts` and `lib/curriculum-edit.ts` (27 + 11 + 10 specs) cover the curriculum logic, whose failure loses student work silently, and `lib/classroom/plan.ts` and `grid.ts` (21 + 12) cover the Classroom mapping and the grid — 81 specs in all (`npm test`, all passing on 2026-11-03). The Classroom routes, the OAuth flow and the sync's calls to Google are untested. `class-progress.ts` and `section-tracks.ts` are pure and are the next highest-value things to cover — especially the legacy-migration determinism, which has the same failure mode.
 
 12. **The import's demo rate limit is per-process and in-memory.** Eight runs an hour per IP, held in a `Map` that resets whenever the server does. Fine for one host; wrong the moment it runs on more than one.
 
@@ -1229,6 +1425,7 @@ House scheme is `vMAJOR.MINOR` (Release bumps major; Fix/Update bumps minor). Th
 | `6.0` | 2026-10-20 | The curriculum is built in a chat docked beside the class, like an editor's agent panel: minimisable (⌘I), with follow-ups that know the conversation and the draft under review, new chats and past chats kept per class. Each turn streams what it is actually doing — files read, units planned, each unit written — then replies in a sentence or two, with notes only when something could not be placed. Drafts are reviewed the Cursor way: red/green rows with dates, Accept/Reject per row, a bar to step through and accept or reject all. Unit and section numbers are copied exactly from the teacher's files; a sheet that never mentions quizzes no longer offers to delete them. The panel docks at a draggable width with the class laid out for the room it actually has (container queries), and minimises to a tab on the screen's edge. Tab titles read "Curriculum for Algebra II, Honors - Teaching - Modern Classroom". The chat types its replies out, says what it is doing in the present tense and what it did in the past, skips reading the curriculum for small talk, and lets the teacher edit, copy, retry and queue messages; the side tab's dot is amber while working and blue when there is something new. Asked for a subunit, it fills it in — objectives, and Learn and Practice on each resource — and any subunit in a draft opens to show exactly what it holds and what changes. Placeholders are plain ("Name", "Date"); the dev server runs on port 5000 |
 | `6.1` | 2026-10-24 | Editing an earlier chat message can put the curriculum back to how it stood before it — each accepted draft keeps a copy and its section moves, undone newest first so student work follows its sections. Open changes in a draft can be pointed at (Ask on a change, or @ in the composer) and ride on the message as chips; the model is told what they point at and what has been accepted, rejected or left undecided. A follow-up's one-unit answer is no longer thrown away for missing the rest of the year's outline |
 | `6.2` | 2026-11-01 | The chat beside the class is gone; AI reads files and nothing else. *Upload a file* opens an import dialog that shows the work as it happens and can run in the background; the draft is reviewed in the table as before, and a saved import can be undone while nothing has changed since. Everything else is done by hand, with large labelled controls for teachers new to software: click a subunit to edit its name, date and references in a form; *+ Add a subunit* (numbered in sequence, in the unit's own format, students' work moving with any renumber), *Move dates* by school days, and *Delete this subunit*. The new-class page is numbered steps: name the class, then *From my plan* or *Start blank*. Cheaper reads: a leaner answer and request, no second model by default, a free reuse when the same files are sent again, and a token and cost line per read in the log |
+| `6.3` | 2026-11-03 | The plan for connecting Google Classroom, as docs only: `docs/Classroom-Connect.md`, the ADAPT records and ADRs 001–010, and the M1 spike script. (The connection itself — sign-in, posting, the grid — is built in the working tree after this commit and not yet labelled; this doc describes it) |
 | `5.2` | 2026-10-06 | The RLS helpers moved out of the exposed API, so a signed-in user can no longer probe other accounts' class memberships |
 | `5.1` | 2026-10-06 | Keep-awake workflow working: repo secrets set, and an anonymous heartbeat to ping, since real tables correctly refuse anonymous reads |
 | `5.0` | 2026-10-05 | AI curriculum import (upload a time line, review every change cell by cell, approve what you want); live updates between teacher and student with a "new since you were last here" flag; account deletion; flat sans type (Inter + Archivo) replacing Garamond; one button system; a real landing page built from the product's own components, with privacy, terms, robots and sitemap; and a phone-first pass. Model selection made self-healing |

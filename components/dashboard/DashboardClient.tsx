@@ -16,10 +16,7 @@ import { TodoButton } from "@/components/TodoButton";
 import { Popover } from "@/components/Popover";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
-  Check,
-  Copy,
   CopyPlus,
-  Hash,
   Loader2,
   LogOut,
   MoreHorizontal,
@@ -42,10 +39,6 @@ export function DashboardClient() {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [joinCode, setJoinCode] = useState("");
-  const [joinError, setJoinError] = useState("");
-  const [joining, setJoining] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   // The class a confirm dialog is currently asking about, if any.
   const [pendingRemoval, setPendingRemoval] = useState<ClassSummary | null>(null);
 
@@ -54,7 +47,7 @@ export function DashboardClient() {
     (async () => {
       const user = await getCurrentUser();
       if (!user) {
-        router.replace("/?auth=login");
+        router.replace("/");
         return;
       }
       const summaries = await store.listClassSummaries(user.id);
@@ -113,12 +106,6 @@ export function DashboardClient() {
     mode === "teaching" ? cls.role === "teacher" : cls.role === "student"
   );
 
-  function copyCode(classId: string, code: string) {
-    navigator.clipboard?.writeText(code);
-    setCopiedId(classId);
-    setTimeout(() => setCopiedId((id) => (id === classId ? null : id)), 1500);
-  }
-
   async function refreshClasses() {
     const user = await getCurrentUser();
     if (user) setClasses(await store.listClassSummaries(user.id));
@@ -141,22 +128,6 @@ export function DashboardClient() {
     if (!user) return;
     const copy = await store.duplicateClass(classId, user.id);
     if (copy) router.push(`/dashboard/class/${copy.id}`);
-  }
-
-  async function handleJoin(e: React.FormEvent) {
-    e.preventDefault();
-    setJoinError("");
-    setJoining(true);
-    try {
-      const user = await getCurrentUser();
-      if (!user) throw new Error("Not logged in");
-      const cls = await store.joinClassWithCode(user.id, joinCode);
-      router.push(`/dashboard/class/${cls.id}?as=student`);
-    } catch (err) {
-      setJoinError(err instanceof Error ? err.message : "Failed to join");
-    } finally {
-      setJoining(false);
-    }
   }
 
   if (loading) {
@@ -194,41 +165,12 @@ export function DashboardClient() {
         )}
       </div>
 
-      {mode === "enrolled" && (
-        <form
-          onSubmit={handleJoin}
-          className="page-in mb-8 flex flex-col sm:flex-row gap-3 p-4 rounded-xl surface focus-within:border-primary/50 transition-colors"
-        >
-          <div className="flex-1 flex items-center gap-2">
-            <Hash className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              type="text"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="Enter 6-digit class code to join"
-              className="flex-1 bg-transparent text-sm focus:outline-none focus-visible:!shadow-none focus-visible:!border-transparent"
-              maxLength={6}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={joining || joinCode.length !== 6}
-            className="btn btn-md btn-primary"
-          >
-            {joining ? "Joining…" : "Join class"}
-          </button>
-          {joinError && (
-            <p className="text-sm text-rose-600 dark:text-rose-400 sm:col-span-2">{joinError}</p>
-          )}
-        </form>
-      )}
-
       {filteredClasses.length === 0 ? (
         <div className="page-in text-center py-16 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 ">
           <p className="text-slate-500 dark:text-slate-400">
             {mode === "teaching"
               ? "No classes yet. Create one to get started."
-              : "Not enrolled in any classes yet. Join with a class code above."}
+              : "Not enrolled in any classes yet."}
           </p>
         </div>
       ) : (
@@ -279,27 +221,6 @@ export function DashboardClient() {
                 </Link>
 
                 <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2">
-                  {cls.role === "teacher" && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm tracking-[0.12em] tabular-nums text-slate-500 dark:text-slate-400">
-                        {cls.code}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copyCode(cls.id, cls.code)}
-                        title="Copy class code"
-                        aria-label="Copy class code"
-                        className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                      >
-                        {copiedId === cls.id ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-500" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
-                  )}
-
                   {/* One quiet menu per card. The destructive item lives in
                       here rather than on the surface, where a mis-click on the
                       way to opening a class would find it. */}
@@ -389,8 +310,7 @@ export function DashboardClient() {
           ) : (
             <>
               You will come off the roster for <strong>{pendingRemoval?.name}</strong> and
-              stop seeing it here. Your work is kept, so joining again with the class code
-              brings it back.
+              stop seeing it here. Your work is kept, so being added back brings it back.
             </>
           )
         }

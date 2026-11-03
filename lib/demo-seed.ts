@@ -31,6 +31,27 @@ export function isDemoMode(): boolean {
   return localStorage.getItem(DEMO_FLAG_KEY) === "1";
 }
 
+let checkedThisLoad = false;
+
+/**
+ * A demo lives inside the visit that opened it. Arriving fresh — a typed
+ * address, a bookmark, a link from another site — leaves it, so a signed-out
+ * visitor is never silently signed in as Demo days later. A reload, back and
+ * forward, or a click inside the app keep it. Checked once per page load.
+ */
+export function leaveDemoOnFreshVisit(): void {
+  if (checkedThisLoad || typeof window === "undefined") return;
+  checkedThisLoad = true;
+  if (!isDemoMode()) return;
+  const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+  if (nav?.type === "reload" || nav?.type === "back_forward") return;
+  let fromHere = false;
+  try {
+    fromHere = document.referrer !== "" && new URL(document.referrer).origin === window.location.origin;
+  } catch {}
+  if (!fromHere) exitDemoMode();
+}
+
 export function exitDemoMode(): void {
   if (typeof window === "undefined") return;
   void clearDemoChats();
@@ -280,6 +301,8 @@ function authoredUnit3States(): Record<
  * dashboard, class pages, curriculum editor and all.
  */
 export function seedDemo(): void {
+  // Entered on purpose, in this very visit: it is not a stale demo.
+  checkedThisLoad = true;
   if (typeof window === "undefined") return;
   // A fresh demo has had no conversations yet.
   void clearDemoChats();

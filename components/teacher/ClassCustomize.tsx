@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, ListChecks } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import {
   ACCENT_LIST,
   CLASS_ICONS,
@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   name: string;
-  code: string;
   color?: AccentId;
   icon?: ClassIconId;
   onChange: (patch: { name?: string; color?: AccentId; icon?: ClassIconId }) => void;
@@ -25,9 +24,8 @@ interface Props {
  * what glyph stands for it, and what colour it wears — with the student class
  * strip shown live underneath, because that is where the colour lands.
  */
-export function ClassCustomize({ name, code, color, icon, onChange }: Props) {
+export function ClassCustomize({ name, color, icon, onChange }: Props) {
   const [draftName, setDraftName] = useState(name);
-  const [copied, setCopied] = useState(false);
 
   // The name can also be edited from the page heading, so the field has to
   // follow the class rather than own it.
@@ -42,12 +40,6 @@ export function ClassCustomize({ name, code, color, icon, onChange }: Props) {
       return;
     }
     onChange({ name: next });
-  }
-
-  function copyCode() {
-    navigator.clipboard?.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   }
 
   return (
@@ -76,27 +68,6 @@ export function ClassCustomize({ name, code, color, icon, onChange }: Props) {
             />
           </label>
 
-          <div className="cq-sm:w-44 shrink-0">
-            <span className="eyebrow-muted">Class code</span>
-            <div className="mt-1 flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 panel-inset">
-              <span className="flex-1 font-mono text-sm tracking-[0.15em] tabular-nums text-slate-600 dark:text-slate-300">
-                {code}
-              </span>
-              <button
-                type="button"
-                onClick={copyCode}
-                title="Copy class code"
-                aria-label="Copy class code"
-                className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-primary dark:hover:text-primary-glow transition-colors"
-              >
-                {copied ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-500" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5" />
-                )}
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 

@@ -20,7 +20,6 @@ export function SubunitScheduleEditor({ section, onChange, onSave }: Props) {
       </h2>
       <p className="text-xs text-slate-400 dark:text-slate-600 mb-3">
         A soft due date students can plan around — it never locks anything on its own.
-        Use the progress gate for that.
       </p>
 
       <input

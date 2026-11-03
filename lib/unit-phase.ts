@@ -1,4 +1,5 @@
 import type { CurriculumUnit } from "./db/types";
+import { parseCurriculumDate } from "./classroom/plan";
 
 export type UnitPhase = "finished" | "active" | "upcoming" | "not-started";
 
@@ -67,4 +68,25 @@ export function getCurrentUnitIndex(
   }
 
   return lastUnit;
+}
+
+/**
+ * Which unit the class is in by the calendar: the last one whose first dated
+ * lesson is on or before today. Before the year starts, the first unit.
+ */
+export function getCurrentUnitIndexByDate(
+  units: Pick<CurriculumUnit, "subunits">[],
+  today: Date
+): number {
+  const day = (d: { year: number; month: number; day: number }) => Date.UTC(d.year, d.month - 1, d.day);
+  const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  let current = 0;
+  units.forEach((unit, i) => {
+    const starts = unit.subunits
+      .map((s) => parseCurriculumDate(s.date, today))
+      .filter((d): d is NonNullable<typeof d> => d !== null)
+      .map(day);
+    if (starts.length && Math.min(...starts) <= now) current = i;
+  });
+  return current;
 }
