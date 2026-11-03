@@ -39,3 +39,6 @@ yarn-error.log*
 
 # Verification builds (see next.config.ts)
 .next-build
+
+# M1 spike's Google refresh token (scripts/spike-classroom.mjs)
+.spike-classroom.json
