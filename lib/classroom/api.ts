@@ -32,6 +32,8 @@ export interface Course {
   id: string;
   name: string;
   section?: string;
+  /** Where the class is in Google Classroom. */
+  alternateLink?: string;
 }
 
 export async function listTeacherCourses(token: string): Promise<Course[]> {
@@ -40,7 +42,7 @@ export async function listTeacherCourses(token: string): Promise<Course[]> {
     "GET",
     "/courses?teacherId=me&courseStates=ACTIVE&pageSize=100"
   );
-  return courses.map(({ id, name, section }) => ({ id, name, section }));
+  return courses.map(({ id, name, section, alternateLink }) => ({ id, name, section, alternateLink }));
 }
 
 export async function createTopic(token: string, courseId: string, topic: PlannedTopic): Promise<string> {

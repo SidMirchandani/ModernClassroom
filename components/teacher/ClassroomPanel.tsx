@@ -71,8 +71,24 @@ export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }
             </p>
             {course ? (
               <p className="text-[15px] text-slate-700 dark:text-slate-200">
-                {course.name}
-                {course.section ? ` · ${course.section}` : ""}
+                {course.alternateLink ? (
+                  <a
+                    href={course.alternateLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-primary dark:hover:text-primary-glow"
+                  >
+                    {course.name}
+                    {course.section ? ` · ${course.section}` : ""}
+                    <ExternalLink className="inline w-3.5 h-3.5 ml-1 -mt-0.5" aria-hidden />
+                    <span className="sr-only"> (opens in a new tab)</span>
+                  </a>
+                ) : (
+                  <>
+                    {course.name}
+                    {course.section ? ` · ${course.section}` : ""}
+                  </>
+                )}
               </p>
             ) : status.courses.length === 0 ? (
               <p className="text-[15px] text-slate-600 dark:text-slate-300">
