@@ -308,7 +308,12 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         {activeView === "curriculum" && (
           <div key="curriculum" className="page-in space-y-5">
           {!importer.review && <ClassroomPanel classroom={classroom} />}
-          <CurriculumPanel units={cls.units} links={classroomLinks} importer={importer} />
+          <CurriculumPanel
+            units={cls.units}
+            // An unlinked class's links are kept for relinking, but mean nothing until then.
+            links={classroom.status.state === "connected" && classroom.status.courseId ? classroomLinks : []}
+            importer={importer}
+          />
           </div>
         )}
 

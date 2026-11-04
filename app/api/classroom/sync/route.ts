@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { CurriculumUnit } from "@/lib/db/types";
 import { runSync } from "@/lib/classroom/sync";
-import { bad, teacherClass, teacherToken } from "@/lib/classroom/server";
+import { bad, ownsCourse, teacherClass, teacherToken } from "@/lib/classroom/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -26,6 +26,15 @@ export async function POST(request: Request) {
   const { db, user, cls } = found;
 
   if (!cls.classroom_course_id) return bad("Choose a Google Classroom class first", 400);
+
+  // Linked before sharing a course was refused: only the first class posts,
+  // because the other would take its items for stray copies.
+  if (!(await ownsCourse(cls.id, cls.classroom_course_id))) {
+    return NextResponse.json(
+      { conflict: true, error: "That Google Classroom class is linked to another class too. Unlink this one and choose a different class." },
+      { status: 409 }
+    );
+  }
 
   let timeZone = "UTC";
   try {

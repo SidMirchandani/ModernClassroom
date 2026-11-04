@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { CheckCircle2, ExternalLink, GraduationCap, Loader2, TriangleAlert } from "lucide-react";
 import type { PostingRule } from "@/lib/classroom/plan";
 import type { ClassroomConnection } from "@/lib/use-classroom";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Select } from "@/components/Select";
 import { cn } from "@/lib/utils";
 import { ActionCard } from "./ActionCard";
@@ -11,6 +13,9 @@ const RULES: { value: PostingRule; label: string; hint: string }[] = [
   { value: "lesson_day", label: "On the lesson day", hint: "Each lesson appears the morning of its date." },
   { value: "unit_start", label: "When the unit starts", hint: "A whole unit appears on its first lesson's date." },
 ];
+
+export const UNLINK_BODY =
+  "Everything already posted stays in Google Classroom, and students' work isn't touched. Nothing new will be sent there, and you won't see its students here. You can link the same class again and carry on where you left off.";
 
 /**
  * The Google Classroom card at the top of the Curriculum tab. Written for a
@@ -25,6 +30,7 @@ const RULES: { value: PostingRule; label: string; hint: string }[] = [
  */
 export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }) {
   const { status, syncing, syncFailed, error } = classroom;
+  const [unlinking, setUnlinking] = useState(false);
   if (status.state === "unavailable") return null;
 
   if (status.state === "loading") {
@@ -62,9 +68,11 @@ export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }
     <ActionCard
       icon={GraduationCap}
       title="Google Classroom"
+      working={syncing}
       below={
         <>
-          {/* 1 — which Classroom class this is. Chosen once: its posts live there. */}
+          {/* 1 — which Classroom class this is. Its posts live there, so changing
+              it means unlinking first. */}
           <div className="space-y-2">
             <p className="text-[15px] font-medium text-slate-900 dark:text-slate-100">
               Which Google Classroom class is this?
@@ -89,6 +97,13 @@ export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }
                     {course.section ? ` · ${course.section}` : ""}
                   </>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setUnlinking(true)}
+                  className="ml-3 text-sm text-slate-500 dark:text-slate-400 underline underline-offset-2 hover:text-slate-900 dark:hover:text-slate-100"
+                >
+                  Unlink
+                </button>
               </p>
             ) : status.courses.length === 0 ? (
               <p className="text-[15px] text-slate-600 dark:text-slate-300">
@@ -111,6 +126,8 @@ export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }
                 options={status.courses.map((c) => ({
                   value: c.id,
                   label: c.section ? `${c.name} · ${c.section}` : c.name,
+                  disabled: c.linked,
+                  hint: c.linked ? "Already linked to another class" : undefined,
                 }))}
                 onChange={(courseId) => void classroom.save({ courseId })}
                 className="max-w-md"
@@ -156,7 +173,7 @@ export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }
           )}
 
           {/* 3 — where things stand. Nothing to press unless it failed. */}
-          {course && (
+          {course && !error && (
             <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[15px]">
               {syncing ? (
                 <span className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300">
@@ -195,6 +212,15 @@ export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }
           )}
 
           {error && <p className="text-[15px] text-red-700 dark:text-red-400">{error}</p>}
+
+          <ConfirmDialog
+            open={unlinking}
+            onClose={() => setUnlinking(false)}
+            onConfirm={() => void classroom.unlink()}
+            title="Unlink this Google Classroom class?"
+            confirmLabel="Unlink"
+            body={UNLINK_BODY}
+          />
         </>
       }
     >

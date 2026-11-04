@@ -26,6 +26,7 @@ export function ActionCard({
   action,
   children,
   below,
+  working = false,
 }: {
   icon: LucideIcon;
   title?: React.ReactNode;
@@ -35,9 +36,11 @@ export function ActionCard({
   children?: React.ReactNode;
   /** Anything longer, under the heading row. */
   below?: React.ReactNode;
+  /** Something is happening: the whole card says so. */
+  working?: boolean;
 }) {
   return (
-    <section className="card px-5 py-5 cq-sm:px-6 space-y-5">
+    <section aria-busy={working} className={cn("card px-5 py-5 cq-sm:px-6 space-y-5", working && "card-working")}>
       <div className="flex flex-col cq-sm:flex-row cq-sm:items-center gap-4">
         <IconTile icon={icon} />
         <div className="min-w-0 flex-1">

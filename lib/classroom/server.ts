@@ -41,6 +41,37 @@ export async function teacherClass(classId: unknown): Promise<TeacherClass | Nex
   return { db, user, cls };
 }
 
+/**
+ * Which of these Google Classroom classes another class already posts into. A
+ * course takes one class: two would post everything twice and each would see the
+ * other's items as its own stray copies. Asked with full access, because this
+ * holds across accounts (two teachers can share a course), and it says no more
+ * than which course ids are taken.
+ */
+export async function coursesTaken(courseIds: string[], exceptClassId?: string): Promise<Set<string>> {
+  if (courseIds.length === 0) return new Set();
+  const { data, error } = await adminClient()
+    .from("classes")
+    .select("id, classroom_course_id")
+    .in("classroom_course_id", courseIds);
+  if (error) throw new Error(`Could not read linked classes: ${error.message}`);
+  return new Set(
+    (data ?? []).filter((r) => r.id !== exceptClassId).map((r) => r.classroom_course_id as string)
+  );
+}
+
+/** With a course shared from before this was refused: the first class to link it keeps it. */
+export async function ownsCourse(classId: string, courseId: string): Promise<boolean> {
+  const { data, error } = await adminClient()
+    .from("classes")
+    .select("id")
+    .eq("classroom_course_id", courseId)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error) throw new Error(`Could not read linked classes: ${error.message}`);
+  return data?.[0]?.id === classId;
+}
+
 export interface Connection {
   email: string | null;
   refreshToken: string;

@@ -8,6 +8,10 @@ import { cn } from "@/lib/utils";
 export interface SelectOption {
   value: string;
   label: string;
+  /** Shown, but can't be chosen. */
+  disabled?: boolean;
+  /** Says why, beside the label. */
+  hint?: string;
 }
 
 interface Props {
@@ -143,18 +147,25 @@ export function Select({
                   type="button"
                   role="option"
                   aria-selected={isSelected}
+                  aria-disabled={option.disabled}
+                  disabled={option.disabled}
                   onClick={() => {
                     onChange(option.value);
                     setOpen(false);
                   }}
                   className={cn(
-                    "w-full flex items-center gap-3 pl-3 pr-2 py-2 text-sm text-left whitespace-nowrap transition-colors hover:bg-slate-50 dark:hover:bg-slate-800",
-                    isSelected
-                      ? "text-primary dark:text-primary-glow font-medium"
-                      : "text-slate-700 dark:text-slate-300"
+                    "w-full flex items-center gap-3 pl-3 pr-2 py-2 text-sm text-left whitespace-nowrap transition-colors",
+                    option.disabled
+                      ? "cursor-not-allowed text-slate-400 dark:text-slate-500"
+                      : "hover:bg-slate-50 dark:hover:bg-slate-800",
+                    !option.disabled &&
+                      (isSelected
+                        ? "text-primary dark:text-primary-glow font-medium"
+                        : "text-slate-700 dark:text-slate-300")
                   )}
                 >
                   <span className="flex-1">{option.label}</span>
+                  {option.hint && <span className="text-xs">{option.hint}</span>}
                   {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
                 </button>
               );

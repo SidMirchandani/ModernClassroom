@@ -45,6 +45,7 @@ export function CurriculumPanel({ units, links, importer }: CurriculumPanelProps
       {/* The one place a file comes in: big, worded, never missed. */}
       <ActionCard
         icon={CloudUpload}
+        working={importer.running}
         title={empty ? "Build your curriculum from a file" : "Update your curriculum from a file"}
         action={
           <button type="button" onClick={() => importer.setDialogOpen(true)} className="btn btn-lg btn-primary">

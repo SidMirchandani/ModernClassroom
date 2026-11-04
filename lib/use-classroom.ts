@@ -22,7 +22,7 @@ export type ClassroomStatus =
   | {
       state: "connected";
       email: string | null;
-      courses: Course[];
+      courses: (Course & { linked?: boolean })[];
       courseId: string | null;
       postingRule: PostingRule;
       counts: { posted: number; scheduled: number; drafts: number; kept?: number };
@@ -41,6 +41,9 @@ const BUSY_WAIT_MS = 4_000;
 const MAX_QUIET_RETRIES = 3;
 /** A year's curriculum can take a few runs; past this something is wrong. */
 const MAX_RUNS = 12;
+
+/** Won't get better by trying again: says why, and stops. */
+class SyncRefused extends Error {}
 
 export function useClassroom(classId: string, enabled: boolean) {
   const [status, setStatus] = useState<ClassroomStatus>({ state: enabled ? "loading" : "unavailable" });
@@ -92,6 +95,7 @@ export function useClassroom(classId: string, enabled: boolean) {
         await new Promise((resolve) => setTimeout(resolve, BUSY_WAIT_MS));
         continue;
       }
+      if (body.conflict) throw new SyncRefused(body.error);
       if (!res.ok) throw new Error(body.error ?? "Could not reach Google Classroom");
       const result = body as SyncResult;
       total.created += result.created;
@@ -120,6 +124,7 @@ export function useClassroom(classId: string, enabled: boolean) {
       if (retry.current) clearTimeout(retry.current);
       setSyncing(true);
       setSyncFailed(false);
+      setError("");
       const again = () => {
         if (attempt + 1 < MAX_QUIET_RETRIES) {
           retry.current = setTimeout(() => sync(attempt + 1), RETRY_MS);
@@ -135,7 +140,14 @@ export function useClassroom(classId: string, enabled: boolean) {
           setSyncCount((n) => n + 1);
           await refresh();
         })
-        .catch(again);
+        .catch((err) => {
+          if (err instanceof SyncRefused) {
+            setSyncing(false);
+            setError(err.message);
+          } else {
+            again();
+          }
+        });
     },
     [runAll, refresh]
   );
@@ -178,6 +190,25 @@ export function useClassroom(classId: string, enabled: boolean) {
 
   const retrySync = useCallback(() => sync(), [sync]);
 
+  /** Stops posting to its Classroom class. What is already there stays. Returns whether it worked. */
+  const unlink = useCallback(async () => {
+    setError("");
+    const res = await fetch("/api/classroom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ classId, unlink: true }),
+    });
+    if (!res.ok) {
+      setError((await res.json().catch(() => ({}))).error ?? "Could not unlink");
+      return;
+    }
+    if (retry.current) clearTimeout(retry.current);
+    setSyncing(false);
+    setSyncFailed(false);
+    caughtUp.current = null;
+    await refresh();
+  }, [classId, refresh]);
+
   const disconnect = useCallback(async () => {
     await fetch("/api/google/disconnect", { method: "POST" });
     if (retry.current) clearTimeout(retry.current);
@@ -192,7 +223,7 @@ export function useClassroom(classId: string, enabled: boolean) {
     return `/api/google/connect?returnTo=${encodeURIComponent(here)}`;
   }, []);
 
-  return { status, syncing, syncFailed, syncCount, error, refresh, save, retrySync, postQuietly, disconnect, connectHref };
+  return { status, syncing, syncFailed, syncCount, error, refresh, save, retrySync, unlink, postQuietly, disconnect, connectHref };
 }
 
 export type ClassroomConnection = ReturnType<typeof useClassroom>;

@@ -981,3 +981,53 @@
     100% { opacity: 0; }
   }
 }
+
+/* A dashboard row's two halves meet along a slash. Each overlaps the middle by
+   half the slant and is clipped along the same line. Clipping also limits where
+   it can be clicked and hovered, so each side stops exactly at the slash. Below
+   the small breakpoint they stack, with no slash. */
+@media (min-width: 640px) {
+  .slash-left {
+    margin-right: -14px;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 28px) 100%, 0 100%);
+  }
+  .slash-right {
+    margin-left: -14px;
+    clip-path: polygon(28px 0, 100% 0, 100% 100%, 0 100%);
+  }
+}
+
+/* The clipping would cut off a focus ring drawn outside the link. */
+.slash-left a:focus-visible,
+a.slash-right:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
+}
+
+/* A card that is busy: its border lights up and a soft band of its class's
+   colour sweeps across it. Without motion, the border alone says so. */
+.card-working {
+  position: relative;
+  overflow: hidden;
+  border-color: rgb(var(--primary) / 0.5) !important;
+}
+.card-working > * {
+  position: relative;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card-working::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent 20%, rgb(var(--primary) / 0.13) 50%, transparent 80%);
+    transform: translateX(-100%);
+    animation: card-sweep 1.8s ease-in-out infinite;
+  }
+}
+@keyframes card-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}

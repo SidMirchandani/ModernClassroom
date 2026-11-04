@@ -310,7 +310,7 @@ export default function NewClassPage() {
                         </span>
                         {(course.section || course.linked) && (
                           <span className="block text-sm text-slate-500 dark:text-slate-400">
-                            {course.linked ? "Already used by another of your classes" : course.section}
+                            {course.linked ? "Already linked to another class" : course.section}
                           </span>
                         )}
                       </span>

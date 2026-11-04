@@ -9,16 +9,20 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { store } from "@/lib/store";
 import type { ClassSummary } from "@/lib/db/types";
 import { buildTodosForClasses, type TodoItem } from "@/lib/todos";
-import { classIcon } from "@/lib/class-appearance";
+import { classIcon, DEFAULT_ACCENT } from "@/lib/class-appearance";
 import { cn } from "@/lib/utils";
 import { TodoButton } from "@/components/TodoButton";
+import { UNLINK_BODY } from "@/components/teacher/ClassroomPanel";
+import type { AccentId } from "@/lib/class-appearance";
+import { ClassroomSide, type DashboardCourse } from "./ClassroomSide";
+import { ColorPicker } from "./ColorPicker";
 import { Popover } from "@/components/Popover";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   CopyPlus,
   Loader2,
   LogOut,
-  MoreHorizontal,
+  MoreVertical,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -31,6 +35,11 @@ export function DashboardClient() {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Each class's Google Classroom. Null until known, and asked for separately so
+  // a slow answer from Google doesn't hold up the page.
+  const [google, setGoogle] = useState<{ connected: boolean; courses: Map<string, DashboardCourse> } | null>(null);
+  const [pendingUnlink, setPendingUnlink] = useState<ClassSummary | null>(null);
+  const [unlinkError, setUnlinkError] = useState("");
   // The class a confirm dialog is currently asking about, if any.
   const [pendingRemoval, setPendingRemoval] = useState<ClassSummary | null>(null);
 
@@ -84,6 +93,32 @@ export function DashboardClient() {
     };
   }, [router]);
 
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/google")
+      .then((res) => (res.ok ? res.json() : { connected: false }))
+      .catch(() => ({ connected: false }))
+      .then((body) => {
+        if (!alive) return;
+        const courses = new Map<string, DashboardCourse>();
+        for (const link of body.classLinks ?? []) {
+          const course = (body.courses ?? []).find((c: { id: string }) => c.id === link.courseId);
+          courses.set(link.classId, {
+            // Archived in Classroom, or moved: still connected, just unnamed.
+            name: course?.name ?? "Connected class",
+            section: course?.section,
+            alternateLink: course?.alternateLink,
+            students: link.students,
+            color: link.color ?? undefined,
+          });
+        }
+        setGoogle({ connected: Boolean(body.connected), courses });
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const filteredClasses = classes.filter((cls) =>
     mode === "teaching" ? cls.role === "teacher" : cls.role === "student"
   );
@@ -103,6 +138,61 @@ export function DashboardClient() {
       await store.unenrollStudent(pendingRemoval.id, user.id);
     }
     await refreshClasses();
+  }
+
+  /** Shown at once, and put back if it doesn't save. */
+  async function changeClassColor(classId: string, color: AccentId) {
+    const before = classes;
+    setClasses((list) => list.map((c) => (c.id === classId ? { ...c, color } : c)));
+    setUnlinkError("");
+    try {
+      await store.updateClass(classId, { color });
+    } catch {
+      setClasses(before);
+      setUnlinkError("That color couldn't be saved. Try again in a minute.");
+    }
+  }
+
+  async function changeClassroomColor(classId: string, color: AccentId) {
+    const previous = google?.courses.get(classId)?.color;
+    const paint = (next: AccentId | undefined) =>
+      setGoogle((g) => {
+        const course = g?.courses.get(classId);
+        if (!g || !course) return g;
+        return { ...g, courses: new Map(g.courses).set(classId, { ...course, color: next }) };
+      });
+    paint(color);
+    setUnlinkError("");
+    const res = await fetch("/api/classroom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ classId, classroomColor: color }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      paint(previous);
+      setUnlinkError("That color couldn't be saved. Try again in a minute.");
+    }
+  }
+
+  async function confirmUnlink() {
+    if (!pendingUnlink) return;
+    const classId = pendingUnlink.id;
+    setUnlinkError("");
+    const res = await fetch("/api/classroom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ classId, unlink: true }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      setUnlinkError("That class couldn't be unlinked. Try again in a minute.");
+      return;
+    }
+    setGoogle((g) => {
+      if (!g) return g;
+      const courses = new Map(g.courses);
+      courses.delete(classId);
+      return { ...g, courses };
+    });
   }
 
   async function handleDuplicate(classId: string) {
@@ -156,117 +246,142 @@ export function DashboardClient() {
           </p>
         </div>
       ) : (
-        <div key={mode} className="list-in divide-y divide-slate-200 dark:divide-slate-800 border-y border-slate-200 dark:border-slate-800">
+        <div key={mode} className="list-in space-y-4">
           {filteredClasses.map((cls) => {
-            // One quiet glyph per card, never a boxed tile — but the teacher
-            // picks which glyph and which colour, so six periods are told
-            // apart at a glance instead of reading as one grey list.
             const Icon = classIcon(cls.icon, cls.role);
+            const classHref =
+              cls.role === "student" ? `/dashboard/class/${cls.id}?as=student` : `/dashboard/class/${cls.id}`;
 
             return (
-              // The one place several classes share a page, so the palette
-              // is scoped to the card rather than to the document.
+              // One card per class, cut in two by a slash: the class on the left,
+              // its Google Classroom on the right, each its own link with its own
+              // hover. The palette is scoped to the row, because this is the one
+              // place several classes share a page.
               <div
                 key={`${cls.id}-${cls.role}`}
-                className="relative group/row transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/60"
+                className="relative grid grid-cols-1 sm:grid-cols-2 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                 data-accent={cls.color}
               >
-                <Link
-                  href={
-                    cls.role === "student"
-                      ? `/dashboard/class/${cls.id}?as=student`
-                      : `/dashboard/class/${cls.id}`
-                  }
-                  className="flex items-center gap-3.5 px-2 sm:px-3 py-5 group"
-                >
-                  <Icon className="w-5 h-5 shrink-0 text-primary dark:text-primary-glow" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-primary dark:group-hover:text-primary-glow transition-colors">
-                      {cls.name}
+                <div className="slash-left relative min-w-0">
+                  <Link href={classHref} className="group/row flex flex-col h-full min-h-[9.5rem]">
+                    <div className="relative overflow-hidden flex-1 bg-primary px-5 pt-5 pb-6 pr-28 text-white transition-[filter] duration-150 group-hover/row:brightness-110">
+                      {/* The class's own glyph, large and quiet, as the banner's picture. */}
+                      <Icon aria-hidden className="absolute right-3 -bottom-5 w-28 h-28 text-white/15" />
+                      <div className="relative text-xl font-medium leading-snug group-hover/row:underline underline-offset-2 line-clamp-2">
+                        {cls.name}
+                      </div>
                     </div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                      {cls.studentCount} student{cls.studentCount !== 1 ? "s" : ""} ·{" "}
+                    <div className="px-5 py-3 text-sm text-slate-500 dark:text-slate-400">
                       {cls.subunitCount} subunit{cls.subunitCount !== 1 ? "s" : ""}
                     </div>
-                  </div>
-                  {/* Room for the code and the buttons, which sit outside the
-                      link so clicking them cannot navigate. */}
-                  <span
-                    className={cn(
-                      "hidden sm:block shrink-0",
-                      cls.role === "teacher" ? "w-[9rem]" : "w-10"
-                    )}
-                    aria-hidden
-                  />
-                </Link>
+                  </Link>
 
-                <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2">
-                  {/* One quiet menu per card. The destructive item lives in
-                      here rather than on the surface, where a mis-click on the
-                      way to opening a class would find it. */}
-                  <Popover
-                    width={224}
-                    align="right"
-                    triggerTitle={
-                      cls.role === "teacher" ? "Class options" : "Enrolment options"
-                    }
-                    triggerClassName={(open) =>
-                      cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
-                        open
-                          ? "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                          : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                      )
-                    }
-                    label={<MoreHorizontal className="w-4 h-4" />}
-                    panelClassName="p-1.5"
-                  >
-                    {(close) => (
-                      <>
-                      {/* Duplicating is occasional, so it lives in here too
-                          rather than as a button on every row. */}
-                      {cls.role === "teacher" && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            close();
-                            handleDuplicate(cls.id);
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                        >
-                          <CopyPlus className="w-4 h-4" />
-                          Duplicate
-                        </button>
+                  {/* Outside the link, so these can't open the class. */}
+                  <div className="absolute right-2.5 sm:right-5 top-2.5 flex items-center">
+                    <ColorPicker
+                      value={cls.color ?? DEFAULT_ACCENT}
+                      title="Change color"
+                      onPick={(color) => void changeClassColor(cls.id, color)}
+                    />
+                    <Popover
+                      width={224}
+                      align="right"
+                      triggerTitle={cls.role === "teacher" ? "Class options" : "Enrolment options"}
+                      triggerClassName={(open) =>
+                        cn(
+                          "w-9 h-9 rounded-full flex items-center justify-center text-white transition-colors hover:bg-white/20",
+                          open && "bg-white/20"
+                        )
+                      }
+                      label={<MoreVertical className="w-5 h-5" />}
+                      panelClassName="p-1.5"
+                    >
+                      {(close) => (
+                        <>
+                          {/* Duplicating is occasional, so it lives in here too
+                              rather than as a button on every row. */}
+                          {cls.role === "teacher" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                close();
+                                handleDuplicate(cls.id);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                            >
+                              <CopyPlus className="w-4 h-4" />
+                              Duplicate
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              close();
+                              setPendingRemoval(cls);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                          >
+                            {cls.role === "teacher" ? (
+                              <>
+                                <Trash2 className="w-4 h-4" />
+                                Delete class
+                              </>
+                            ) : (
+                              <>
+                                <LogOut className="w-4 h-4" />
+                                Leave class
+                              </>
+                            )}
+                          </button>
+                        </>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          close();
-                          setPendingRemoval(cls);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                      >
-                        {cls.role === "teacher" ? (
-                          <>
-                            <Trash2 className="w-4 h-4" />
-                            Delete class
-                          </>
-                        ) : (
-                          <>
-                            <LogOut className="w-4 h-4" />
-                            Leave class
-                          </>
-                        )}
-                      </button>
-                      </>
-                    )}
-                  </Popover>
+                    </Popover>
+                  </div>
                 </div>
+
+                <ClassroomSide
+                  course={google === null ? undefined : (google.courses.get(cls.id) ?? null)}
+                  className={cls.name}
+                  onUnlink={() => setPendingUnlink(cls)}
+                  onColor={(color) => void changeClassroomColor(cls.id, color)}
+                  // With Google connected the class's own card picks the
+                  // Classroom class. Without, connect first and land there.
+                  connectHref={
+                    google?.connected
+                      ? `/dashboard/class/${cls.id}?view=curriculum`
+                      : `/api/google/connect?returnTo=${encodeURIComponent(`/dashboard/class/${cls.id}?view=curriculum`)}`
+                  }
+                />
+
+                {/* The slash itself, along the edge where the two halves meet. */}
+                <svg
+                  aria-hidden
+                  viewBox="0 0 28 100"
+                  preserveAspectRatio="none"
+                  className="hidden sm:block absolute inset-y-0 left-1/2 -translate-x-1/2 w-7 h-full pointer-events-none text-slate-200 dark:text-slate-700"
+                >
+                  <line x1="28" y1="0" x2="0" y2="100" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                </svg>
               </div>
             );
           })}
         </div>
       )}
+
+      {unlinkError && (
+        <p className="mt-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[15px] text-rose-800 dark:text-rose-200">
+          {unlinkError}
+        </p>
+      )}
+
+      <ConfirmDialog
+        open={pendingUnlink !== null}
+        onClose={() => setPendingUnlink(null)}
+        onConfirm={() => void confirmUnlink()}
+        title="Unlink this Google Classroom class?"
+        confirmLabel="Unlink"
+        body={UNLINK_BODY}
+      />
 
       <ConfirmDialog
         open={pendingRemoval !== null}
