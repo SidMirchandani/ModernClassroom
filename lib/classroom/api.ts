@@ -113,6 +113,10 @@ export async function updateWork(
     mask.push("description");
     body.description = work.description;
   }
+  if (fields.includes("points") && work.kind === "assignment") {
+    mask.push("maxPoints");
+    body.maxPoints = work.maxPoints;
+  }
   if (fields.includes("due") && work.kind === "assignment") {
     mask.push("dueDate", "dueTime");
     if (work.due) {
@@ -170,6 +174,7 @@ export interface WireItem {
   scheduledTime?: string;
   dueDate?: { year: number; month: number; day: number };
   dueTime?: { hours?: number; minutes?: number };
+  maxPoints?: number;
   associatedWithDeveloper?: boolean;
 }
 
@@ -220,6 +225,7 @@ export async function listWork(token: string, courseId: string): Promise<Classro
           scheduledFor: row.scheduledTime ?? null,
           description: row.description ?? "",
           due: wireDue(row),
+          maxPoints: row.maxPoints,
           own: Boolean(row.associatedWithDeveloper),
         });
       }
@@ -260,6 +266,93 @@ export async function listStudents(token: string, courseId: string): Promise<Ros
     pageToken = page.nextPageToken;
   } while (pageToken);
   return students;
+}
+
+export interface ColumnSubmission {
+  id: string;
+  userId: string;
+  state: string;
+  late: boolean;
+  assignedGrade: number | null;
+  draftGrade: number | null;
+}
+
+/** One assignment's submissions, with the ids a grade has to be written to. */
+export async function listColumnSubmissions(
+  token: string,
+  courseId: string,
+  courseWorkId: string
+): Promise<ColumnSubmission[]> {
+  const rows: ColumnSubmission[] = [];
+  let pageToken: string | undefined;
+  do {
+    const query = new URLSearchParams({ pageSize: "500" });
+    if (pageToken) query.set("pageToken", pageToken);
+    const page = await call<{
+      studentSubmissions?: {
+        id: string;
+        userId: string;
+        state?: string;
+        late?: boolean;
+        assignedGrade?: number;
+        draftGrade?: number;
+      }[];
+      nextPageToken?: string;
+    }>(token, "GET", `/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions?${query}`);
+    for (const s of page.studentSubmissions ?? []) {
+      rows.push({
+        id: s.id,
+        userId: s.userId,
+        state: s.state ?? "NEW",
+        late: s.late ?? false,
+        assignedGrade: s.assignedGrade ?? null,
+        draftGrade: s.draftGrade ?? null,
+      });
+    }
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return rows;
+}
+
+/** A mark only the teacher sees. Null clears it. */
+export async function setDraftGrade(
+  token: string,
+  courseId: string,
+  courseWorkId: string,
+  submissionId: string,
+  mark: number | null
+): Promise<void> {
+  await call(
+    token,
+    "PATCH",
+    `/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions/${submissionId}?updateMask=draftGrade`,
+    mark === null ? {} : { draftGrade: mark }
+  );
+}
+
+/** Gives the student their mark and hands the work back. */
+export async function releaseGrade(
+  token: string,
+  courseId: string,
+  courseWorkId: string,
+  submissionId: string,
+  mark: number
+): Promise<void> {
+  const base = `/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions/${submissionId}`;
+  await call(token, "PATCH", `${base}?updateMask=assignedGrade`, { assignedGrade: mark });
+  await call(token, "POST", `${base}:return`, {});
+}
+
+/** An assignment's total. */
+export async function setPoints(
+  token: string,
+  courseId: string,
+  courseWorkId: string,
+  points: number
+): Promise<WireItem> {
+  return call<WireItem>(token, "PATCH", `/courses/${courseId}/courseWork/${courseWorkId}?updateMask=maxPoints`, {
+    maxPoints: points,
+  });
 }
 
 export interface Submission {

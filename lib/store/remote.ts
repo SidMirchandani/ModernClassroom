@@ -171,8 +171,7 @@ export interface ClassPull {
 }
 
 /**
- * Class ids on the server are UUIDs. Anything else — a demo id like
- * `demo-algebra-2` left in the address bar after leaving the demo, a typo, a
+ * Class ids on the server are UUIDs. Anything else — a typo, a
  * truncated link — is simply a class that does not exist. Asking Postgres
  * anyway gets "invalid input syntax for type uuid", which used to surface as
  * a crash instead of the not-found it is.

@@ -72,20 +72,10 @@ app/                  # Next.js routes (home, student, teacher)
 components/           # UI components
   student/            # Student dashboard, activity cards, sidebar
   teacher/            # Teacher dashboard, progress gate overlay
-lib/                  # Types, demo data, progress logic, localStorage stores
+lib/                  # Types, progress logic, stores
 public/               # Static assets (Logo.png, favicons)
 scripts/              # Utility scripts
 ```
-
-## Demo data
-
-The app ships with eight demo students and progress for **Unit 3: Linear Models and Systems** (sections 3.1–3.7). No student has completed work past **3.4** in the seed data. The default progress gate is also set to **3.4** — drag the red line on the teacher table to open more sections.
-
-Switch between students on the student view to see different progress states.
-
-### Resetting demo state
-
-Progress is persisted in `localStorage` under `modern-classroom-progress`. The progress gate uses `modern-classroom-progress-block`. Clear those keys in devtools (or use a fresh/incognito window) to reload the seed data.
 
 ## License
 

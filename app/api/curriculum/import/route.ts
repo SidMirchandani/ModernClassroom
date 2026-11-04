@@ -13,9 +13,7 @@ import { shapeProposal, type CurriculumProposal } from "@/lib/curriculum-diff";
  *
  * It proposes and nothing more: the reply is a draft that the teacher reviews
  * row by row before anything is written. The key stays here on the server,
- * the class is read here rather than trusted from the browser, and the demo
- * is allowed in — with no account and nothing to save — because a feature
- * nobody can try is a feature nobody adopts.
+ * the class is read here rather than trusted from the browser.
  *
  * The answer comes back as a stream of lines (NDJSON): first what was read,
  * then the work as the model writes it — the units it plans, each unit as it
@@ -39,8 +37,6 @@ export const maxDuration = 180;
  */
 const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_FILES = 10;
-/** The demo's curriculum arrives from the browser; a real year is ~40k. */
-const MAX_DEMO_UNITS_CHARS = 200_000;
 /**
  * Enough for a year's day-by-day calendar with room to spare; guards a
  * runaway paste. A cut file loses its *last* units silently, so this errs
@@ -65,13 +61,12 @@ const INLINE_MIME: Record<string, string> = {
 
 /**
  * Every import spends the operator's Gemini quota, so every caller is
- * limited: the demo by address (it has no account), a signed-in teacher by
- * account — otherwise anyone could sign up and loop imports on the key.
+ * limited: a signed-in teacher by account — otherwise anyone could sign up
+ * and loop imports on the key.
  * Per server instance, which on Vercel is a soft limit rather than a hard
  * one; it is there to stop a loop, not to meter honest use.
  */
 const WINDOW_MS = 60 * 60 * 1000;
-const DEMO_LIMIT = 8;
 const TEACHER_LIMIT = 30;
 const hits = new Map<string, number[]>();
 
@@ -394,20 +389,6 @@ async function readFile(file: File): Promise<ReadFile> {
     };
   }
   throw new Error(`${name} is not a kind of file this can read`);
-}
-
-/** Units as the summary reads them: objects, each with a list of sections. */
-function isUnitList(value: unknown): value is CurriculumUnit[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (unit) =>
-        unit !== null &&
-        typeof unit === "object" &&
-        (!("subunits" in unit) || Array.isArray((unit as { subunits: unknown }).subunits)) &&
-        (!("checkpoints" in unit) || Array.isArray((unit as { checkpoints: unknown }).checkpoints))
-    )
-  );
 }
 
 function bad(message: string, status: number) {
@@ -1166,7 +1147,6 @@ export async function POST(request: Request) {
     return bad("Could not read the upload", 400);
   }
 
-  const demo = form.get("demo") === "1";
   const classId = String(form.get("classId") ?? "");
   // The teacher's note on these files. `instructions` is what the old import
   // card sent; still read, for a tab left open from before.
@@ -1190,72 +1170,44 @@ export async function POST(request: Request) {
     return bad(err instanceof Error ? err.message : "Could not read a file", 415);
   }
 
-  let current: CurriculumUnit[] = [];
-  let version: number | null = null;
-  let storedInstructions = "";
-  let limitKey: string;
-
-  if (demo) {
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.headers.get("x-real-ip") ||
-      "unknown";
-    limitKey = `ip:${ip}`;
-    if (!allowed(limitKey, DEMO_LIMIT)) {
-      return bad("The demo has had a lot of use in the last hour — try again later", 429);
+  const jar = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => jar.getAll(),
+        // A route handler cannot set cookies on this response; the browser
+        // client owns the session and refreshes it there.
+        setAll: () => {},
+      },
     }
-    // The demo's curriculum comes from the browser, so it is checked for shape
-    // before anything walks it — a `null` unit would otherwise crash the
-    // summary below with an unhandled 500.
-    const raw = String(form.get("units") ?? "[]");
-    if (raw.length > MAX_DEMO_UNITS_CHARS) return bad("The demo curriculum is too large", 413);
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (!isUnitList(parsed)) return bad("Could not read the demo curriculum", 400);
-      current = parsed;
-    } catch {
-      return bad("Could not read the demo curriculum", 400);
-    }
-  } else {
-    const jar = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll: () => jar.getAll(),
-          // A route handler cannot set cookies on this response; the browser
-          // client owns the session and refreshes it there.
-          setAll: () => {},
-        },
-      }
-    );
+  );
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return bad("Sign in first", 401);
-    if (!classId) return bad("Which class?", 400);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return bad("Sign in first", 401);
+  if (!classId) return bad("Which class?", 400);
 
-    const { data: cls, error } = await supabase
-      .from("classes")
-      .select("teacher_id, units, version, import_instructions")
-      .eq("id", classId)
-      .maybeSingle();
+  const { data: cls, error } = await supabase
+    .from("classes")
+    .select("teacher_id, units, version, import_instructions")
+    .eq("id", classId)
+    .maybeSingle();
 
-    if (error) return bad("Could not read the class", 500);
-    if (!cls || cls.teacher_id !== user.id) {
-      return bad("Only this class's teacher can change its curriculum", 403);
-    }
-    limitKey = `user:${user.id}`;
-    if (!allowed(limitKey, TEACHER_LIMIT)) {
-      return bad("That is a lot in an hour — give it a little while", 429);
-    }
-
-    current = (cls.units ?? []) as CurriculumUnit[];
-    version = cls.version ?? null;
-    storedInstructions = cls.import_instructions ?? "";
+  if (error) return bad("Could not read the class", 500);
+  if (!cls || cls.teacher_id !== user.id) {
+    return bad("Only this class's teacher can change its curriculum", 403);
   }
+  const limitKey = `user:${user.id}`;
+  if (!allowed(limitKey, TEACHER_LIMIT)) {
+    return bad("That is a lot in an hour — give it a little while", 429);
+  }
+
+  const current = (cls.units ?? []) as CurriculumUnit[];
+  const version: number | null = cls.version ?? null;
+  const storedInstructions = cls.import_instructions ?? "";
 
   const prompt: Part[] = [
     // So a note can say how far off something is ("about six months away").

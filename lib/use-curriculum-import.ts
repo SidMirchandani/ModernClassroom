@@ -33,7 +33,6 @@ import {
   type ReviewState,
   type UserMessage,
 } from "./curriculum-chat";
-import { isDemoMode } from "./demo-seed";
 import { takePendingImport } from "./pending-import";
 
 /**
@@ -74,10 +73,7 @@ interface Options {
   onDraft?: () => void;
 }
 
-/**
- * The demo's curriculum as the route needs it: everything but the
- * attachments, which can be whole files as data URLs.
- */
+/** A curriculum without its attachments, which can be whole files as data URLs. */
 function slim(units: CurriculumUnit[]): CurriculumUnit[] {
   return units.map((unit) => ({
     ...unit,
@@ -479,10 +475,6 @@ export function useCurriculumImport({ classId, units, onApply, onDraft }: Option
         for (const file of files) body.append("files", file, file.name);
         body.append("classId", classId);
         body.append("message", user.text);
-        if (isDemoMode()) {
-          body.append("demo", "1");
-          body.append("units", JSON.stringify(slim(unitsRef.current)));
-        }
 
         const response = await fetch("/api/curriculum/import", {
           method: "POST",

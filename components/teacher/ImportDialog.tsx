@@ -5,7 +5,6 @@ import { CheckCircle2, Circle, Loader2, MessageSquare, XCircle } from "lucide-re
 import type { CurriculumUnit } from "@/lib/db/types";
 import type { AgentStep } from "@/lib/curriculum-chat";
 import type { CurriculumImporter } from "@/lib/use-curriculum-import";
-import { sampleTimeline } from "@/lib/sample-timeline";
 import { Modal } from "@/components/Modal";
 import { FileDrop, MAX_UPLOAD_MB, totalMegabytes } from "./FileDrop";
 import { cn } from "@/lib/utils";
@@ -95,12 +94,9 @@ function ItemIcon({ state }: { state: ItemState }) {
 export function ImportDialog({
   importer,
   units,
-  demoClass,
 }: {
   importer: CurriculumImporter;
   units: CurriculumUnit[];
-  /** The demo's own classes, which may try a sample time line. */
-  demoClass: boolean;
 }) {
   const { dialogOpen, setDialogOpen, current, running, review } = importer;
   const [files, setFiles] = useState<File[]>([]);
@@ -195,13 +191,7 @@ export function ImportDialog({
                 </label>
               )}
               <div className="flex items-center justify-between gap-3 pt-1">
-                {demoClass && !empty && files.length === 0 ? (
-                  <button type="button" onClick={() => begin([sampleTimeline(units)])} className="btn btn-md btn-secondary">
-                    Try a sample file
-                  </button>
-                ) : (
-                  <span />
-                )}
+                <span />
                 <button
                   type="button"
                   disabled={files.length === 0 || tooLarge}

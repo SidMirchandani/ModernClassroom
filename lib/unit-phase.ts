@@ -4,10 +4,9 @@ import { parseCurriculumDate } from "./classroom/plan";
 export type UnitPhase = "finished" | "active" | "upcoming" | "not-started";
 
 /**
- * Where a unit stands against the class's place in the year. A class nobody
- * has joined has not started anywhere: with no gate set, the class counts as
- * open through its last unit, which would otherwise call every unit before
- * it "Finished" on day one.
+ * Where a unit stands against the class's place in the year. Before the first
+ * dated lesson (`classHasStarted`) nothing has started anywhere. A class's
+ * students live in Google Classroom, so who has joined here says nothing.
  */
 export function getUnitPhase(
   unitIndex: number,
@@ -68,6 +67,17 @@ export function getCurrentUnitIndex(
   }
 
   return lastUnit;
+}
+
+/** Whether the calendar has reached any lesson. A class with no dates counts as started. */
+export function classHasStarted(units: Pick<CurriculumUnit, "subunits">[], today: Date): boolean {
+  const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = units
+    .flatMap((u) => u.subunits)
+    .map((s) => parseCurriculumDate(s.date, today))
+    .filter((d): d is NonNullable<typeof d> => d !== null)
+    .map((d) => Date.UTC(d.year, d.month - 1, d.day));
+  return days.length === 0 || Math.min(...days) <= now;
 }
 
 /**

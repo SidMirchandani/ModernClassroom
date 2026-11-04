@@ -2,16 +2,11 @@
 
 import type { PublicUser } from "./db/types";
 import { randomAccent } from "./class-appearance";
-import { isDemoMode, exitDemoMode, leaveDemoOnFreshVisit } from "./demo-seed";
 import { supabase, supabaseConfigured } from "./supabase/client";
 import { acceptInvites } from "./store/remote";
 import { store, syncedStoreIfActive } from "./store";
 
-/**
- * Accounts are Supabase Auth. The demo has no account — it is a local session
- * over a local store — so the two never meet: signing in leaves the demo, and
- * the demo never calls the server.
- */
+/** Accounts are Supabase Auth. */
 
 function describe(err: { message: string } | null, fallback: string): string {
   const m = err?.message ?? "";
@@ -23,11 +18,20 @@ function describe(err: { message: string } | null, fallback: string): string {
 }
 
 export async function getCurrentUser(): Promise<PublicUser | null> {
-  // Before anything asks "who is this": a stale demo must not answer.
-  leaveDemoOnFreshVisit();
+  // Keys the removed clickable demo left in some browsers; nothing reads them now.
+  if (typeof localStorage !== "undefined") {
+    for (const key of [
+      "modern-classroom-demo",
+      "modern-classroom-demo-notice",
+      "modern-classroom-db",
+      "modern-classroom-session",
+    ]) {
+      localStorage.removeItem(key);
+    }
+  }
   // No Supabase settings means nobody can be signed in, which is an answer
   // rather than an error: the pages asking this send the visitor to the landing.
-  if (!isDemoMode() && !supabaseConfigured()) return null;
+  if (!supabaseConfigured()) return null;
   return store.getCurrentUser();
 }
 
@@ -36,7 +40,6 @@ export async function loginUser(identifier: string, password: string): Promise<P
   if (!email.includes("@")) {
     throw new Error("Sign in with your email address");
   }
-  if (isDemoMode()) exitDemoMode();
 
   const { error } = await supabase().auth.signInWithPassword({ email, password });
   if (error) throw new Error(describe(error, "Could not sign in"));
@@ -58,7 +61,6 @@ export async function signupUser(data: {
   if (data.password.length < 6) {
     throw new Error("Password must be at least 6 characters");
   }
-  if (isDemoMode()) exitDemoMode();
 
   const { data: result, error } = await supabase().auth.signUp({
     email: data.email.trim().toLowerCase(),
@@ -99,7 +101,6 @@ export async function signupUser(data: {
  * so a plain sign-in never asks for access to anyone's classes.
  */
 export function signInWithGoogle(): void {
-  if (isDemoMode()) exitDemoMode();
   window.location.assign("/api/google/signin");
 }
 
@@ -123,19 +124,11 @@ export async function finishGoogleSignIn(): Promise<PublicUser> {
  * cache of things that no longer exist.
  */
 export async function deleteAccount(): Promise<void> {
-  if (isDemoMode()) {
-    exitDemoMode();
-    return;
-  }
   await store.deleteAccount();
   await supabase().auth.signOut();
 }
 
 export async function logoutUser(): Promise<void> {
-  if (isDemoMode()) {
-    exitDemoMode();
-    return;
-  }
   await syncedStoreIfActive()?.forget();
   await supabase().auth.signOut();
 }

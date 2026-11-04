@@ -333,6 +333,18 @@ describe("two-way sync", () => {
     expect(ops[0]).toMatchObject({ type: "update", fields: ["due"] });
   });
 
+  it("gives items posted before everything was graded a total, once", () => {
+    const older = edit(settled(), "practice:3.1::textbook", { maxPoints: undefined });
+    expect(planSync(input(older))[0]).toMatchObject({ type: "update", fields: ["points"] });
+  });
+
+  it("leaves a total the teacher changed in Classroom alone", () => {
+    const links = settled().map((l) =>
+      l.itemKey === "practice:3.1::textbook" ? { ...l, classroom: { ...l.sent!, maxPoints: 20 } } : l
+    );
+    expect(planSync(input(links))).toEqual([]);
+  });
+
   it("does not treat a due date passing as an edit", () => {
     const links = edit(settled(), "practice:3.1::textbook", { due: "2026-09-29T03:59:00.000Z" });
     expect(planSync(input(links))).toEqual([]);

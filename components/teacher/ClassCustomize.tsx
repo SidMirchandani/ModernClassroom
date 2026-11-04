@@ -114,7 +114,7 @@ export function ClassCustomize({ name, color, icon, onChange }: Props) {
         </div>
       </div>
 
-      <div data-tour="customize-color" className="card p-5 space-y-4">
+      <div className="card p-5 space-y-4">
         <div>
           <div className="eyebrow">Color</div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">

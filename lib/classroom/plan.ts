@@ -49,6 +49,7 @@ export interface ItemFields {
   description?: string;
   due?: string | null;
   postAt?: string | null;
+  maxPoints?: number;
 }
 
 export interface ClassroomLink {
@@ -89,7 +90,7 @@ export interface PlannedWork {
 
 export type PlannedItem = PlannedTopic | PlannedWork;
 
-export type WorkField = "title" | "description" | "due" | "state";
+export type WorkField = "title" | "description" | "due" | "state" | "points";
 
 export type SyncOp =
   | { type: "create"; item: PlannedItem }
@@ -103,6 +104,9 @@ export interface PlanInput {
   now: Date;
   timeZone: string;
 }
+
+/** Every assignment is graded (ADR-011). A teacher's own total comes from Classroom. */
+const DEFAULT_POINTS = 100;
 
 /** Lessons post at the start of the school day; work is due at its end. */
 const POST_AT = { hours: 7, minutes: 0 };
@@ -268,6 +272,7 @@ export function plannedItems(input: Omit<PlanInput, "links">): PlannedItem[] {
           title,
           description,
           links: [],
+          maxPoints: DEFAULT_POINTS,
           due: due(day),
           target: target(postDay),
           postAt: postAt(postDay),
@@ -294,6 +299,7 @@ export function plannedItems(input: Omit<PlanInput, "links">): PlannedItem[] {
             title: `${section.id} ${section.title} · ${track.label} (${step === "learn" ? "Learn" : "Practice"})`,
             description,
             links,
+            maxPoints: step === "practice" ? DEFAULT_POINTS : undefined,
             due: step === "practice" ? due(day) : undefined,
             target: target(postDay),
             postAt: postAt(postDay),
@@ -311,7 +317,7 @@ export function plannedItems(input: Omit<PlanInput, "links">): PlannedItem[] {
         title: checkpoint.title,
         description: checkpoint.note ?? "",
         links: [],
-        maxPoints: checkpoint.maxPoints ?? 100,
+        maxPoints: checkpoint.maxPoints ?? DEFAULT_POINTS,
         due: due(day),
         target: target(rule === "unit_start" ? unitStart : day),
         postAt: postAt(rule === "unit_start" ? unitStart : day),
@@ -346,7 +352,13 @@ function sameTarget(link: ClassroomLink, target: Target): boolean {
 /** What the curriculum currently says about an item. */
 export function plannedFields(item: PlannedItem): ItemFields {
   if (item.kind === "topic") return { title: item.name };
-  return { title: item.title, description: item.description.trim(), due: dueInstant(item.due), postAt: item.postAt };
+  return {
+    title: item.title,
+    description: item.description.trim(),
+    due: dueInstant(item.due),
+    postAt: item.postAt,
+    maxPoints: item.maxPoints,
+  };
 }
 
 /** What an existing work item needs sent, judged against what was last sent. */
@@ -359,6 +371,8 @@ function workChanges(item: PlannedWork, link: ClassroomLink, now: Date): WorkFie
   const wanted = plannedFields(item);
   if (wanted.title !== sent.title) fields.push("title");
   if (wanted.description !== (sent.description ?? "")) fields.push("description");
+  // Also how items posted before everything was graded get a total, once.
+  if (wanted.maxPoints !== undefined && wanted.maxPoints !== sent.maxPoints) fields.push("points");
 
   // A due date already past is simply not sent, which isn't a change. It only
   // needs clearing if the one Classroom has is still ahead.
@@ -442,6 +456,7 @@ function sameFields(a: ItemFields | null | undefined, b: ItemFields | null | und
   return (
     a.title === b.title &&
     (a.description ?? "") === (b.description ?? "") &&
+    (a.maxPoints ?? null) === (b.maxPoints ?? null) &&
     sameInstant(a.due, b.due) &&
     sameInstant(a.postAt, b.postAt)
   );
@@ -491,6 +506,7 @@ export function absorb(
             description: (found.description ?? "").trim(),
             due: found.due ?? null,
             postAt: found.scheduledFor,
+            maxPoints: found.maxPoints,
           },
         };
       } else if (believeWork) {
@@ -581,6 +597,7 @@ export interface OwnWork {
   scheduledFor: string | null;
   description?: string;
   due?: string | null;
+  maxPoints?: number;
 }
 
 export interface Tidy {

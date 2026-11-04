@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentUser } from "./auth-client";
-import { isDemoMode } from "./demo-seed";
 import { STORE_CHANGED_EVENT } from "./store";
 import { supabase, supabaseConfigured } from "./supabase/client";
 import type { PublicUser } from "./db/types";
@@ -28,7 +27,7 @@ export function useCurrentUser(): PublicUser | null {
     window.addEventListener(STORE_CHANGED_EVENT, read);
 
     let unsubscribe = () => {};
-    if (!isDemoMode() && supabaseConfigured()) {
+    if (supabaseConfigured()) {
       const { data } = supabase().auth.onAuthStateChange(() => read());
       unsubscribe = () => data.subscription.unsubscribe();
     }

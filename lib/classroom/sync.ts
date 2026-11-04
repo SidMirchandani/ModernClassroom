@@ -95,6 +95,7 @@ function classroomFields(row: WireItem): ItemFields {
     description: (row.description ?? "").trim(),
     due: wireDue(row),
     postAt: row.scheduledTime ?? null,
+    maxPoints: row.maxPoints,
   };
 }
 

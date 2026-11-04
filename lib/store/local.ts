@@ -24,11 +24,6 @@ import {
   type Store,
 } from "./types";
 
-/** The demo's whole world lives under this key. */
-export const DEMO_DB_KEY = "modern-classroom-db";
-/** Who the demo is signed in as. */
-export const DEMO_SESSION_KEY = "modern-classroom-session";
-
 /** A signed-in user's offline copy of everything they have looked at. */
 export const CACHE_DB_KEY = "modern-classroom-cache";
 
@@ -105,8 +100,7 @@ export function createDefaultClass(teacherId: string, options: NewClassOptions =
 /**
  * Renumbering a section is moving its key everywhere that key appears: each
  * student's progress, the gate, and every checkpoint anchored after it. The
- * same rewrite the server does in `apply_curriculum`, for the demo and the
- * cache. Progress rows are moved, never dropped.
+ * same rewrite the server does in `apply_curriculum`, for the cache. Progress rows are moved, never dropped.
  */
 export function remapSections(
   db: Database,
@@ -126,8 +120,7 @@ export function remapSections(
 }
 
 /**
- * The store as it has always been: one JSON document in localStorage. It is
- * the demo, complete and offline; and for a signed-in user it is the cache the
+ * One JSON document in localStorage: the signed-in user's cache, which the
  * synced store reads from, so every screen renders the same way with or
  * without a connection.
  */
@@ -227,8 +220,7 @@ export class LocalStore implements Store {
   // ── roles ────────────────────────────────────────────────────────────────
 
   /**
-   * Roles are per-class, and a user can hold both — the demo account teaches
-   * its classes and is enrolled in them so the student side is reachable.
+   * Roles are per-class, and a user can hold both.
    * Teaching wins unless the caller explicitly asks for the student view.
    */
   static rolesFor(db: Database, userId: string, classId: string): ClassRole[] {
@@ -311,7 +303,7 @@ export class LocalStore implements Store {
     const students = this.studentsOf(db, classId);
     const invites = access === "teacher" ? db.invites.filter((i) => i.classId === classId) : [];
 
-    // A teacher enrolled in their own class (the demo account) has a progress
+    // A teacher enrolled in their own class has a progress
     // row but no roster seat. The teacher grid iterates progress rows against
     // the roster, so that row has to be dropped here or it dereferences undefined.
     const rosterIds = new Set(students.map((s) => s.id));
@@ -421,9 +413,9 @@ export class LocalStore implements Store {
     });
   }
 
-  /** The demo has no account. Nothing here outlives closing the tab. */
+  /** Only a cache: accounts are closed on the server, by the synced store. */
   async deleteAccount(): Promise<void> {
-    throw new Error("The demo has no account to delete");
+    throw new Error("The local cache has no account to delete");
   }
 
   // ── roster ───────────────────────────────────────────────────────────────

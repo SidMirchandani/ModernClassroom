@@ -185,51 +185,6 @@ export async function deleteChat(chat: Chat): Promise<void> {
   }
 }
 
-/**
- * Deletes every chat (and its files) for the classes `match` picks, in one
- * transaction — so a page that lists chats straight after still sees them
- * gone: IndexedDB runs a later transaction on the same store after this one.
- */
-export async function clearChats(match: (classId: string) => boolean): Promise<void> {
-  for (const [id, chat] of memoryChats) {
-    if (!match(chat.classId)) continue;
-    memoryChats.delete(id);
-    chat.files.forEach((f) => memoryFiles.delete(f.id));
-  }
-  const db = await open();
-  if (!db) return;
-  try {
-    const tx = db.transaction([CHATS, FILES], "readwrite");
-    const files = tx.objectStore(FILES);
-    const walk = tx.objectStore(CHATS).openCursor();
-    walk.onsuccess = () => {
-      const cursor = walk.result;
-      if (!cursor) return;
-      const chat = cursor.value as Chat;
-      if (match(chat.classId)) {
-        chat.files.forEach((f) => files.delete(f.id));
-        cursor.delete();
-      }
-      cursor.continue();
-    };
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch (err) {
-    console.warn("Could not clear chats", err);
-  }
-}
-
-/**
- * The demo starts clean every time, chats included: they belong to the visit,
- * like the rest of the demo's world, which is rebuilt on entry and dropped on
- * exit. Every demo class's id starts "demo-".
- */
-export function clearDemoChats(): Promise<void> {
-  return clearChats((classId) => classId.startsWith("demo-"));
-}
-
 /** Keeps a class to its most recent chats. */
 export async function pruneChats(classId: string): Promise<void> {
   const chats = await listChats(classId);

@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 import { SyncStatus } from "@/components/SyncStatus";
-import { ExitDemoButton } from "@/components/demo/ExitDemoButton";
 
 interface AppNavbarProps {
   left: React.ReactNode;
@@ -36,7 +35,6 @@ export function AppNavbar({
       <div className="flex items-center justify-end gap-2 sm:gap-3 min-w-0">
         {/* Every screen carries the connection state, and none has to ask. */}
         <SyncStatus />
-        <ExitDemoButton />
         {right}
       </div>
     </header>

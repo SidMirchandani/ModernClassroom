@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { CloudOff, Loader2, TriangleAlert } from "lucide-react";
-import { isDemoMode } from "@/lib/demo-seed";
 import { SYNC_EVENT, outbox, type SyncState } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +14,6 @@ export function SyncStatus() {
   const [state, setState] = useState<SyncState | null>(null);
 
   useEffect(() => {
-    if (isDemoMode()) return;
     setState(outbox.current());
     const onSync = (e: Event) => setState((e as CustomEvent<SyncState>).detail);
     window.addEventListener(SYNC_EVENT, onSync);

@@ -57,6 +57,7 @@ export async function POST(request: Request) {
           classroom: {
             title: (l.classroom as { title: string }).title,
             due: (l.classroom as { due: string | null }).due,
+            maxPoints: (l.classroom as { maxPoints: number | null }).maxPoints,
           },
         })),
       work_
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
         .map((w) => ({
           item_key: `external:${w.id}`,
           classroom_id: w.id,
-          classroom: { title: w.title, due: w.due ?? null },
+          classroom: { title: w.title, due: w.due ?? null, maxPoints: w.maxPoints ?? null },
         })),
       (r) => r.item_key
     );

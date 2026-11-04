@@ -23,7 +23,8 @@ Recorded: live
 - Builds on M3 (roster and turn-ins from Classroom).
 
 ## Tradeoffs accepted
-- OPEN: not stated.
+- Overall in the grid counts turn-ins, not marks.
+- Hand-posted assignments show marks read-only: Classroom refuses writes to work this app didn't create.
 
 ## Revisit if
 - OPEN: not stated.

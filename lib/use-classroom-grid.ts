@@ -80,6 +80,62 @@ export function useClassroomGrid(classId: string, enabled: boolean, syncCount = 
     }
   }, [classId, read, reloadLinks]);
 
+  /** Marks and totals go straight to Classroom (ADR-011). Returns the answer, or null if it failed. */
+  const sendGrades = useCallback(
+    async (body: Record<string, unknown>): Promise<Record<string, unknown> | null> => {
+      setError("");
+      try {
+        const res = await fetch("/api/classroom/grades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ classId, ...body }),
+        });
+        const answer = await res.json().catch(() => ({}));
+        if (answer.needsReconnect) {
+          setNeedsReconnect(true);
+          return null;
+        }
+        if (!res.ok) throw new Error(answer.error ?? "Could not reach Google Classroom");
+        return answer;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not reach Google Classroom");
+        return null;
+      }
+    },
+    [classId]
+  );
+
+  /** Shown at once; if Classroom refuses, the cache puts back what is really there. */
+  const saveMark = useCallback(
+    async (itemKey: string, userId: string, mark: number | null) => {
+      setSubmissions((rows) =>
+        rows.map((s) => (s.itemKey === itemKey && s.userId === userId ? { ...s, draftGrade: mark } : s))
+      );
+      if (!(await sendGrades({ action: "mark", itemKey, userId, mark: mark ?? "" }))) await read();
+    },
+    [read, sendGrades]
+  );
+
+  const savePoints = useCallback(
+    async (itemKey: string, points: number) => {
+      await sendGrades({ action: "points", itemKey, points });
+      await reloadLinks();
+    },
+    [reloadLinks, sendGrades]
+  );
+
+  const returnColumn = useCallback(
+    async (itemKey: string) => {
+      const answer = await sendGrades({ action: "return", itemKey });
+      await read();
+      const failed = Number(answer?.failed ?? 0);
+      if (failed > 0) {
+        setError(`${failed} ${failed === 1 ? "mark" : "marks"} couldn't be returned. Try again, or return them in Google Classroom.`);
+      }
+    },
+    [read, sendGrades]
+  );
+
   useEffect(() => {
     if (!enabled) return;
     void read().then(refresh);
@@ -107,5 +163,18 @@ export function useClassroomGrid(classId: string, enabled: boolean, syncCount = 
     };
   }, [classId, enabled, read]);
 
-  return { students, submissions, links, loaded, pulling, pulledAt, needsReconnect, error, refresh };
+  return {
+    students,
+    submissions,
+    links,
+    loaded,
+    pulling,
+    pulledAt,
+    needsReconnect,
+    error,
+    refresh,
+    saveMark,
+    savePoints,
+    returnColumn,
+  };
 }

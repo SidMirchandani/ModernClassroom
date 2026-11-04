@@ -7,8 +7,6 @@ import { useSlidingPill } from "@/lib/use-sliding-pill";
 export interface NavCapsuleTab {
   id: string;
   label: string;
-  /** `data-tour` value, so the guided tour can press this tab itself. */
-  tourId?: string;
   href?: string;
   onClick?: () => void;
   notify?: boolean;
@@ -76,7 +74,6 @@ export function NavCapsule({ tabs, activeId, className }: NavCapsuleProps) {
             key={tab.id}
             type="button"
             onClick={tab.onClick}
-            data-tour={tab.tourId}
             data-active={isActive}
             className={tabClass}
           >

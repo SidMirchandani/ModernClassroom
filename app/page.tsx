@@ -141,8 +141,8 @@ export default async function Home({
             />
             <Step
               n={2}
-              title="Share the join code"
-              body="Six digits. No roster to import."
+              title="Connect Google Classroom"
+              body="Each lesson posts itself on its own date."
             />
             <Step
               n={3}

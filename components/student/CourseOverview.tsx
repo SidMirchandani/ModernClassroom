@@ -121,7 +121,6 @@ export function CourseOverview({
 
       {upNext && (
         <div
-          data-tour="up-next"
           className="border-l-2 border-primary pl-4 sm:pl-5 py-1"
         >
           <p className="eyebrow">

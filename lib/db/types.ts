@@ -42,7 +42,7 @@ export interface DbClass {
   icon?: ClassIconId;
   /** Standing guidance for the AI curriculum import, kept between runs. */
   importInstructions?: string;
-  /** Bumped by the server on every curriculum write. Absent in the demo. */
+  /** Bumped by the server on every curriculum write. */
   version?: number;
   createdAt: string;
 }

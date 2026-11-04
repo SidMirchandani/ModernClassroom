@@ -1,8 +1,6 @@
 "use client";
 
-import { isDemoMode } from "../demo-seed";
 import { supabaseConfigured } from "../supabase/client";
-import { DEMO_DB_KEY, DEMO_SESSION_KEY, LocalStore } from "./local";
 import { SyncedStore } from "./synced";
 import type { Store } from "./types";
 
@@ -20,28 +18,19 @@ export { STORE_CHANGED_EVENT, SYNC_EVENT } from "./types";
 export { findSubunit, getAllSubunits } from "./local";
 export { outbox, FORCE_OFFLINE_KEY } from "./outbox";
 
-let demoStore: LocalStore | null = null;
 let syncedStore: SyncedStore | null = null;
 
-/**
- * Which store is live right now. The demo is a world of its own in
- * localStorage and never touches the server; everyone else goes through the
- * synced store. Decided per call, because entering or leaving the demo
- * changes the answer without a reload.
- */
+/** The store everything goes through: the synced one, over Supabase. */
 export function activeStore(): Store {
-  if (isDemoMode()) {
-    return (demoStore ??= new LocalStore(DEMO_DB_KEY, DEMO_SESSION_KEY));
-  }
   if (!supabaseConfigured()) {
-    throw new Error("Supabase is not configured. Open the demo, or set the env variables.");
+    throw new Error("Supabase is not configured. Set the env variables.");
   }
   return (syncedStore ??= new SyncedStore());
 }
 
 /** The synced store, when that is what is live — for sign-out housekeeping. */
 export function syncedStoreIfActive(): SyncedStore | null {
-  return isDemoMode() ? null : syncedStore;
+  return syncedStore;
 }
 
 /**

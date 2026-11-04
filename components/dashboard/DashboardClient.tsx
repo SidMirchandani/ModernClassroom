@@ -9,7 +9,6 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { store } from "@/lib/store";
 import type { ClassSummary } from "@/lib/db/types";
 import { buildTodosForClasses, type TodoItem } from "@/lib/todos";
-import { referenceToday } from "@/lib/demo-seed";
 import { classIcon } from "@/lib/class-appearance";
 import { cn } from "@/lib/utils";
 import { TodoButton } from "@/components/TodoButton";
@@ -81,7 +80,7 @@ export function DashboardClient() {
               },
             ];
           }),
-          referenceToday()
+          new Date()
         )
       );
 
@@ -175,7 +174,7 @@ export function DashboardClient() {
         </div>
       ) : (
         <div key={mode} className="list-in divide-y divide-slate-200 dark:divide-slate-800 border-y border-slate-200 dark:border-slate-800">
-          {filteredClasses.map((cls, i) => {
+          {filteredClasses.map((cls) => {
             // One quiet glyph per card, never a boxed tile — but the teacher
             // picks which glyph and which colour, so six periods are told
             // apart at a glance instead of reading as one grey list.
@@ -188,10 +187,8 @@ export function DashboardClient() {
                 key={`${cls.id}-${cls.role}`}
                 className="relative group/row transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/60"
                 data-accent={cls.color}
-                data-tour={i === 0 ? "class-card" : undefined}
               >
                 <Link
-                  data-tour={i === 0 ? "class-card-link" : undefined}
                   href={
                     cls.role === "student"
                       ? `/dashboard/class/${cls.id}?as=student`

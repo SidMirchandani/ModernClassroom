@@ -10,7 +10,7 @@ A classroom dashboard built around one teacher's actual way of running a course:
 
 A real class now lives in **Google Classroom**. The teacher uploads her year plan, reviews it row by row, and the app posts it into the Classroom class she already has — each unit a topic, each resource's practice an assignment, scheduled on its date — then reads her students' turn-ins back into a grid of who has done what. Students never sign in here; they keep using Classroom. See *The Google Classroom connection* below, and [`docs/Classroom-Connect.md`](docs/Classroom-Connect.md) for the plan and the reasoning.
 
-The self-paced student experience this app began as is still in the code and is what the **demo** shows: students open a section and see one button per resource, each expanding into its own learning targets, **Learn** material and **Practice** deliverable with its own status, and the teacher's table shows *which resource* each student is stuck on.
+The self-paced student experience this app began as is still in the code, behind the **Enrolled** tab: students open a section and see one button per resource, each expanding into its own learning targets, **Learn** material and **Practice** deliverable with its own status.
 
 The pitch on the landing page: *"Your classroom, modernized."*
 
@@ -59,7 +59,7 @@ to students as "Due 10/14". Nothing in the curriculum locks on a date; but in a
 class on Google Classroom the date is what *posts* the item (the first
 month/day in the text, `parseCurriculumDate` in `lib/classroom/plan.ts`), and
 the date alone decides where the class is in the year (`getCurrentUnitIndexByDate`,
-below). In the demo's student view, pacing is still held by the progress gate
+below). In the student view, pacing is still held by the progress gate
 (`blockSectionId`) — see *Progress rules*.
 
 `Checkpoint` is a dated marker anchored *between* sections (`afterSectionId`),
@@ -68,31 +68,16 @@ Unit Test at the end. `kind` ∈ `quiz · test · checkpoint · project`. Dates 
 **free text** so `"10/12 or 10/13"` survives intact. In Google Classroom a
 checkpoint posts as a graded assignment, out of `maxPoints` (default 100).
 
-### Checkpoint grades (the demo's table)
+### Checkpoint grades
 
 Checkpoints are the one thing in the self-paced app that carries a **mark** rather
 than a status. `Checkpoint.maxPoints` is what it is scored out of (default 100), and a
 student's result is a `CheckpointGrade` — `{ score, outOf }` — kept in
 `StudentProgress.checkpoints`, keyed by checkpoint id.
 
-> ⚠️ **Grading on every item is designed, not built.** [ADR-011](docs/adapt/decisions/ADR-011-grades-live-in-classroom.md)
-> decides that a real class's grades live in Classroom's own gradebook, one per
-> resource, as draft marks until a column is returned — and nothing of it is
-> written yet (that is milestone M4). Today `ClassroomGrid` shows turn-in
-> status only; no grade is read or written back, though the cache already
-> holds `assigned_grade` / `draft_grade` for when it is. What follows describes
-> the demo's own table.
-
-Grading in that table happens **in the table itself** — no dialog. Each checkpoint gets its own
-column, positioned after the subunit it follows; the column header carries an
-editable "out of" box and every cell under it is a number field. Type, tab away,
-saved. Drafts are held while typing and committed on blur, so a half-typed "1"
-of "18" never reaches the store.
-
-Changing the total re-denominates the marks already given: raw scores stay put
-and the denominator moves with the assignment, rather than leaving old marks
-reading against a total that no longer exists. `outOf` is still stored per
-student so nothing renders wrong in between.
+> A real class's grades don't use this: they live in Classroom's own gradebook
+> ([ADR-011](docs/adapt/decisions/ADR-011-grades-live-in-classroom.md)). See
+> *Grading* under *The Google Classroom connection*.
 
 Students see their own mark on the checkpoint row in the Class Dashboard.
 
@@ -104,7 +89,7 @@ The heart of the app; every rule lives here and nowhere else.
 - **Across tracks:** parallel. Stuck on the textbook? Keep going in AP Classroom.
 - **Across sections:** section *N* is reachable only when every prior section is *finished* — every **required** track done-or-help.
 - **A section is complete** when every required track has all its steps `done` (not `help`).
-- **The progress gate** (`blockSectionId`) hard-caps access regardless of speed. It is **student-side only now**: `isBeyondBlock`, `canAccessSection`, the section sidebar, `CourseOverview` and the student view still read it, and it stays in the data model (`DbClass.blockSectionId`, the `classes.block_section_id` column, the demo seed's `3.6`). But no teacher screen sets or draws it — `TableProgressGate`, the draggable red line, is deleted — the teacher's help count passes `null` for it, and neither the Classroom plan nor the sync consults it. A real class's gate is therefore always `null`; only the demo's seeded classes carry one, which is why the demo's student view still locks sections past `3.6`.
+- **The progress gate** (`blockSectionId`) hard-caps access regardless of speed. It is **student-side only now**: `isBeyondBlock`, `canAccessSection`, the section sidebar, `CourseOverview` and the student view still read it, and it stays in the data model (`DbClass.blockSectionId`, the `classes.block_section_id` column). But no teacher screen sets or draws it — `TableProgressGate`, the draggable red line, is deleted — the teacher's help count passes `null` for it, and neither the Classroom plan nor the sync consults it. A real class's gate is therefore always `null`.
 - **Access is always judged against the whole course**, never one unit's list. Passing a single unit's sections makes `isBeyondBlock` miss the gate entirely and unlocks the first section of every later unit — this was a real bug in `CourseOverview`.
 - **Teacher review loop:** practice `done` with `practiceApproved !== true` surfaces as **Review** on that track. The teacher approves it (optionally with a grade) or sends *that track* back — reverting practice to `available`, dropping the proof, and flagging `sentBackForReview`.
 - **Legacy progress** written before tracks (flat `learn/practice/extra`) is migrated on read by `migrateSectionProgress()` onto the `::custom` and `::extra` tracks that legacy curricula migrate to.
@@ -122,13 +107,9 @@ class, through uploading a pacing guide and approving it, to the turn-in grid.
 "Watch a demo" on the landing page, footer and sign-in card all go there, and
 `/student` and `/teacher` redirect to it. It was filmed from the real screens
 with a sample class and students, and Google's responses simulated; the page says
-so. When those screens change noticeably, it needs filming again.
-
-Visitors can no longer enter a clickable demo: an empty class had little to show.
-**The demo-mode code below is unreachable and due for removal** — `seedDemo()`,
-which the old `/demo` called, has no caller now. Until then, everything in this
-doc about the demo store, the old progress table and the guided tour describes
-that dormant code.
+so. It predates the grade boxes in the grid. The sample class it was filmed with
+was demo code that has since been removed, so filming it again needs a new way to
+put sample data on those screens.
 
 **Signed-out visitors never see the dashboard.** `proxy.ts` sends any
 `/dashboard/*` request without a `sb-…-auth-token` cookie to `/` before it
@@ -136,41 +117,15 @@ renders. An expired session still has the cookie, so the pages' own
 `getCurrentUser()` check catches that, and it answers `null` rather than throwing
 if Supabase isn't configured.
 
-Because roles are per-class and the demo account holds both, the **Teaching**
-tab opens each class as the teacher and **Enrolled** opens the same class as a
-student (`?as=student`). No persona switcher — the tabs are the switch. The back
-link carries `?tab=` so you return to the side you came from.
-
-**A demo lasts only for the visit that opened it** (`leaveDemoOnFreshVisit` in
-`lib/demo-seed.ts`). `getCurrentUser()` calls it first, once per page load, and
-it leaves the demo (`exitDemoMode`) when the page was arrived at fresh — a typed
-address, a bookmark, a link from another site, i.e. a navigation that is neither
-a reload nor back/forward and whose referrer is not this origin. A reload, back
-and forward, or a click inside the app keep it. `seedDemo()` marks the check as
-done, so entering the demo on purpose is never mistaken for a stale one. Without
-it a signed-out visitor was silently signed in as Demo days after a visit.
-Signing in with Google also exits the demo first.
-
-The demo is also the one place the **old teacher progress table** survives —
-real classes use `ClassroomGrid` (see *The Google Classroom connection*) —
-and the one place the Google connection is off: `ClassTeacherView` enables it
-only when `!isDemoMode() && supabaseConfigured()`.
+Roles are per-class, so the **Teaching** tab opens each class as the teacher and
+**Enrolled** opens the same class as a student (`?as=student`). No persona
+switcher — the tabs are the switch. The back link carries `?tab=` so you return
+to the side you came from.
 
 > ⚠️ Anything reading a class for the student must pass `"student"` to
 > `getClassDetail`. A teacher enrolled in their own class otherwise gets the
 > teacher payload, which strips their own progress row — the student view then
 > renders as if they had done nothing.
-
-`components/demo/DemoNotice.tsx` floats a dismissible one-liner at the top of
-every dashboard route. It stays out of the way until it has something to say —
-`lib/db/client.ts` fires a `DB_WRITE_EVENT` on every store write, and the notice
-listens for the **first** one, then slides in. It never dims the page, and it
-carries the Exit link that clears the seeded data.
-
-> This replaced a parallel demo implementation — `TeacherDashboard.tsx` (1119
-> lines), `StudentDashboard.tsx`, `DemoSubunitEditor.tsx` and four demo-only
-> stores — all deleted. The duplication they carried was the repo's oldest
-> known issue.
 
 ### Data layer — Supabase, with the browser as a cache
 
@@ -180,7 +135,7 @@ implementations and a router:
 | File | What it is |
 |---|---|
 | `store/types.ts` | The `Store` interface, and the two events the app listens on |
-| `store/local.ts` | The localStorage document. **The demo** (complete, offline, no account) *and* the cache for a signed-in user |
+| `store/local.ts` | The localStorage document: a signed-in user's offline cache |
 | `store/remote.ts` | Every call that touches Supabase. Row shapes go in, app shapes come out |
 | `store/outbox.ts` | Writes that have not reached the server yet |
 | `store/synced.ts` | Cache + remote + outbox, wired together |
@@ -202,9 +157,6 @@ would never succeed, and one bad row must not block the rest.
 
 | Key | Holds |
 |---|---|
-| `modern-classroom-db` | The demo's whole world |
-| `modern-classroom-session` | The demo's "signed-in" user id |
-| `modern-classroom-demo` | Flag: the demo is running |
 | `modern-classroom-cache` | A signed-in user's offline copy |
 | `modern-classroom-outbox` | Writes still to be pushed |
 | `mc-force-offline` | Set to `"1"` in devtools to rehearse losing the connection |
@@ -217,8 +169,6 @@ trigger builds the profile row from the signup metadata, minting the username by
 the app's own scheme (last name + first initial, then a number if taken); for a
 Google account it falls back through `given_name` / `family_name` / `full_name`
 (migration `0010`).
-
-The demo never touches the server and has no account. Signing in leaves it.
 
 > ⚠️ **Progress is stored per track, not per student.** One row per
 > `(class, student, section, track)`. A student marking their guided notes and
@@ -266,7 +216,7 @@ large **Upload a file** button. It opens a dialog in two numbered steps,
   page*. Chosen files are full rows with their own **Remove** button; the area
   shrinks to *Add another file*. Over 4 MB together (Vercel's limit is 4.5)
   says so and blocks. An optional *Anything we should know?* field (no
-  placeholder), *Try a sample file* in demo classes only, then **Read my
+  placeholder), then **Read my
   file** / **Build my curriculum**.
 
 It only ever *proposes*: the draft is written over the curriculum for review,
@@ -309,12 +259,9 @@ and nothing is saved until the teacher accepts it.
   (`lib/curriculum-chat.ts`, whose records are still shaped as the
   two-message chats they began as): the files, the draft and the decisions,
   so a reload mid-review loses nothing. A class keeps its 30 most recent. An
-  import cut off by a reload comes back as stopped, with *Try again*. The
-  demo's are cleared on entering and leaving it (`clearDemoChats`).
+  import cut off by a reload comes back as stopped, with *Try again*.
 - **One draft at a time per class**; the dialog asks for the one on the
   curriculum to be finished first.
-- **The demo sends its curriculum from the browser** (`slim`), without
-  attachments, which can be whole files as data URLs.
 
 **Reading it — `CurriculumTable`.** Under the upload card the curriculum is
 shown to be read, never edited (`components/teacher/CurriculumTable.tsx`): one
@@ -399,7 +346,7 @@ failed attempt logs one line (`[import] gemini-3.8-flash failed (HTTP 503) after
 every answer logs what it used (`[import] gemini-3.5-flash used 18748 in, 2700
 out (0 thinking) — about $0.048 at paid rates`), counts only, never content.
 
-**What it costs.** Measured on 2026-11-01: the demo's 3-unit sample against a
+**What it costs.** Measured on 2026-11-01: a 3-unit sample against a
 72-subunit class was 18.7k tokens in and 2.7k out — about **$0.05** at paid
 Flash rates ($1.50 / $7.50 per million from January 2027). Output is the
 expensive side, and the request was trimmed for it in 6.2: the answer's tracks
@@ -413,12 +360,9 @@ class setups a day; browsing a class makes no calls at all, and the Classroom
 connection spends none of it (it never touches Gemini).
 
 Every import spends the operator's Gemini quota, so every caller is limited:
-the demo to 8 an hour per address, a signed-in teacher to 30 an hour per
-account. Files are parsed *before* either counter runs, so a wrong file type
-costs a correction, not an import, and an import that fails on our side hands
-its allowance back. The demo's curriculum arrives from the
-browser and is shape-checked (and capped at 200k characters) before anything
-walks it.
+a signed-in teacher to 30 an hour per account. Files are parsed *before* the
+counter runs, so a wrong file type costs a correction, not an import, and an
+import that fails on our side hands its allowance back.
 
 > ⚠️ **Uploads are capped at 4 MB because Vercel is.** A serverless function's
 > request body tops out at 4.5 MB, and anything bigger gets the platform's own
@@ -538,13 +482,6 @@ change, and a row that now proposes something else is asked about again. In a
 class that already posts to Google Classroom, a saved curriculum then goes on
 to Classroom by itself (`postQuietly` in `ClassTeacherView.applyCurriculum`).
 
-The demo can run it. The reading is real — a real call, a real diff — and only
-the class it changes is local. The import dialog offers **Try a sample
-time line** (in the demo's own classes only), which builds a CSV out of the class's own timeline with a few
-deliberate edits (`lib/sample-timeline.ts`), so a visitor with no spreadsheet
-of their own still sees the honest result: a handful of changed rows and
-everything else left alone.
-
 ### Live updates — `lib/store/live.ts`, `lib/use-class-sync.ts`
 
 A class is two people looking at the same thing from opposite sides, so both
@@ -663,9 +600,8 @@ numbered steps, and the first is where the class lives:
    pacing guide or calendar and we set it up) or **Start blank**. *From my
    plan* shows `FileDrop` and the optional *Anything we should know?*.
 
-The demo has no first question (it never leaves the browser, so it has no
-Google to offer) and the steps renumber to match (`step()` in the page). One
-large button finishes it — **Create my class and read my plan** or **Create my
+The steps are numbered as they appear (`step()` in the page): the Google path
+has one more. One large button finishes it — **Create my class and read my plan** or **Create my
 class** — and while it cannot be pressed, the reason sits beside it (*Give your
 class a name first.*, *Choose how you'd like to start.*, *Choose your file to
 continue.*). There are no ready-made courses to pick from any more. On the
@@ -683,7 +619,7 @@ arrival, opens the import dialog and starts the read. The
 teacher's first sight of their new class is the work happening; nothing
 reaches the class until they accept it.
 
-> ⚠️ **A class address that is not a UUID is a missing class, not an error.** Leaving the demo switches the browser to the real store while a tab can still be on `/dashboard/class/demo-algebra-2`; Postgres answered that id with *"invalid input syntax for type uuid"*, and the student view's background reload threw it as a runtime crash. `remote.pullClass` now returns `null` for anything that is not a UUID without asking the server; the class page and subunit editor send any load failure back to the dashboard; and the class views' background reloads (every live nudge, every return to the tab) keep what is on screen when one fails, instead of throwing.
+> ⚠️ **A class address that is not a UUID is a missing class, not an error.** Postgres answers any other id (a typo, a truncated link) with *"invalid input syntax for type uuid"*, which the student view's background reload threw as a runtime crash. `remote.pullClass` now returns `null` for anything that is not a UUID without asking the server; the class page and subunit editor send any load failure back to the dashboard; and the class views' background reloads (every live nudge, every return to the tab) keep what is on screen when one fails, instead of throwing.
 
 > ⚠️ **An AI-built class must start with no units.** The import never deletes
 > a unit the files do not mention — that is what keeps a partial upload from
@@ -698,32 +634,28 @@ reaches the class until they accept it.
 > into storage or survive a reload, and do not need to: it is a client-side
 > navigation of a second or two. `takePendingImport` reads and forgets, and the
 > panel checks once (a ref, so React's double-run of effects in development
-> cannot start two reads). And the panel asks `isDemoMode()` directly when it
-> builds the request — an import started on arrival runs before the effect
-> that sets the `demo` state has.
+> cannot start two reads).
 
 `FileDrop` is the one way a file is chosen, on the new-class page and in the
 import dialog. It replaced `MaterialsPicker`, a chat-style composer (a notes
 field with file chips inside and a small attach icon), which read fine to
 people used to chat apps and was easy to miss for everyone else.
 
-`lib/course-templates.ts` remains only as the source of the demo's three seeded
-classes (see *Demo data*). Its subunits are numbered by the class unit, never
-by the textbook — `9.1` is the first subunit of Unit 9 whatever chapter covers
-it; the chapter lives in that resource's `reference` — which is the rule the
-AI is told to follow as well.
+Subunits are numbered by the class unit, never by the textbook — `9.1` is the
+first subunit of Unit 9 whatever chapter covers it; the chapter lives in that
+resource's `reference` — which is the rule the AI is told to follow.
 
 ### The Google Classroom connection — `lib/classroom/`, `lib/google/`, `app/api/classroom/`, `app/api/google/`
 
 A real class lives in Google Classroom; this app posts the curriculum into it and reads the students back. The plan, the problem it solves, the milestones and the decisions are in [`docs/Classroom-Connect.md`](docs/Classroom-Connect.md) and the ADAPT records under [`docs/adapt/`](docs/adapt/) (`decisions/ADR-004` … `ADR-011`) — this section is what the code does and what cost time, not a second copy of that plan.
 
-**Where it stands.** The sign-in, the connection, the mapping and posting (M1, M2) and the roster-and-turn-ins grid (M3) are built. **M3 has not yet been verified live with a real student's turn-in.** **Grading on every item (M4, ADR-011) is designed and not built**: no grade is read into the grid or written back to Classroom. Pushing wording changes to items already posted (M5) is likewise not built — see *Updating* below for what does move. The demo never uses any of this (`classroomEnabled` is `!isDemoMode() && supabaseConfigured()`).
+**Where it stands.** The sign-in, the connection, the mapping and posting (M1, M2) and the roster-and-turn-ins grid (M3) are built. **M3 has not yet been verified live with a real student's turn-in.** Grading on every item (M4, ADR-011) is built, but **writing a mark and returning a column have never run against a real student**, because the test class has none; the total-points call has. Two-way sync (ADR-012) has been run on real Google.
 
 #### Continue with Google — signing in
 
 `AuthPanel` offers **Continue with Google** above the email form, for log in and sign up alike: Supabase makes the account on a first visit, and the profile trigger names it (migration `0010`). It does **not** use Supabase's hosted redirect — that makes Google's account chooser name `….supabase.co`. It goes through **our own routes** instead:
 
-1. `signInWithGoogle()` (`lib/auth-client.ts`; it leaves the demo first) sends the browser to `GET /api/google/signin`, which sets a 10-minute httpOnly cookie holding a `state` and a `nonce` (path `/api/google/signin`) and redirects to Google with `SIGNIN_SCOPES` — **`openid email profile` only** — `prompt=select_account` and the nonce *hashed* (SHA-256).
+1. `signInWithGoogle()` (`lib/auth-client.ts`) sends the browser to `GET /api/google/signin`, which sets a 10-minute httpOnly cookie holding a `state` and a `nonce` (path `/api/google/signin`) and redirects to Google with `SIGNIN_SCOPES` — **`openid email profile` only** — `prompt=select_account` and the nonce *hashed* (SHA-256).
 2. Google returns to `GET /api/google/signin/callback`, which checks the state, trades the code for an **id token** (`exchangeForIdToken`), and hands it to Supabase with `signInWithIdToken({ provider: "google", token, nonce })`. The raw nonce going to Supabase is how it knows the token was asked for here and not replayed. The Supabase client for this one call is `sessionClient(response)`, whose cookies are written onto the redirect — everywhere else the browser client owns the session.
 3. The redirect lands on `/auth/callback` (`app/auth/callback/page.tsx`, a client page), which calls `finishGoogleSignIn()` — read the session, accept any invites (best effort), load the profile — and moves on to `/dashboard`. A cancelled or failed trip shows one sentence and *Back to sign in*.
 
@@ -786,7 +718,9 @@ The route takes `{classId, timeZone}`, checks the caller teaches the class (`tea
 
 The **Classroom tab** shows one unit at a time (the unit navigator; the current unit comes from dates — `getCurrentUnitIndexByDate`): **students down the side** (Classroom's roster, sorted by name, with the avatar), **what they can turn in across the top**, and in each cell a plain word. Columns follow the curriculum: each lesson's resources, then the quizzes and tests that come after it (`gridColumns`). A column's key is the **same key the plan posts under**, which is how a turn-in finds its column. A Learn material has nothing to turn in, so no column.
 
-Cells say: *Not posted yet* · *Not yet* · *Turned in* · *Turned in late* · *Returned* · *Missing* (posted, past the end of its date, nothing turned in). "Posted" means published, or scheduled for a time that has passed — our record only says it was scheduled, and Classroom published it on its own. An **Overall** column is the share of what has been posted that the student has handed in. **Grades are not shown** (see the ⚠️ under *Checkpoint grades*): a cell is turn-in status only.
+Cells say: *Not posted yet* · *Not yet* · *Turned in* · *Turned in late* · *Returned* · *Missing* (posted, past the end of its date, nothing turned in). "Posted" means published, or scheduled for a time that has passed — our record only says it was scheduled, and Classroom published it on its own. An **Overall** column is the share of what has been posted that the student has handed in. Overall counts turn-ins, not marks.
+
+**Grading** (ADR-011). Each cell of a posted item has a mark box with its turn-in word below, and each column has its total (*Out of*, 100 by default) and, when there is something to return, **Return grades (n)**. There is no grade table of ours: `POST /api/classroom/grades` writes to Classroom and updates the cached row so the grid agrees at once. A mark is Classroom's **draft grade**, which students can't see; the cell says *Not returned yet* (or *New mark not returned* after a change). Return, after a confirmation, copies each draft to the assigned grade and returns that submission, reporting any that fail; students with no mark are left alone. A total is the assignment's `maxPoints`, changed directly in Classroom, so like any Classroom edit it stays until the curriculum changes it (`sent` vs `classroom`). Assignments posted before everything was graded get their 100 on the next sync, once. A mark changed in Classroom shows on the next pull, because Classroom wins (ADR-008). Hand-posted assignments show their marks read-only: Classroom refuses writes to work this app didn't create. Rules for what counts as a mark are in `lib/classroom/grades.ts`.
 
 **The pull** (`POST /api/classroom/pull`, 60s) fetches the roster (`listStudents`) and **every submission in one call** (`courseWork/-/studentSubmissions`), and writes them to the cache tables `classroom_roster` and `classroom_submissions`. It writes **only what changed** (`diffRows`), so an unchanged class writes nothing and other screens hear only real news; a student who left Classroom's roster is removed. A submission to an item with **no link** — work she posted by hand — has no column and is left out. A connection made before the app asked for the roster permission, or a Classroom 403, answers `needsReconnect`, and the grid asks her once to **Reconnect** and "tick every box" (Google lets people untick scopes) rather than showing an error.
 
@@ -820,8 +754,6 @@ components/
   AttachmentList.tsx          Shared link/file chips
   CheckpointRow.tsx           Shared dated quiz/test/project row
   TrackStatusDots.tsx         ⭐ per-resource status chips (T / AP / GN / EX)
-  demo/DemoNotice.tsx         "Nothing is saved" — shows on the first edit
-  tour/DemoTour.tsx           ⭐ the guided tour's panel and highlight ring
   student/
     ClassStudentView.tsx      ⭐ the shell: class strip, sidebar, section
     CourseOverview.tsx        ⭐ the Class Dashboard view (whole curriculum, dates, assessments)
@@ -830,7 +762,7 @@ components/
     StepPanel.tsx             Learn or Practice inside a track (status + proof upload)
     SectionSidebar.tsx        One unit's sections, checkpoints interleaved
   teacher/
-    ClassTeacherView.tsx      ⭐ the class's three tabs; the demo's progress table, review + help flows
+    ClassTeacherView.tsx      ⭐ the class's three tabs and the Classroom wiring
     ClassroomGrid.tsx         ⭐ the Classroom tab of a real class: roster × turn-ins, one unit at a time
     ClassroomPanel.tsx        ⭐ the Google card on the Curriculum tab: connect, choose class, posting rule, post
     ImportDialog.tsx          ⭐ reading files in: 1 choose your file, 2 a checklist as we read it, the result
@@ -848,7 +780,6 @@ lib/
   section-tracks.ts           ⭐ track helpers + legacy migration (deterministic ids)
   class-progress.ts           ⭐ unlock / status / review logic — the only copy
   todos.ts                    ⭐ due-date parsing + the three to-do buckets
-  course-templates.ts         The demo's three seeded courses (not offered to teachers)
   pending-import.ts           Hands a new class's files to its import dialog
   curriculum-diff.ts          ⭐ proposal → change set → applied curriculum (tested)
   curriculum-review.ts        ⭐ change set → hunks, decisions, reading order (tested)
@@ -860,66 +791,32 @@ lib/
   use-classroom.ts            ⭐ the teacher view's side of the connection: status, choices, posting
   use-classroom-grid.ts       ⭐ the grid's data: cache, pull on open, live nudges
   unit-phase.ts               Finished / Active / Upcoming; `getCurrentUnitIndexByDate` (teacher) and the gate-based one (student)
-  sample-timeline.ts          The demo's sample CSV, built from the class
   use-page-title.ts           The tab title, most specific part first
   class-appearance.ts         ⭐ the eight accents and twelve class glyphs
   use-current-user.ts         The signed-in user, re-read on every store write
   curriculum.ts               Empty section factory + `shortUnitLabel`
-  demo-units.ts               Seeded Algebra II Unit 3 with real objectives + dates
-  demo-seed.ts                ⭐ the whole demo world, and its pinned clock
-  tour.ts                     ⭐ the tour's stops, in order
   store/                      ⭐ the data layer: local · remote · outbox · synced
   supabase/client.ts          The browser Supabase client (cookie session)
   supabase/server.ts          Server clients: `userClient` (as the caller, RLS), `sessionClient` (sets the sign-in cookies), `adminClient` (service role)
   db/types.ts                 Row and DTO shapes (the store speaks these)
 ```
 
-### The teacher's progress table — the demo's
+### The teacher's class page
 
-> A real class's Classroom tab is `ClassroomGrid` (see *The Google Classroom
-> connection*). **This table is the demo's**: `ClassTeacherView` renders it only
-> when Google is not enabled for the class (`classroomEnabled` false). It is the
-> self-paced model's grid, kept whole so the demo shows the product it began as.
-
-One row per student, one column per subunit in the **selected unit**, plus a
-column for every checkpoint in it. The chrome around it:
+A real class's Classroom tab is `ClassroomGrid` (see *The Google Classroom
+connection*). Around it, the page has:
 
 - **Where the class is comes from the calendar, not a line.**
   `getCurrentUnitIndexByDate` (`lib/unit-phase.ts`) picks the last unit whose
   first dated lesson is on or before today (the first unit before the year
-  starts) — the demo reads its own pinned clock, `referenceToday()`, so its
-  classes sit in Unit 3. It chooses which unit is shown on open and each unit's
-  badge (`getUnitPhase`). Dates are read by the same `parseCurriculumDate` the
+  starts). It chooses which unit is shown on open and each unit's badge
+  (`getUnitPhase`). Dates are read by the same `parseCurriculumDate` the
   Classroom plan uses. (The student side still derives the current unit from
   the gate.)
 - **A class nobody has joined is "Not Started"**, every unit of it;
   `getUnitPhase` takes whether anyone is enrolled.
-- **The unit selector appears twice** — under the class name and again above the
-  table, where the status-filter chips used to be. Both are the same `UnitNav`
-  on the same state, so moving the unit in one place moves it in the other. (The
-  old filter chips only dimmed each other; nothing was lost with them.)
-- **Three keys**, labelled as such, sit left of the student search: **Resources**
-  (the two-letter chips, built from the tracks actually present in the unit, so
-  a class with a "Discovery Activity" gets `DA` in its own key), **Assignment
-  Colors** (the five statuses) and **Title Colors** (quiz · test · checkpoint ·
-  project). One list per vocabulary — a teacher looking up a colour should not
-  have to read past the other two.
-- **Checkpoint columns carry no kind label.** The title itself is coloured by
-  kind, and `components/Tooltip.tsx` explains it on hover — a styled floating
-  card, portalled to `<body>` at `z-250`, replacing the browser's native `title`
-  bubble, which arrives late, in the OS font, and is unreadable on a dark page.
-  The resource chips use the same tooltip.
-- **The student column is sticky, thinner and blurred harder** than the rest of
-  the chrome (`.float-pane-sticky`, 75% + `blur-xl`) — columns pass *under* it,
-  so it reads as depth rather than a wall.
-- **Columns size themselves to their title**, wide enough to wrap in two lines
-  at most (`titleColumnWidth`), clamped so one wordy subunit cannot push the
-  grid off the screen. Past that the table scrolls, which is what the sticky
-  column is for.
-- **There is no gate line.** The draggable red line (`TableProgressGate`) is
-  deleted, nothing past the gate is dimmed, and every unit but an upcoming one
-  is accessible to the chips. Nor is there an invite row under the table: the
-  teacher does not add students here.
+- **The unit selector** sits under the class name (`UnitNav`) and drives the
+  unit the Classroom tab shows.
 
 ### Navigating a class — the strip, the sidebar, the To-Do
 
@@ -957,29 +854,25 @@ Three rules make the list mean something:
 
 ### Leaving, removing and deleting
 
-Three ways a class or a roster seat ends, and they are not equally destructive:
+Two ways a class or a roster seat ends, and they are not equally destructive:
 
 - **A student leaves** a class from the `···` on its dashboard card.
-- **A teacher removes a student** from the `···` beside their name in the
-  progress table — the demo's table; a real class's roster is Google Classroom's,
-  and the Classroom grid has no such menu.
 - **A teacher deletes a class** from the `···` on its dashboard card. The class,
   its curriculum, its roster, its invites, everyone's work, and the links and
   cached roster and turn-ins for Google Classroom go with it (the Classroom
   items already posted stay in Classroom — it is the teacher's course).
 
-The first two are the *same* store operation — `unenrollStudent()` drops the
-enrolment row and nothing else. **The progress row is deliberately left
-behind:** it is invisible to everyone while that person is off the roster (the
-teacher's grid reads progress against the roster, and `saveAllClassProgress`
-merges rather than sweeps), and putting the person back on the roster brings the
-year's work back. A removal made in error is not a year lost — which is why the
-dialog says so. (No screen adds students now — no class code, no invite — so
-the dialog's *adding them back* is a promise about the data, not a button.)
+A student's leaving is `unenrollStudent()`, which drops the enrolment row and
+nothing else. **The progress row is deliberately left behind:** it is invisible
+to everyone while that person is off the roster (`saveAllClassProgress` merges
+rather than sweeps), and putting the person back on the roster brings the
+year's work back. A leave made in error is not a year lost. (No screen adds
+students now — no class code, no invite — so *adding them back* is a promise
+about the data, not a button.)
 
 `deleteClass()` is the one that cannot be taken back, so it names the class and
-its student count before it asks. Every one of the three goes through
-`ConfirmDialog`, and in all three the cancel is the neutral button.
+its student count before it asks. Both go through
+`ConfirmDialog`, and in both the cancel is the neutral button.
 
 ### Customize — how a class presents itself — `lib/class-appearance.ts`
 
@@ -1033,112 +926,6 @@ step darker (600 is ~3:1 on white, too thin for 11px labels) and **slate**'s
 `900` is really `800`, because the darkest slate *is* the dark page and the
 strip would vanish into it. And the picker's blue swatch uses `bg-brand`, a
 fixed hex — inside a rose class, `bg-primary` would paint it rose.
-
-### The guided tour — `lib/tour.ts`
-
-`/demo` asks one question before it seeds anything, because the two people who
-arrive there want opposite things: someone who has never seen the app needs to
-be shown where things are, and someone who has needs to be left alone. Both
-landing-page buttons point here, so the choice is offered once and in one place.
-
-Choosing the tour writes a step index to `localStorage`; `DemoTour`, mounted in
-the dashboard layout, reads it and walks fourteen stops across both sides of a
-class. A stop is a screen (`href` + a `place` name), a thing to look at
-(`anchor`, matched against a `data-tour` attribute) and what that thing is for —
-adding or reordering one is an edit to a single array.
-
-**Changing screens is shown, never done silently.** Every stop names the screen
-it is on in the panel header ("Step 6 of 14 · Teacher view"), the panel says
-"Going to the student view…", and the page behind dips to 35% while it happens.
-
-More than that, **the tour presses the buttons rather than jumping**. A stop
-that moves you carries a `route` — the `data-tour` values of the controls to
-click, in order. Each one is scrolled to, ringed, given a ripple at the point of
-contact, held for ~220ms, and then genuinely `click()`ed, so the app navigates
-through its own handlers. Reaching the student side is three presses —
-**Dashboard → Enrolled → the class card** — and you watch all three, which
-means you could repeat the trip yourself afterwards. `href` remains the
-destination check and the fallback if a control cannot be found. Going *back*
-skips the theatre: the controls that lead forward are on the screen you just
-left, so Back simply returns.
-
-Three things it deliberately does **not** do:
-
-- **It does not block the page.** No scrim, no dimming — the ring is the only
-  separation, so a stop can say "try one" and mean it. Same reasoning as popups
-  blurring rather than darkening.
-- **It does not re-run its own walk.** The travel effect reads the location from
-  `window` instead of depending on `pathname`: a route changes the path halfway
-  through, and depending on it would tear the walk down and restart it from the
-  first click. A generation counter cancels a walk if the step changes under it.
-- **It does not guess when to measure.** The ring tracks the smooth scroll frame
-  by frame for ~900ms; a single reading taken after a guessed delay lands where
-  the element was passing through. It also clamps to the viewport, because a
-  stop can point at something taller than the screen.
-- **It does not drive the UI through state it does not own.** The teacher's tabs
-  became URL-addressable (`?view=curriculum`, `?view=customize`) so the tour
-  navigates by link like anything else. That deep-linking is useful on its own.
-
-> ⚠️ **Two stops describe things the teacher side no longer has.** The tour is
-> walked in the demo, so its teacher stops land on the demo's own progress table —
-> but `lib/tour.ts` still has a *progress-gate* stop whose `data-tour="progress-gate"`
-> anchor went with the deleted red line (the ring finds nothing to hold), and the
-> *class-card* stop still tells the visitor that "students join with the six-digit
-> code" and to "copy it with the button beside it", which the dashboard card no
-> longer has. Both want rewriting.
-
-The panel places itself in whichever half of the screen the ring is not; when
-the ring fills the height — the table, the curriculum — it steps sideways
-instead. Anchors must be **real boxes**: `display: contents` was tried on one
-wrapper and measured as all zeros.
-
-### Demo data — `lib/demo-seed.ts`
-
-One account named **Demo**, eight classmates enrolled in all three classes, and
-the three real courses instantiated from the templates:
-
-| Class | Source | Gate |
-|---|---|---|
-| Algebra II, Honors | `algebra-2` template, Unit 3 replaced with the fully-authored sections | `3.6` |
-| AP Precalculus | `ap-precalculus` template | `3.6` |
-| AP Statistics | `ap-statistics` template | `3.6` |
-
-(The gate is the *student's* limit only: the teacher's table no longer draws or sets it.)
-
-**Every class opens in Unit 3** — units 1 and 2 signed off, the class a few
-sections into the third, the gate at `3.6` and the signed-in student at `3.3`.
-Reaches are **offsets from Unit 3's first section**, never absolute indices: the
-courses have different-sized opening units (Algebra II reaches `3.1` after 8
-sections, AP Precalculus after 29), so one spread lands correctly in all three.
-
-> **The demo's clock is pinned.** `DEMO_TODAY` (14 Oct 2026) is what
-> `referenceToday()` returns while the demo store is loaded. The timeline sheet
-> runs September to June — against a real "today" the whole course would be in
-> the future and nothing would ever be due. The date is chosen to sit inside
-> Algebra II's Unit 3 so the To-Do has something in each of its three buckets.
->
-> The three courses cannot all be on schedule at once: Algebra II teaches Unit 3
-> in October, AP Statistics in December, AP Precalculus in January. The pinned
-> date follows Algebra II — the class with the fully-authored unit — so in the
-> two AP classes the demo student reads as comfortably ahead, and they
-> contribute nothing to the To-Do.
-
-> The signed-in account is enrolled in classes it teaches, so it has a progress
-> row but no roster seat. `getClassDetail` drops that row for the teacher view —
-> without it the grid dereferences an undefined student.
-
-Its own student progress sits mid-course in every class, with the current
-section deliberately mid-flight — one resource done, one submitted and waiting,
-one asking for help — so the student view shows every state on open.
-
-`seedProgressFor` walks each student a different distance in (`reaches` are
-indices into the flattened section list), and Algebra II overlays the authored
-Unit 3 spread on top — deliberately **uneven per track**, so the teacher grid
-demonstrates what it is for: one student stuck on the guided notes while fine on
-the textbook.
-
-Students see the **whole year** in every class: all units listed and expandable,
-with everything past the gate locked and unclickable.
 
 ---
 
@@ -1320,7 +1107,7 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 - **Resource hues are category identity only** — indigo textbook · violet AP Classroom · teal guided notes · amber extra · slate custom. They appear on the icon tile, the editor badge and the objective dot, never on chrome and never on a status. Attachments share one neutral treatment (`ATTACHMENT_CLASS`).
 - **Buttons are three weights and nothing else** — `.btn-primary` (solid **ink** — black on light, white on dark — no border, no shadow; a filled brand-blue block was the loudest thing on every screen, so blue is kept for links, the active tab and "new" badges) for the one action a screen is for, `.btn-secondary` (1px border, no fill) for an equal alternative, `.btn-ghost` for minor actions, plus `.btn-danger`. Size is `.btn-sm` / `.btn-md` / `.btn-lg`, so height and radius are decided once. **A filled button never also carries a border, and an outlined one never carries a fill** — mixing the two is what made the app read as half-designed. A primary that is not ready yet turns **neutral grey**, not faded blue — a washed-out brand colour read as broken, worst of all in dark mode — while one that is working (`aria-busy`) keeps its full colour.
 - **Flat by design, after Supabase.** One flat page colour (white, `#0b0f16` in dark). Every surface is `.surface` / `.card`: solid fill, a 1px `slate-200` (`slate-800` in dark) border, **no shadow**. Interactive cards answer the pointer with their border only — no lift, no glow. The class colour is spent sparingly: the primary button, the active tab, the student's class strip, a heading's accent line. Only true overlays (modals, dropdowns) carry a shadow.
-- **Motion does a job or it does not happen.** Two curves in `:root` — `--ease-out` for anything arriving, `--ease-spring` for anything the hand moved. What stayed: a short fade-and-rise when a view changes (`.page-in`, `.list-in`), one sliding pill per tab bar (`useSlidingPill`, in `NavCapsule` and `SubunitViewToggle`), sections that slide to their exact height (`<Collapse>`, grid rows 0fr→1fr), stat numbers that count up (`useCountUp`), bars that grow in (`.bar-fill`), a light passing over the import's running step (`.shimmer-text`), and the theme switch spreading from the toggle as a circle (View Transitions API). All of it inside `prefers-reduced-motion: no-preference`.
+- **Motion does a job or it does not happen.** Two curves in `:root` — `--ease-out` for anything arriving, `--ease-spring` for anything the hand moved. What stayed: a short fade-and-rise when a view changes (`.page-in`, `.list-in`), one sliding pill per tab bar (`useSlidingPill`, in `NavCapsule` and `SubunitViewToggle`), sections that slide to their exact height (`<Collapse>`, grid rows 0fr→1fr), bars that grow in (`.bar-fill`), a light passing over the import's running step (`.shimmer-text`), and the theme switch spreading from the toggle as a circle (View Transitions API). All of it inside `prefers-reduced-motion: no-preference`.
 - **Flat, but it answers the cursor** — the other half of what makes Supabase and Vercel feel alive. `<PointerTracker />` (one listener in the root layout, one write per frame, off on touch screens) feeds `--mx`/`--my` to every `[data-pointer]`, `.card-interactive` and `.edge-glow` under the pointer. With it: a card's 1px edge lights in the brand colour where the cursor is (`::after`, masked to the border); the line-art grid in a landing tile brightens in a circle beneath the cursor (`.line-grid-hot`); each landing vignette plays its change on hover (`.swap-a` / `.swap-b` — a student finishing, a help flag raised, offline changes landing), falling back to a slow loop on touch screens; the landing nav shares one highlight that glides between links (`<HoverNav>`); course cells go from grey to ink and reveal a detail line; and arrows nudge toward where they point.
 
 > ⚠️ **The theme circle must run on an even curve, with every other transition off.** It first ran on a strong ease-out and looked like it stalled three-quarters of the way: the circle covered most of the screen at once, then crawled through the far corner. And because the new snapshot is live, cards and buttons were still easing their own colours inside the circle as it grew. `ThemeToggle` now uses a symmetric ease-in-out and puts `theme-switching` on `<html>` (all transitions `none`) until the view transition finishes. The circle itself is a **CSS animation** (`theme-reveal` on `:root.theme-switching::view-transition-new(root)`, centre and radius passed as `--vt-x`/`--vt-y`/`--vt-r`), not `element.animate()` from script: a transition ends when its own animations do (~250ms), and one added from script did not always hold it open — on phones the circle got halfway and the page snapped. Declared in CSS it is one of the transition's animations. Note that browsers skip view transitions on a hidden page — test it with the window in front.
@@ -1334,9 +1121,9 @@ One brand blue, one status vocabulary, one radius scale. Tokens live in
 - **Popups blur the page behind them; they never darken it.** The blur lives on **`#app-root`** (a wrapper in the root layout around everything the app renders), driven by a `body.overlay-open` class, and it is animated — `filter: blur(10px)` over 280ms. Because that blur is what separates a popup from the page, popups carry **no shadow**. Two things forced this shape:
   - **`backdrop-filter` on the overlay is not enough.** It only samples content composited into the same layer, so a sticky navbar or the class strip stayed razor-sharp behind a blurred page. Blurring the app subtree is the only thing that blurs the chrome too.
   - **Everything that floats must therefore portal to `<body>`** — outside `#app-root`, or it blurs itself. `Modal`, `Popover`, `Select` and the phone section sheet all do.
-- **One z-ladder, and popups sit on top of it.** Page chrome ≤ `z-30` · demo notice `z-100` · centred popups `z-120` · anchored panels (dropdowns, popovers, the profile menu) `z-200`, so a dropdown opened inside a dialog still lands above it. Anything anchored to a trigger goes through `components/Popover.tsx` rather than an `absolute` panel — an absolutely-positioned menu gets clipped by `overflow-hidden` cards and out-stacked by later siblings in the sticky header, which is exactly what buried the profile menu.
+- **One z-ladder, and popups sit on top of it.** Page chrome ≤ `z-30` · centred popups `z-120` · anchored panels (dropdowns, popovers, the profile menu) `z-200`, so a dropdown opened inside a dialog still lands above it. Anything anchored to a trigger goes through `components/Popover.tsx` rather than an `absolute` panel — an absolutely-positioned menu gets clipped by `overflow-hidden` cards and out-stacked by later siblings in the sticky header, which is exactly what buried the profile menu.
 - **`useOverlayTransition` flips the shown flag after *two* animation frames.** One is not enough: rAF can run before the browser has painted the hidden state, so the transition has nothing to move from and the overlay snaps open. It also keeps the node mounted past the close so the exit animates, and holds the body scroll lock for that whole time.
-- **Anything that floats over scrolling content is nearly opaque, lightly blurred.** `.float-pane` (white at 90% + `backdrop-blur-md`) and `.float-pane-raised` (over a white page) are on every navbar, the class strip, the phone picker, the teacher grid's sticky student column, dropdowns, popovers, modals and the demo notice. Content passing underneath reads as a blur rather than disappearing behind a hard edge. A sticky container whose children are panes must not paint its own background — an opaque parent cancels the whole effect.
+- **Anything that floats over scrolling content is nearly opaque, lightly blurred.** `.float-pane` (white at 90% + `backdrop-blur-md`) and `.float-pane-raised` (over a white page) are on every navbar, the class strip, the phone picker, the teacher grid's sticky student column, dropdowns, popovers and modals. Content passing underneath reads as a blur rather than disappearing behind a hard edge. A sticky container whose children are panes must not paint its own background — an opaque parent cancels the whole effect.
 - **No nested icon tiles.** A bordered, filled square inside a bordered card made every resource and class card read as somebody else's logo. Icons are bare glyphs at the text's own scale; the resource hue lives on the glyph.
 - **The segmented capsule needs a visible pill in dark mode.** `slate-900` on a `slate-950` navbar left nothing but the label — the sliding pill is `slate-700` with a white/10 ring. Until the pill has measured, the active tab paints its own highlight, so the first frame is never blank; the first placement is instant and only later moves animate.
 - **Radius scale**: `lg` 10px controls · `xl` 14px inner panels · `2xl` 18px cards · `3xl` 24px hero.
@@ -1411,17 +1198,13 @@ That file is committed pointing at `.next`, which is what a deploy produces, so
 
 9. **8 npm advisories** at install (1 critical, 6 high, 1 moderate) — all in transitive dependencies of `next`, `browserslist` and `eslint@8`, none from the Gemini or SheetJS additions. `eslint@8` and `glob@7` are EOL.
 
-10. **`ClassTeacherView.tsx` is large** (~1,480 lines: the demo's progress table, review modal, help modal, stat modals, plus the three tabs and the Classroom wiring). Most of it is the demo's table now; splitting out a `ProgressGrid` is the next worthwhile cut, and deleting it would follow if the demo ever moves to the Classroom grid.
+10. **Test coverage is four modules deep.** `lib/curriculum-diff.ts`, `lib/curriculum-review.ts` and `lib/curriculum-edit.ts` (27 + 11 + 10 specs) cover the curriculum logic, whose failure loses student work silently, and `lib/classroom/plan.ts` and `grid.ts` (21 + 12) cover the Classroom mapping and the grid — 81 specs in all (`npm test`, all passing on 2026-11-03). The Classroom routes, the OAuth flow and the sync's calls to Google are untested. `class-progress.ts` and `section-tracks.ts` are pure and are the next highest-value things to cover — especially the legacy-migration determinism, which has the same failure mode.
 
-11. **Test coverage is four modules deep.** `lib/curriculum-diff.ts`, `lib/curriculum-review.ts` and `lib/curriculum-edit.ts` (27 + 11 + 10 specs) cover the curriculum logic, whose failure loses student work silently, and `lib/classroom/plan.ts` and `grid.ts` (21 + 12) cover the Classroom mapping and the grid — 81 specs in all (`npm test`, all passing on 2026-11-03). The Classroom routes, the OAuth flow and the sync's calls to Google are untested. `class-progress.ts` and `section-tracks.ts` are pure and are the next highest-value things to cover — especially the legacy-migration determinism, which has the same failure mode.
+11. **A student's "new since you were last here" marks are per-device.** They live in that browser's localStorage, so the same student on a phone and a laptop is told twice. That is the right trade for a reading mark — it costs a row per person per class to do otherwise — but it is a choice, not an oversight.
 
-12. **The import's demo rate limit is per-process and in-memory.** Eight runs an hour per IP, held in a `Map` that resets whenever the server does. Fine for one host; wrong the moment it runs on more than one.
+12. **Imports live in one browser.** They are in IndexedDB, files and all, so a teacher on a second device has no Undo or reuse for imports made on the first (the curriculum itself is on the server, as ever). Syncing them would mean storing teachers' documents server-side — deliberately not done.
 
-13. **A student's "new since you were last here" marks are per-device.** They live in that browser's localStorage, so the same student on a phone and a laptop is told twice. That is the right trade for a reading mark — it costs a row per person per class to do otherwise — but it is a choice, not an oversight.
-
-14. **Imports live in one browser.** They are in IndexedDB, files and all, so a teacher on a second device has no Undo or reuse for imports made on the first (the curriculum itself is on the server, as ever). Syncing them would mean storing teachers' documents server-side — deliberately not done.
-
-15. **The AI drafts structure, not materials.** It reads units, subunits, dates, checkpoints and resource references out of the teacher's files; the actual documents, answer keys and videos still have to be attached per section.
+13. **The AI drafts structure, not materials.** It reads units, subunits, dates, checkpoints and resource references out of the teacher's files; the actual documents, answer keys and videos still have to be attached per section.
 
 ---
 

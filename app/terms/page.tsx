@@ -27,7 +27,6 @@ export default function TermsPage() {
             "You are responsible for what happens under your account, and for keeping your password to yourself.",
             "Give a real name and a real email address — classmates and teachers identify each other by them.",
             "One person, one account. Do not share logins, and do not create an account for someone else without their knowledge.",
-            "A class join code is not a secret worth much; treat it as an invitation, not a credential.",
           ]}
         />
       </Section>

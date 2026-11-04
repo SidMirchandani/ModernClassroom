@@ -10,7 +10,6 @@ import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { IconTile } from "@/components/teacher/ActionCard";
 import { FileDrop, MAX_UPLOAD_MB, totalMegabytes } from "@/components/teacher/FileDrop";
 import { getCurrentUser } from "@/lib/auth-client";
-import { isDemoMode } from "@/lib/demo-seed";
 import { setPendingImport } from "@/lib/pending-import";
 import { store } from "@/lib/store";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -97,7 +96,6 @@ export default function NewClassPage() {
   usePageTitle("New class", "Teaching");
   const [name, setName] = useState("");
   const [source, setSource] = useState<"new" | "google" | null>(null);
-  const [demo, setDemo] = useState(false);
   // How a trip to Google's permission page ended, when it did not connect.
   const [googleOutcome, setGoogleOutcome] = useState<string | null>(null);
   const [google, setGoogle] = useState<GoogleState>({ state: "idle" });
@@ -114,14 +112,11 @@ export default function NewClassPage() {
         router.replace("/");
         return;
       }
-      // The demo never leaves the browser, so it has no Google to offer.
       // Back from connecting Google, the page picks up where it was.
-      if (isDemoMode()) setSource("new");
-      else if (new URLSearchParams(window.location.search).get("from") === "google") {
+      if (new URLSearchParams(window.location.search).get("from") === "google") {
         setSource("google");
         setGoogleOutcome(new URLSearchParams(window.location.search).get("google"));
       }
-      setDemo(isDemoMode());
       setReady(true);
     });
   }, [router]);
@@ -204,9 +199,8 @@ export default function NewClassPage() {
         : start === "plan" && files.length === 0
           ? "Choose your file to continue."
           : "";
-  // Steps are numbered as they appear: the Google path has one more, the
-  // demo (no first question) one fewer.
-  const step = (n: number) => (demo ? n - 1 : source === "google" ? n + 1 : n);
+  // Steps are numbered as they appear: the Google path has one more.
+  const step = (n: number) => (source === "google" ? n + 1 : n);
   const connectHref = `/api/google/connect?returnTo=${encodeURIComponent("/dashboard/new?from=google")}`;
 
   return (
@@ -239,27 +233,25 @@ export default function NewClassPage() {
           New class
         </h1>
 
-        {!demo && (
-          <section className="space-y-4">
-            <Step n={1}>Where will this class live?</Step>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Choice
-                selected={source === "new"}
-                onClick={() => setSource("new")}
-                icon={<IconTile icon={Plus} />}
-                title="Create a new class"
-                body="Start a class from scratch in Modern Classroom. You can connect it to Google Classroom later."
-              />
-              <Choice
-                selected={source === "google"}
-                onClick={() => setSource("google")}
-                icon={<IconTile icon={GraduationCap} />}
-                title="Use my Google Classroom class"
-                body="Pick a class you already have in Google Classroom. Your lessons will be posted there for you."
-              />
-            </div>
-          </section>
-        )}
+        <section className="space-y-4">
+          <Step n={1}>Where will this class live?</Step>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Choice
+              selected={source === "new"}
+              onClick={() => setSource("new")}
+              icon={<IconTile icon={Plus} />}
+              title="Create a new class"
+              body="Start a class from scratch in Modern Classroom. You can connect it to Google Classroom later."
+            />
+            <Choice
+              selected={source === "google"}
+              onClick={() => setSource("google")}
+              icon={<IconTile icon={GraduationCap} />}
+              title="Use my Google Classroom class"
+              body="Pick a class you already have in Google Classroom. Your lessons will be posted there for you."
+            />
+          </div>
+        </section>
 
         {source === "google" && (
           <section className="fade-in space-y-4">

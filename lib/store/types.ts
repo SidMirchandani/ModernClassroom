@@ -44,7 +44,7 @@ export interface SectionRemap {
 
 /**
  * Everything the app asks of its data. Two things implement it: the local
- * store, which is the demo and also the cache, and the synced store, which
+ * store, which is the cache, and the synced store, which
  * wraps it with Supabase. Every call is async so the two are interchangeable.
  */
 export interface Store {

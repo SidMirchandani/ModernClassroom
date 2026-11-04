@@ -27,8 +27,6 @@ import {
   resolveSectionProgress,
   isBeyondBlock,
 } from "@/lib/class-progress";
-import { DEMO_PROOF_PLACEHOLDER } from "@/lib/demo-proof";
-import { referenceToday } from "@/lib/demo-seed";
 import { useOverlayTransition } from "@/lib/use-overlay-transition";
 import { shortUnitLabel } from "@/lib/curriculum";
 import { classIcon, type AccentId } from "@/lib/class-appearance";
@@ -271,9 +269,7 @@ export function ClassStudentView({
           step,
           status,
           step === "practice" && status === "done"
-            ? (proofUrl ??
-                current.tracks[trackId]?.practiceProofUrl ??
-                DEMO_PROOF_PLACEHOLDER)
+            ? (proofUrl ?? current.tracks[trackId]?.practiceProofUrl)
             : proofUrl,
         );
         const next = normalizeProgress(
@@ -350,7 +346,7 @@ export function ClassStudentView({
       progress,
       blockSectionId,
     },
-    referenceToday(),
+    new Date(),
   );
 
   const unitLabel = shortUnitLabel(
@@ -420,7 +416,6 @@ export function ClassStudentView({
         {/* The class strip: which room you are in, and the two controls that
             move you around it — the dashboard and the unit you are reading. */}
         <div
-          data-tour="class-strip"
           className="h-11 px-4 sm:px-6 bg-primary dark:bg-primary-900 flex items-center gap-2 sm:gap-3"
         >
           <ClassGlyph className="w-4 h-4 text-white shrink-0" />
@@ -449,7 +444,6 @@ export function ClassStudentView({
           </div>
 
           <div className="flex-1" />
-          <span data-tour="todo-button" className="inline-flex">
           <TodoButton
             items={todos}
             onPrimary
@@ -457,7 +451,6 @@ export function ClassStudentView({
               item.sectionId && handleSectionSelect(item.sectionId)
             }
           />
-          </span>
         </div>
 
         {/* Mobile: minimized section picker — inside the sticky block so it

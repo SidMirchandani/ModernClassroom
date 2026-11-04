@@ -161,7 +161,7 @@ Full records are in [`docs/adapt/decisions/`](adapt/decisions/).
 | M1 | Spike: connect Google and schedule a draft | An API-made scheduled draft publishes on its own in a personal-Gmail class | ✅ Done (2026-11-03) |
 | M2 | Post the approved curriculum | Approving a real syllabus creates every topic and assignment, scheduled on their dates, with no duplicates | ✅ Done (2026-11-03) |
 | M3 | Roster and turn-ins from Classroom | The grid lists the Classroom class's students; a test student's turn-in shows after opening or refreshing; the cache is wiped on delete or disconnect | Built, not yet verified with a real student |
-| M4 | Grades for every item | See *Grading* below: a mark typed in the grid is a draft in Classroom, "Return grades" releases a column, and a mark changed in Classroom shows in the grid | Next, after M3 is verified |
+| M4 | Grades for every item | See *Grading* below: a mark typed in the grid is a draft in Classroom, "Return grades" releases a column, and a mark changed in Classroom shows in the grid | Built; marks and returning not yet run with a real student |
 | M5 | Push plan updates | A changed syllabus works as it does today: changes are suggested, approved or declined, and approved ones reach Classroom; edits made in Classroom come back | Built; calls checked on real Google, full flow not yet verified |
 | M6 | Demo to Ms. Gomes | The 5-minute demo runs clean on personal-Gmail accounts, she says yes, and the request is with school IT | |
 

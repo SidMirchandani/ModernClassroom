@@ -37,8 +37,7 @@ export default function PrivacyPage() {
               Supabase, which keeps only a one-way hash.
             </>,
             <>
-              <strong>Classes</strong> — the class name, its join code, and the
-              curriculum: units, subunits, dates, resource references and
+              <strong>Classes</strong> — the class name and the curriculum: units, subunits, dates, resource references and
               checkpoints.
             </>,
             <>

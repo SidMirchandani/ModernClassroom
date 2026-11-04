@@ -1,6 +1,5 @@
 "use client";
 
-import { isDemoMode } from "../demo-seed";
 import { supabase, supabaseConfigured } from "../supabase/client";
 
 /**
@@ -19,7 +18,7 @@ type Unsubscribe = () => void;
 
 /** Changes anywhere in one class: progress, grades, roster, the curriculum. */
 export function watchClass(classId: string, onChange: () => void): Unsubscribe {
-  if (isDemoMode() || !supabaseConfigured()) return () => {};
+  if (!supabaseConfigured()) return () => {};
 
   const client = supabase();
   let channel: ReturnType<typeof client.channel> | null = null;
