@@ -1072,6 +1072,59 @@ html.lenis.lenis-smooth {
   display: none;
 }
 
+/* The hero's words start just below whatever is above them on this screen, and
+   spare height goes mostly underneath. If there is too little, this gap gives way
+   first. The numbers are heights in the drawings in HeroScene, whose size this
+   works out the same way the SVG does. */
+:root {
+  --phone-scene: 28rem;
+}
+.hero-panel {
+  container-type: size;
+}
+.hero-words-gap {
+  --unit: calc(min(100cqw, var(--phone-scene)) / 390);
+  flex: 1 1 calc(var(--words-top, 325) * var(--unit));
+  min-height: 0;
+}
+/* A phone too short for the students: just the logo and cards above. */
+@media (max-width: 767px) and (max-height: 760px) {
+  .hero-words-gap {
+    --words-top: 258;
+  }
+}
+/* Shorter still: the same, smaller. */
+@media (max-width: 767px) and (max-height: 680px) {
+  :root {
+    --phone-scene: 13rem;
+  }
+}
+/* The smallest phones need the words smaller as well. */
+@media (max-width: 767px) and (max-height: 600px) {
+  .hero-panel h1 {
+    font-size: 2rem;
+  }
+}
+/* Too narrow for the words to fit between the sides: below all of it. */
+@media (min-width: 768px) {
+  .hero-words-gap {
+    --unit: min(100cqw / 1400, 100cqh / 780);
+    --words-top: 540;
+  }
+}
+/* Room between the sides: just under the logo. */
+@media (min-width: 1224px) and (min-height: 740px), (min-width: 1200px) and (min-height: 667px) and (max-height: 800px) and (min-aspect-ratio: 7/4) {
+  .hero-words-gap {
+    --words-top: 308;
+  }
+}
+/* The sides are hidden here (see below): just under the top cards. */
+@media (min-width: 768px) and (max-width: 1199px) and (max-height: 700px), (min-width: 1200px) and (max-height: 660px) {
+  .hero-words-gap {
+    --words-top: 285;
+  }
+}
+
 /* Soft colour in the hero: plain gradients, so no blur to paint. */
 .hs-glow {
   position: absolute;
@@ -1200,10 +1253,10 @@ html.lenis.lenis-smooth {
   /* Where it lands comes from the screen's size alone, with no measuring, so it
      is right however long the page's script takes to arrive. These numbers follow
      the panel in HeroStage and the Hub in HeroScene: the logo on a phone, in a
-     390-wide drawing no wider than 28rem, is 37.2 across and 190 down. */
+     390-wide drawing no wider than --phone-scene, is 37.2 across and 190 down. */
   .hero-intro-mark {
     --panel-width: calc(100cqw - 1.5rem - 2px);
-    --unit: calc(min(var(--panel-width), 28rem) / 390);
+    --unit: calc(min(var(--panel-width), var(--phone-scene)) / 390);
     --land-size: calc(37.2 * var(--unit));
     --land-y: calc(4.5rem + 1px + 190 * var(--unit) - 50cqh);
     position: absolute;
@@ -1512,7 +1565,7 @@ html.lenis.lenis-smooth {
 }
 
 /* A short phone has no room for the students above the headline. */
-@media (max-height: 720px) {
+@media (max-height: 760px) {
   .hs-students {
     display: none;
   }

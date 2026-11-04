@@ -164,7 +164,7 @@ function GridCard({ x, y }: { x: number; y: number }) {
             height={22}
             rx={7}
             className="hs-cell fill-emerald-500/20"
-            style={{ animationDelay: `${7.0 + i * 0.4}s` }}
+            style={{ animationDelay: `${7.7 + i * 0.4}s` }}
           />
           <text
             x={x + 180}
@@ -173,7 +173,7 @@ function GridCard({ x, y }: { x: number; y: number }) {
             fontWeight={500}
             textAnchor="middle"
             className="hs-cell fill-slate-800 dark:fill-slate-100"
-            style={{ animationDelay: `${7.2 + i * 0.4}s` }}
+            style={{ animationDelay: `${7.9 + i * 0.4}s` }}
           >
             {marks[i]} / 20
           </text>
@@ -267,11 +267,12 @@ function Drift() {
 
 export function HeroScene() {
   // Wide: the journey runs across the top, with the people and the grid down the
-  // sides of the headline, and the turned-in work arcing back above it.
+  // sides of the headline, and the turned-in work coming back through the logo.
   const fileToHub = "M 330 150 C 430 80, 540 80, 640 140";
   const hubToClass = "M 760 140 C 860 80, 970 80, 1070 150";
   const classToKids = "M 1215 282 C 1232 310, 1232 335, 1215 362";
-  const kidsToGrid = "M 1080 408 C 850 330, 560 330, 300 380";
+  const kidsToHub = "M 1130 385 C 1105 260, 900 225, 745 195";
+  const hubToGrid = "M 655 195 C 500 225, 295 260, 190 340";
 
   // Phones: both cards along the top, the journey dipping through the logo.
   const phoneIn = "M 92 112 C 100 165, 135 190, 168 190";
@@ -289,7 +290,8 @@ export function HeroScene() {
           <Wire d={classToKids} slow />
         </g>
         <g className="hs-arc">
-          <Wire d={kidsToGrid} slow />
+          <Wire d={kidsToHub} slow />
+          <Wire d={hubToGrid} slow />
         </g>
 
         {/* Under the cards, so they leave from and arrive behind them. */}
@@ -304,8 +306,13 @@ export function HeroScene() {
           </Traveller>
         ))}
         <g className="hs-arc">
-          {[5.4, 5.8, 6.2].map((d) => (
-            <Traveller key={d} path={kidsToGrid} delay={d}>
+          {[5.2, 5.6, 6.0].map((d) => (
+            <Traveller key={d} path={kidsToHub} delay={d}>
+              <CheckDot />
+            </Traveller>
+          ))}
+          {[6.3, 6.7, 7.1].map((d) => (
+            <Traveller key={d} path={hubToGrid} delay={d}>
               <CheckDot />
             </Traveller>
           ))}
@@ -323,7 +330,7 @@ export function HeroScene() {
       </svg>
 
       {/* Phones: the same journey, top down, above the headline. */}
-      <svg viewBox="0 0 390 400" preserveAspectRatio="xMidYMin meet" className="md:hidden absolute inset-x-0 top-0 mx-auto w-full max-w-[28rem]">
+      <svg viewBox="0 0 390 400" preserveAspectRatio="xMidYMin meet" className="md:hidden absolute inset-x-0 top-0 mx-auto w-full max-w-[var(--phone-scene)]">
         <Wire d={phoneIn} />
         <Wire d={phoneOut} />
         {[0.2, 1.1, 2.0].map((d) => (

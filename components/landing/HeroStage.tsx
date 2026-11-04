@@ -62,7 +62,7 @@ export function HeroStage({ children }: { children: ReactNode }) {
         <p className="hero-intro-name">Modern Classroom</p>
       </div>
       <div ref={panel} className="origin-top will-change-transform">
-        <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 h-[calc(100svh-5.25rem)] min-h-[32rem] flex items-end justify-center px-5 pb-10 sm:pb-12 text-center">
+        <div className="hero-panel relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 h-[calc(100svh-5.25rem)] min-h-[32rem]">
           {/* There from the first moment, behind the logo as well. */}
           <div aria-hidden className="absolute inset-0 pointer-events-none">
             <span className="hs-glow hs-glow-blue" />
@@ -71,8 +71,12 @@ export function HeroStage({ children }: { children: ReactNode }) {
             <span className="hs-glow hs-glow-amber" />
           </div>
           <HeroScene />
-          <div ref={words} className="relative max-w-2xl will-change-transform">
-            {children}
+          <div className="absolute inset-0 flex flex-col items-center px-5 pb-10 sm:pb-12 text-center">
+            <div aria-hidden className="hero-words-gap" />
+            <div ref={words} className="relative shrink-0 max-w-2xl will-change-transform">
+              {children}
+            </div>
+            <div aria-hidden className="grow-[9]" />
           </div>
         </div>
       </div>

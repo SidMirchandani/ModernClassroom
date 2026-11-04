@@ -1020,7 +1020,9 @@ scene as the header and headline arrive, and the panel stays pinned while the re
 the page, one opaque sheet, slides up over it. Behind the headline soft colour
 gradients drift, the pieces of a class float up the panel, and `HeroScene`, moved only
 by CSS, acts out the product: a pacing guide is read, lessons travel through Modern
-Classroom into Google Classroom, students turn work in, and marks fill a grid. Then a soft panel with one statement and three numbers that count down
+Classroom into Google Classroom, students turn work in, and it comes back through the
+logo to fill a grid. The words start just below whatever is above them on that screen
+(`.hero-words-gap`), with spare height underneath. Then a soft panel with one statement and three numbers that count down
 as they appear (`CountTo`), the steps beside a list that stays put (`StepList`), one
 scene of a plan changing (`ChangeScene`: pinned on wide screens with the words
 stepping as you scroll, stepping by itself on phones), four feature cards, the FAQ and
