@@ -8,6 +8,13 @@ import { store, syncedStoreIfActive } from "./store";
 
 /** Accounts are Supabase Auth. */
 
+/**
+ * Where a page sends someone it finds no user for. The marker tells `proxy.ts` not
+ * to send them straight back, which would loop if the session looks fine to it
+ * but the profile will not load.
+ */
+export const SIGNED_OUT_HOME = "/?out=1";
+
 function describe(err: { message: string } | null, fallback: string): string {
   const m = err?.message ?? "";
   if (/invalid login credentials/i.test(m)) return "Wrong email or password";

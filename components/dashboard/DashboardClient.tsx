@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell, type DashboardMode } from "./DashboardShell";
-import { getCurrentUser } from "@/lib/auth-client";
+import { getCurrentUser, SIGNED_OUT_HOME } from "@/lib/auth-client";
 import { usePageTitle } from "@/lib/use-page-title";
 import { store } from "@/lib/store";
 import type { ClassSummary } from "@/lib/db/types";
@@ -51,7 +51,7 @@ export function DashboardClient() {
     (async () => {
       const user = await getCurrentUser();
       if (!user) {
-        router.replace("/");
+        router.replace(SIGNED_OUT_HOME);
         return;
       }
       const summaries = await store.listClassSummaries(user.id);

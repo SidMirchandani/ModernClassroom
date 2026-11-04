@@ -117,6 +117,13 @@ renders. An expired session still has the cookie, so the pages' own
 `getCurrentUser()` check catches that, and it answers `null` rather than throwing
 if Supabase isn't configured.
 
+**Signed-in visitors skip the landing page.** `proxy.ts` sends `/`, including
+`/?auth=login` and `/?auth=signup`, to `/dashboard` for anyone signed in. A cookie
+isn't enough here: an expired one would bounce between `/` and `/dashboard` for ever,
+so `/` asks Supabase, and shows the landing page if Supabase says no or can't be
+reached. Pages that find no user go to `SIGNED_OUT_HOME` (`/?out=1`), which `proxy.ts`
+never redirects, so a good session with a profile that won't load can't loop either.
+
 Roles are per-class, so the **Teaching** tab opens each class as the teacher.
 **Enrolled**, which opened the same class as a student (`?as=student`), is
 *Coming Soon* for now.
@@ -1002,7 +1009,7 @@ sign-in card and nothing else — a returning user came here to get in, not to
 read a pitch. Without it, `/` is the marketing page. **A
 signed-out visit to any dashboard route redirects to `/`**, the marketing page —
 not to `/?auth=login` as it once did. (`ClassPageClient`, `DashboardClient`,
-`SubunitEditor`, the teacher view and the new-class page all do `router.replace("/")`.
+`SubunitEditor`, the teacher view and the new-class page all do `router.replace(SIGNED_OUT_HOME)`.
 Only the Google sign-in's failure page still links *Back to sign in* to
 `/?auth=login`.)
 

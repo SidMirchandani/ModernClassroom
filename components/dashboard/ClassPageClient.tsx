@@ -7,7 +7,7 @@ import { personAccent } from "@/lib/class-appearance";
 import { ClassTeacherView } from "@/components/teacher/ClassTeacherView";
 import { ClassStudentView } from "@/components/student/ClassStudentView";
 import { Loader2 } from "lucide-react";
-import { getCurrentUser } from "@/lib/auth-client";
+import { getCurrentUser, SIGNED_OUT_HOME } from "@/lib/auth-client";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { store } from "@/lib/store";
 
@@ -28,7 +28,7 @@ export function ClassPageClient({ classId }: { classId: string }) {
     (async () => {
       const currentUser = await getCurrentUser();
       if (!currentUser) {
-        router.replace("/");
+        router.replace(SIGNED_OUT_HOME);
         return;
       }
       // A class that cannot be loaded — gone, not yours, or the server

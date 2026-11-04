@@ -23,7 +23,7 @@ import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { Logo } from "@/components/Logo";
 import { NavCapsule } from "@/components/NavCapsule";
 import { AppNavbar } from "@/components/AppNavbar";
-import { getCurrentUser } from "@/lib/auth-client";
+import { getCurrentUser, SIGNED_OUT_HOME } from "@/lib/auth-client";
 import { store, type SectionRemap } from "@/lib/store";
 import { useClassSync } from "@/lib/use-class-sync";
 import type { CurriculumUnit, DbClass } from "@/lib/db/types";
@@ -83,7 +83,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   const loadData = useCallback(async () => {
     const user = await getCurrentUser();
     if (!user) {
-      router.replace("/");
+      router.replace(SIGNED_OUT_HOME);
       return;
     }
     // A reload that fails keeps what is on screen — see ClassStudentView.

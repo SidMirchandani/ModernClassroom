@@ -9,7 +9,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { IconTile } from "@/components/teacher/ActionCard";
 import { FileDrop, MAX_UPLOAD_MB, totalMegabytes } from "@/components/teacher/FileDrop";
-import { getCurrentUser } from "@/lib/auth-client";
+import { getCurrentUser, SIGNED_OUT_HOME } from "@/lib/auth-client";
 import { setPendingImport } from "@/lib/pending-import";
 import { store } from "@/lib/store";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -109,7 +109,7 @@ export default function NewClassPage() {
   useEffect(() => {
     getCurrentUser().then((user) => {
       if (!user) {
-        router.replace("/");
+        router.replace(SIGNED_OUT_HOME);
         return;
       }
       // Back from connecting Google, the page picks up where it was.

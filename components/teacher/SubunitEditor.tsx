@@ -17,7 +17,7 @@ import {
 } from "@/components/teacher/SubunitViewToggle";
 import type { Section, SectionActivityStatus } from "@/lib/types";
 import type { DbClass } from "@/lib/db/types";
-import { getCurrentUser } from "@/lib/auth-client";
+import { getCurrentUser, SIGNED_OUT_HOME } from "@/lib/auth-client";
 import { store } from "@/lib/store";
 import { normalizeSection } from "@/lib/section-tracks";
 import { useClassTheme } from "@/lib/use-class-theme";
@@ -41,7 +41,7 @@ export function SubunitEditor({ classId, subunitId }: SubunitEditorProps) {
   const loadData = useCallback(async () => {
     const user = await getCurrentUser();
     if (!user) {
-      router.replace("/");
+      router.replace(SIGNED_OUT_HOME);
       return;
     }
     // As on the class page: a class that cannot be loaded sends the teacher
