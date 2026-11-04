@@ -28,7 +28,7 @@ import { store, type SectionRemap } from "@/lib/store";
 import { useClassSync } from "@/lib/use-class-sync";
 import type { CurriculumUnit, DbClass } from "@/lib/db/types";
 import type { StudentProgress } from "@/lib/types";
-import { ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, Pencil } from "lucide-react";
 
 type TeacherView = "classroom" | "curriculum" | "customize";
 
@@ -264,20 +264,35 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
               value={className}
               onChange={(e) => setClassName(e.target.value)}
               onBlur={handleNameSave}
-              onKeyDown={(e) => e.key === "Enter" && handleNameSave()}
+              onFocus={(e) => e.currentTarget.select()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleNameSave();
+                if (e.key === "Escape") {
+                  setClassName(cls.name);
+                  setEditingName(false);
+                }
+              }}
               className="text-2xl font-bold bg-transparent border-b-2 border-primary focus:outline-none text-slate-900 dark:text-slate-100 w-full max-w-md"
               autoFocus
             />
           ) : (
             <div className="flex items-center gap-2.5 min-w-0">
               <ClassGlyph className="w-5 h-5 shrink-0 text-primary dark:text-primary-glow" />
+              {/* It has to look editable before it is clicked: a box and a pencil
+                  come up on hover, and the pencil never quite goes away, so a
+                  touch screen with no hover still shows it. */}
               <button
                 type="button"
                 onClick={() => setEditingName(true)}
-                className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight hover:text-primary dark:hover:text-primary-glow transition-colors text-left truncate"
-                title="Click to edit class name"
+                aria-label={`Rename ${cls.name}`}
+                title="Click to rename"
+                className="group -mx-2 -my-1 min-w-0 inline-flex items-center gap-2 rounded-lg border border-transparent px-2 py-1 text-left text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 cursor-text transition-colors hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                {cls.name}
+                <span className="truncate">{cls.name}</span>
+                <Pencil
+                  aria-hidden
+                  className="w-4 h-4 shrink-0 text-slate-400 opacity-40 transition-opacity group-hover:opacity-100"
+                />
               </button>
             </div>
           )}

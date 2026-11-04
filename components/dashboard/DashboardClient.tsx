@@ -18,11 +18,13 @@ import { ClassroomSide, type DashboardCourse } from "./ClassroomSide";
 import { ColorPicker } from "./ColorPicker";
 import { Popover } from "@/components/Popover";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Modal } from "@/components/Modal";
 import {
   CopyPlus,
   Loader2,
   LogOut,
   MoreVertical,
+  Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -39,6 +41,7 @@ export function DashboardClient() {
   // a slow answer from Google doesn't hold up the page.
   const [google, setGoogle] = useState<{ connected: boolean; courses: Map<string, DashboardCourse> } | null>(null);
   const [pendingUnlink, setPendingUnlink] = useState<ClassSummary | null>(null);
+  const [renaming, setRenaming] = useState<{ cls: ClassSummary; name: string } | null>(null);
   const [unlinkError, setUnlinkError] = useState("");
   // The class a confirm dialog is currently asking about, if any.
   const [pendingRemoval, setPendingRemoval] = useState<ClassSummary | null>(null);
@@ -138,6 +141,23 @@ export function DashboardClient() {
       await store.unenrollStudent(pendingRemoval.id, user.id);
     }
     await refreshClasses();
+  }
+
+  async function confirmRename() {
+    if (!renaming) return;
+    const { cls, name } = renaming;
+    const next = name.trim();
+    setRenaming(null);
+    if (!next || next === cls.name) return;
+    const before = classes;
+    setClasses((list) => list.map((c) => (c.id === cls.id ? { ...c, name: next } : c)));
+    setUnlinkError("");
+    try {
+      await store.updateClass(cls.id, { name: next });
+    } catch {
+      setClasses(before);
+      setUnlinkError("That name couldn't be saved. Try again in a minute.");
+    }
   }
 
   /** Shown at once, and put back if it doesn't save. */
@@ -298,6 +318,19 @@ export function DashboardClient() {
                     >
                       {(close) => (
                         <>
+                          {cls.role === "teacher" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                close();
+                                setRenaming({ cls, name: cls.name });
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                            >
+                              <Pencil className="w-4 h-4" />
+                              Rename
+                            </button>
+                          )}
                           {/* Duplicating is occasional, so it lives in here too
                               rather than as a button on every row. */}
                           {cls.role === "teacher" && (
@@ -373,6 +406,34 @@ export function DashboardClient() {
           {unlinkError}
         </p>
       )}
+
+      <Modal open={renaming !== null} onClose={() => setRenaming(null)} title="Rename this class" className="max-w-md">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void confirmRename();
+          }}
+          className="space-y-5"
+        >
+          <input
+            type="text"
+            autoFocus
+            aria-label="Class name"
+            value={renaming?.name ?? ""}
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setRenaming((r) => (r ? { ...r, name: e.target.value } : r))}
+            className="w-full h-12 px-4 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-base focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setRenaming(null)} className="btn btn-md btn-secondary">
+              Cancel
+            </button>
+            <button type="submit" disabled={!renaming?.name.trim()} className="btn btn-md btn-primary">
+              Save
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <ConfirmDialog
         open={pendingUnlink !== null}

@@ -3,25 +3,67 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 import { SiteFooter } from "@/components/SiteFooter";
 import { AuthPanel } from "@/components/auth/AuthPanel";
-import { Bento } from "@/components/landing/Bento";
+import { ChangeScene } from "@/components/landing/ChangeScene";
+import { CountTo } from "@/components/landing/CountTo";
+import { HeroStage } from "@/components/landing/HeroStage";
 import { HoverNav } from "@/components/landing/HoverNav";
-import { CreateMock, DiffMock, GridMock, TracksMock } from "@/components/landing/Mocks";
+import { CreateMock, DiffMock, GridMock, PostMock } from "@/components/landing/Mocks";
 import { Reveal } from "@/components/landing/Reveal";
+import { SmoothScroll } from "@/components/landing/SmoothScroll";
+import { StepList } from "@/components/landing/StepList";
 import { SITE } from "@/lib/site";
-import { cn } from "@/lib/utils";
-import { ArrowRight, Check, ChevronDown, Play } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronDown,
+  ClipboardCheck,
+  GraduationCap,
+  type LucideIcon,
+  Play,
+  RefreshCw,
+  Users,
+} from "lucide-react";
 
 /**
  * Two pages at one address. With `?auth=` this is the sign-in card and nothing
- * else — a returning user came here to get in, and should not have to scroll
- * past a pitch to do it. Without it, it is the pitch.
+ * else: a returning user came here to get in, and should not have to scroll past
+ * a pitch to do it. Without it, it is the pitch.
  *
- * The pitch is built the way Supabase builds theirs: one flat page colour, one
- * accent used sparingly, 1px borders instead of shadows, and two-tone headings
- * — the point in ink, the rest in grey. Every picture on it is a miniature of
- * the real product, built from the app's own components, because a page of
- * adjectives about software nobody has seen is worth very little.
+ * The pitch runs from big to small: a pinned panel with one line on it, which the
+ * rest of the page slides up over, a statement with three plain facts, the steps
+ * beside a list that stays put, then one scene of a plan changing. Every picture
+ * is the product itself, either the real screen or a miniature built from its
+ * parts.
  */
+
+const STEPS = [
+  {
+    id: "step-attach",
+    label: "Attach your materials.",
+    body: "Spreadsheets, PDFs or photos. We read them and build the units, lessons, quizzes and dates.",
+    picture: <CreateMock />,
+  },
+  {
+    id: "step-check",
+    label: "Check it first.",
+    body: "Every change is shown row by row, and nothing is saved until you say yes.",
+    picture: <DiffMock />,
+  },
+  {
+    id: "step-post",
+    label: "It posts itself.",
+    body: "Each lesson appears in Google Classroom on its own date. There is no button to remember.",
+    picture: <PostMock />,
+  },
+  {
+    id: "step-grid",
+    label: "See who turned in what.",
+    body: "Your students keep using Google Classroom. Marks stay private until you return them.",
+    picture: <GridMock />,
+  },
+];
+
+const STEP_LINKS = STEPS.map(({ id, label }) => ({ id, label }));
+
 export default async function Home({
   searchParams,
 }: {
@@ -42,132 +84,168 @@ export default async function Home({
         <style>{`.reveal{opacity:1!important;transform:none!important}`}</style>
       </noscript>
 
+      <SmoothScroll />
       <SiteHeader />
 
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="px-5 sm:px-6 pt-14 sm:pt-24 pb-12 sm:pb-20">
-        <div className="max-w-5xl mx-auto">
-          <div className="max-w-3xl sm:mx-auto sm:text-center">
-            <h1 className="text-[2.5rem] sm:text-6xl lg:text-7xl font-medium tracking-[-0.04em] leading-[1.02]">
-              <span className="block ink">A class where nobody</span>
-              <span className="block text-primary dark:text-primary-glow">
-                waits for the middle.
-              </span>
-            </h1>
-            <p className="mt-5 sm:mt-6 text-[15px] sm:text-lg leading-relaxed text-slate-500 dark:text-slate-400 max-w-xl sm:mx-auto">
-              Attach your materials. We build the class.
+      {/* ── Hero: one panel, one line. Pinned; the rest slides up over it. ── */}
+      <HeroStage>
+        <h1 className="hero-rise text-[2.5rem] sm:text-6xl lg:text-7xl font-medium tracking-[-0.04em] leading-[1.05] text-white">
+          A class where nobody waits for the middle.
+        </h1>
+        <p className="hero-rise [animation-delay:120ms] mt-5 text-[15px] sm:text-xl text-white/90">
+          Attach your materials. We build the class.
+        </p>
+        <div className="hero-rise [animation-delay:240ms] mt-7 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/?auth=signup"
+            className="group inline-flex items-center gap-2 h-12 px-7 rounded-full bg-white text-slate-950 text-[15px] font-medium transition-colors hover:bg-white/90"
+          >
+            Start a class
+            <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+          </Link>
+          <Link
+            href="/demo"
+            className="inline-flex items-center gap-2 h-12 px-7 rounded-full bg-white/15 text-white text-[15px] font-medium backdrop-blur transition-colors hover:bg-white/25"
+          >
+            <Play className="w-4 h-4" />
+            Watch a demo
+          </Link>
+        </div>
+      </HeroStage>
+
+      {/* The sheet that slides over the hero: everything from here down. */}
+      <div className="relative z-10 bg-white dark:bg-slate-950">
+      {/* ── Statement, and three plain facts ─────────────────────────────── */}
+      <section className="px-3 sm:px-6 pt-3">
+        <div className="rounded-3xl bg-slate-50 dark:bg-slate-900 px-5 sm:px-10 lg:px-16 py-14 sm:py-20">
+          <Reveal>
+            <p className="eyebrow-muted">Built around the classroom you already use</p>
+            <p className="mt-5 max-w-4xl text-[1.75rem] sm:text-5xl font-medium tracking-[-0.035em] leading-[1.15] text-slate-900 dark:text-slate-100">
+              Upload your plan, and every lesson reaches Google Classroom on its own date.
             </p>
-            <div className="mt-7 flex flex-wrap items-center sm:justify-center gap-2">
-              <Link href="/?auth=signup" className="group btn btn-md btn-primary">
-                Start a class
-                <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
-              </Link>
-              <Link href="/demo" className="btn btn-md btn-secondary">
-                <Play className="w-3.5 h-3.5" />
-                Watch a demo
-              </Link>
+          </Reveal>
+          <div className="mt-10 sm:mt-16 grid gap-4 sm:grid-cols-3">
+            <Reveal>
+              <Fact text="To build a whole year of lessons.">
+                <CountTo from={24} to={1} suffix=" files" suffixOne=" file" />
+              </Fact>
+            </Reveal>
+            <Reveal delay={0.1}>
+              <Fact text="To post by hand, once your plan is approved.">
+                <CountTo from={104} to={0} suffix=" lessons" />
+              </Fact>
+            </Reveal>
+            <Reveal delay={0.2}>
+              <Fact text="To use it.">
+                <CountTo from={49} to={0} prefix="$" />
+              </Fact>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ── The steps, beside a list that stays put ──────────────────────── */}
+      <section id="how" className="scroll-mt-20 px-5 sm:px-6 py-16 sm:py-28">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 gap-10 lg:grid-cols-[1fr_2fr] lg:gap-16">
+          <div className="hidden lg:block">
+            <StepList steps={STEP_LINKS} />
+          </div>
+          <div className="min-w-0">
+            <Reveal>
+              <p className="eyebrow-muted">How it works</p>
+              <h2 className="mt-3 text-[1.75rem] sm:text-5xl font-medium tracking-[-0.035em] leading-[1.12] text-slate-900 dark:text-slate-100">
+                From your plan to a running class.
+              </h2>
+            </Reveal>
+            <div className="mt-10 sm:mt-14 space-y-12 sm:space-y-20">
+              {STEPS.map((step) => (
+                <Reveal key={step.id}>
+                  <div id={step.id} className="scroll-mt-28">
+                    <div className="rounded-2xl bg-slate-100 dark:bg-slate-900 p-5 sm:p-10">
+                      <div className="mx-auto max-w-lg">{step.picture}</div>
+                    </div>
+                    <h3 className="mt-5 text-xl font-medium text-slate-900 dark:text-slate-100 lg:hidden">{step.label}</h3>
+                    <p className="mt-2 lg:mt-5 max-w-xl text-[15px] sm:text-[17px] leading-relaxed text-slate-600 dark:text-slate-300">
+                      {step.body}
+                    </p>
+                  </div>
+                </Reveal>
+              ))}
             </div>
           </div>
-
-          <Reveal className="mt-14 sm:mt-20">
-            <GridMock />
-          </Reveal>
         </div>
       </section>
 
-      {/* ── Start from your materials ───────────────────────────────────── */}
-      <Feature
-        title="Bring what you already have."
-        tail="We build the class."
-        points={["Spreadsheets, PDFs or photos", "Nothing saved until you approve"]}
-        mock={<CreateMock />}
-      />
-
-      {/* ── Statement ────────────────────────────────────────────────────── */}
-      <section className="px-5 sm:px-6 py-10 sm:py-16">
-        <Reveal className="max-w-5xl mx-auto">
-          <p className="max-w-3xl text-2xl sm:text-[2rem] font-medium tracking-[-0.03em] leading-[1.25]">
-            <span className="ink">One room,</span>{" "}
-            <span className="muted-ink">every pace.</span>
-          </p>
-        </Reveal>
+      {/* ── What happens after the first day: one scene, told as you scroll ── */}
+      <section className="px-3 sm:px-6">
+        <ChangeScene />
       </section>
 
-      {/* ── What you get ─────────────────────────────────────────────────── */}
-      <section className="px-5 sm:px-6 py-12 sm:py-20">
-        <div className="max-w-5xl mx-auto">
-          <Reveal>
-            <SectionHeading title="Everything a self-paced class needs." tail="Nothing it doesn’t." />
+      {/* ── What's in it ─────────────────────────────────────────────────── */}
+      <section className="px-5 sm:px-6 pt-16 sm:pt-28">
+        <div className="max-w-6xl mx-auto grid gap-4 lg:grid-cols-[1fr_2fr]">
+          <Reveal className="relative overflow-hidden flex flex-col rounded-3xl bg-primary-light dark:bg-primary/15 p-7 sm:p-9">
+            <h2 className="text-[1.75rem] sm:text-4xl font-medium tracking-[-0.03em] leading-[1.15] text-slate-900 dark:text-slate-100">
+              Everything a class needs.
+            </h2>
+            <p className="mt-4 text-[15px] sm:text-[17px] leading-relaxed text-slate-600 dark:text-slate-300">
+              Nothing it doesn&apos;t.
+            </p>
+            <Link href="/?auth=signup" className="mt-10 lg:mt-auto btn btn-lg btn-primary !rounded-full">
+              Start a class
+            </Link>
           </Reveal>
-          <Reveal className="mt-8 sm:mt-12">
-            <Bento />
-          </Reveal>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Reveal>
+              <FeatureCard
+                icon={GraduationCap}
+                title="Works with Google Classroom"
+                body="Pick the class you already teach. Your topics and assignments appear there, under your name."
+              />
+            </Reveal>
+            <Reveal delay={0.08}>
+              <FeatureCard
+                icon={ClipboardCheck}
+                title="Grades in one grid"
+                body="Type marks beside each turn-in, then return a whole column when you're ready."
+              />
+            </Reveal>
+            <Reveal delay={0.16}>
+              <FeatureCard
+                icon={Users}
+                title="Students stay put"
+                body="They don't need an account here or anything new. Your roster comes from Google Classroom."
+              />
+            </Reveal>
+            <Reveal delay={0.24}>
+              <FeatureCard
+                icon={RefreshCw}
+                title="Syncs both ways"
+                body="A change on either side reaches the other, whenever you open your class."
+              />
+            </Reveal>
+          </div>
         </div>
       </section>
 
-      {/* ── Feature 1 ────────────────────────────────────────────────────── */}
-      <Feature
-        title="One button per resource,"
-        tail="not one per lesson."
-
-        points={[
-          "Textbook, AP Classroom and notes tracked apart",
-          "“I’m stuck” is a state on a specific resource",
-          "Each lesson posted to Google Classroom on its own date",
-        ]}
-        mock={<TracksMock />}
-      />
-
-      {/* ── Feature 2 ────────────────────────────────────────────────────── */}
-      <Feature
-        reversed
-        title="Plans change in November."
-        tail="Attach the new version."
-        points={["Only real changes are proposed", "Student work follows every renumber"]}
-        mock={<DiffMock />}
-      />
-
-      {/* ── How it works ─────────────────────────────────────────────────── */}
-      <section className="px-5 sm:px-6 py-12 sm:py-20">
-        <div className="max-w-5xl mx-auto">
-          <Reveal>
-            <SectionHeading title="Three steps" tail="to a running class." />
+      {/* ── Questions ────────────────────────────────────────────────────── */}
+      <section id="faq" className="scroll-mt-20 px-5 sm:px-6 py-16 sm:py-28">
+        <div className="max-w-3xl mx-auto">
+          <Reveal className="text-center">
+            <h2 className="text-[1.75rem] sm:text-5xl font-medium tracking-[-0.035em] leading-[1.12] text-slate-900 dark:text-slate-100">
+              Questions worth asking first.
+            </h2>
           </Reveal>
-          <Reveal as="ol" className="mt-10 sm:mt-14 grid sm:grid-cols-3 gap-10 sm:gap-12">
-            <Step
-              n={1}
-              title="Attach your materials"
-              body="We build the curriculum. You approve it."
-            />
-            <Step
-              n={2}
-              title="Connect Google Classroom"
-              body="Each lesson posts itself on its own date."
-            />
-            <Step
-              n={3}
-              title="Watch the grid, not the inbox"
-              body="See who’s done and who’s stuck."
-            />
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ── FAQ ──────────────────────────────────────────────────────────── */}
-      <section className="px-5 sm:px-6 py-12 sm:py-20">
-        <div className="max-w-5xl mx-auto grid gap-8 lg:grid-cols-[1fr_1.6fr] lg:gap-16">
-          <Reveal>
-            <SectionHeading title="Questions" tail="worth asking first." />
-          </Reveal>
-          <Reveal className="divide-y divide-slate-200 dark:divide-slate-800">
-            <Faq q="Is it free?">
-              Yes.
-            </Faq>
+          <Reveal className="mt-10 sm:mt-14 divide-y divide-slate-200 dark:divide-slate-800">
+            <Faq q="Is it free?">Yes.</Faq>
             <Faq q="Do I have to type the curriculum in?">
               No. Attach what you already have and we build it.
             </Faq>
+            <Faq q="Do my students need to do anything?">
+              No. They keep using Google Classroom the way they do now.
+            </Faq>
             <Faq q="What happens to student work if I change the curriculum?">
-              It moves with it. Nothing is lost.
+              It stays. A lesson a student has touched is never deleted from Google Classroom.
             </Faq>
             <Faq q="Is student information ever sent anywhere?">
               Only the documents you attach are read, and your class&apos;s posts and turn-ins move between here
@@ -180,26 +258,33 @@ export default async function Home({
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────────────────── */}
-      <section className="px-5 sm:px-6 py-16 sm:py-28">
-        <Reveal className="max-w-3xl mx-auto sm:text-center">
-          <h2 className="text-[2rem] sm:text-5xl font-medium tracking-[-0.04em] leading-[1.08]">
-            <span className="block ink">See it in a minute.</span>
-            <span className="block muted-ink">No sign-up.</span>
+      {/* ── One more panel, to close ─────────────────────────────────────── */}
+      <section className="px-3 sm:px-6 pb-6">
+        <div className="rounded-3xl bg-slate-950 dark:border dark:border-slate-800 px-5 py-20 sm:py-32 text-center">
+          <h2 className="text-[2rem] sm:text-6xl font-medium tracking-[-0.04em] leading-[1.08] text-white">
+            See it in a minute.
           </h2>
-          <div className="mt-7 flex flex-wrap items-center sm:justify-center gap-2">
-            <Link href="/demo" className="btn btn-md btn-primary">
-              <Play className="w-3.5 h-3.5" />
+          <p className="mt-4 text-[15px] sm:text-xl text-white/80">No sign-up.</p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/demo"
+              className="inline-flex items-center gap-2 h-12 px-7 rounded-full bg-white text-slate-950 text-[15px] font-medium transition-colors hover:bg-white/90"
+            >
+              <Play className="w-4 h-4" />
               Watch a demo
             </Link>
-            <Link href="/?auth=signup" className="btn btn-md btn-secondary">
+            <Link
+              href="/?auth=signup"
+              className="inline-flex items-center h-12 px-7 rounded-full bg-white/15 text-white text-[15px] font-medium transition-colors hover:bg-white/25"
+            >
               Create an account
             </Link>
           </div>
-        </Reveal>
+        </div>
       </section>
 
       <SiteFooter />
+      </div>
     </div>
   );
 }
@@ -208,17 +293,26 @@ export default async function Home({
 
 function SiteHeader() {
   return (
-    <header className="h-14 shrink-0 border-b border-slate-200 dark:border-slate-800 float-pane px-5 sm:px-6 sticky top-0 z-20">
-      <div className="max-w-5xl mx-auto h-full flex items-center justify-between">
-        <Logo href="/" textClassName="text-sm" />
-        <div className="flex items-center gap-1 sm:gap-2">
-          <HoverNav
-            links={[
-              { href: "/demo", label: "Demo", className: "hidden sm:inline-flex" },
-              { href: "/?auth=login", label: "Log in" },
-            ]}
-          />
-          <Link href="/?auth=signup" className="btn btn-sm btn-primary">
+    <header className="h-[4.5rem] shrink-0 bg-white dark:bg-slate-950 px-5 sm:px-6 sticky top-0 z-20">
+      <div className="h-full flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4 sm:gap-8 min-w-0">
+          <Logo href="/" textClassName="text-base hidden sm:inline" />
+          <div className="hidden md:block">
+            <HoverNav
+              links={[
+                { href: "/#how", label: "How It Works" },
+                { href: "/demo", label: "Demo" },
+                { href: "/#faq", label: "Questions" },
+              ]}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <HoverNav links={[{ href: "/?auth=login", label: "Log in" }]} />
+          <Link
+            href="/?auth=signup"
+            className="inline-flex items-center h-10 sm:h-11 px-4 sm:px-6 rounded-full bg-slate-950 dark:bg-white text-white dark:text-slate-950 text-sm font-medium whitespace-nowrap transition-opacity hover:opacity-85"
+          >
             Sign up
           </Link>
           <ThemeToggle />
@@ -263,77 +357,25 @@ function AuthView({ initialMode }: { initialMode: "login" | "signup" }) {
   );
 }
 
-function Feature({
-  title,
-  tail,
-  body = [],
-  points,
-  mock,
-  reversed = false,
-}: {
-  title: string;
-  tail: string;
-  body?: string[];
-  points: string[];
-  mock: React.ReactNode;
-  reversed?: boolean;
-}) {
+/** A plain fact: what it means up top, the number large below it. */
+function Fact({ text, children }: { text: string; children: React.ReactNode }) {
   return (
-    <section className="px-5 sm:px-6 py-12 sm:py-20">
-      {/* On a phone the mock sits between the heading and the prose, so the
-          first thing past the title is the thing itself rather than two
-          paragraphs of grey. On a wide screen the text re-forms into one
-          column beside it, which is why this is a grid with explicit
-          placement rather than a flex row that merely wraps. */}
-      <div className="max-w-5xl mx-auto grid grid-cols-1 gap-7 lg:grid-cols-2 lg:grid-rows-[auto_1fr] lg:gap-x-16 lg:gap-y-6 lg:items-start">
-        <Reveal className={reversed ? "lg:col-start-2 lg:row-start-1" : "lg:col-start-1 lg:row-start-1"}>
-          <SectionHeading title={title} tail={tail} />
-        </Reveal>
-
-        <Reveal
-          className={
-            reversed
-              ? "lg:row-span-2 lg:self-center lg:col-start-1 lg:row-start-1"
-              : "lg:row-span-2 lg:self-center lg:col-start-2 lg:row-start-1"
-          }
-        >
-          {mock}
-        </Reveal>
-
-        <Reveal className={reversed ? "lg:col-start-2 lg:row-start-2" : "lg:col-start-1 lg:row-start-2"}>
-          {body.map((p, i) => (
-            <p
-              key={i}
-              className="text-[15px] leading-relaxed text-slate-500 dark:text-slate-400 [&:not(:first-child)]:mt-3"
-            >
-              {p}
-            </p>
-          ))}
-          <ul className={cn("space-y-2", body.length > 0 && "mt-5")}>
-            {points.map((point) => (
-              <li key={point} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
-                <Check className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
-                {point}
-              </li>
-            ))}
-          </ul>
-        </Reveal>
-      </div>
-    </section>
+    <div className="h-full flex flex-col justify-between gap-10 rounded-2xl bg-white dark:bg-slate-800 p-5 sm:p-6 min-h-[11rem] sm:min-h-[14rem]">
+      <p className="text-sm leading-snug text-slate-600 dark:text-slate-300 max-w-[16rem]">{text}</p>
+      <p className="text-5xl font-medium tracking-[-0.04em] text-slate-900 dark:text-slate-100">{children}</p>
+    </div>
   );
 }
 
-function Step({ n, title, body }: { n: number; title: string; body: string }) {
+function FeatureCard({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
   return (
-    <li className="group">
-      <span className="block text-4xl font-medium tabular-nums text-slate-200 dark:text-slate-800 transition-colors duration-300 group-hover:text-primary dark:group-hover:text-primary-glow">
-        {String(n).padStart(2, "0")}
+    <div className="group h-full rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-7 sm:p-8 sm:min-h-[16rem] transition-[transform,border-color,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1 hover:border-primary/40 hover:shadow-z2">
+      <span className="w-11 h-11 rounded-xl inline-flex items-center justify-center bg-primary/10 text-primary dark:text-primary-glow transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-110">
+        <Icon className="w-5 h-5" aria-hidden />
       </span>
-      <h3 className="mt-4 text-[15px] font-medium text-slate-900 dark:text-slate-100">{title}</h3>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-        {body}
-      </p>
-    </li>
+      <h3 className="mt-6 text-xl sm:text-2xl font-medium tracking-[-0.02em] text-slate-900 dark:text-slate-100">{title}</h3>
+      <p className="mt-3 text-[15px] leading-relaxed text-slate-600 dark:text-slate-300">{body}</p>
+    </div>
   );
 }
 
@@ -350,15 +392,5 @@ function Faq({ q, children }: { q: string; children: React.ReactNode }) {
         {children}
       </p>
     </details>
-  );
-}
-
-/** Two tones: the claim in ink, its second half in grey. */
-function SectionHeading({ title, tail }: { title: string; tail: string }) {
-  return (
-    <h2 className="text-[1.6rem] sm:text-4xl font-medium tracking-[-0.035em] leading-[1.12] max-w-2xl">
-      <span className="block ink">{title}</span>
-      <span className="block muted-ink">{tail}</span>
-    </h2>
   );
 }

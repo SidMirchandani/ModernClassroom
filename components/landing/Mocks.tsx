@@ -1,5 +1,4 @@
-import { Check, FileText, HelpCircle, X } from "lucide-react";
-import { STATUS_CHIP, STATUS_DOT } from "@/lib/status-styles";
+import { Check, FileText, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,78 +13,63 @@ import { cn } from "@/lib/utils";
  */
 
 const STUDENTS = [
-  { name: "Dutt P.", initials: "DP", row: ["complete", "complete", "in-progress", "not-started"] },
-  { name: "Carson W.", initials: "CW", row: ["complete", "help", "not-started", "not-started"] },
-  { name: "Maya I.", initials: "MI", row: ["complete", "complete", "complete", "review"] },
-  { name: "Priya N.", initials: "PN", row: ["complete", "in-progress", "not-started", "not-started"] },
+  { name: "Ava Thompson", initials: "AT", cells: [{ mark: 18, word: "turned-in" }, { mark: 95, word: "returned" }, { mark: null, word: "not-yet" }] },
+  { name: "Ben Carter", initials: "BC", cells: [{ mark: 20, word: "turned-in" }, { mark: 88, word: "returned" }, { mark: null, word: "not-yet" }] },
+  { name: "Chloe Nguyen", initials: "CN", cells: [{ mark: null, word: "missing" }, { mark: 90, word: "late" }, { mark: null, word: "not-yet" }] },
 ] as const;
 
-const COLUMNS = ["3.1", "3.2", "3.3", "3.4"];
+const WORDS = {
+  "turned-in": { label: "Turned in", tone: "text-emerald-700 dark:text-emerald-400" },
+  returned: { label: "Returned", tone: "text-emerald-700 dark:text-emerald-400" },
+  late: { label: "Turned in late", tone: "text-amber-700 dark:text-amber-400" },
+  missing: { label: "Missing", tone: "text-rose-700 dark:text-rose-400" },
+  "not-yet": { label: "Not yet", tone: "text-slate-500 dark:text-slate-400" },
+} as const;
 
-/** The teacher's grid: one row per student, one column per subunit. */
+const COLUMNS = [
+  { head: "Quiz 3A", total: 20 },
+  { head: "3.1 Slope", total: 100 },
+  { head: "3.2 Lines", total: 100 },
+];
+
+/** The teacher's grid: who turned in what, and the mark on it. */
 export function GridMock() {
   return (
     <div className="card overflow-hidden" aria-hidden="true">
-      <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40">
-        <span className="w-2 h-2 rounded-full bg-rose-400" />
-        <span className="w-2 h-2 rounded-full bg-amber-400" />
-        <span className="w-2 h-2 rounded-full bg-emerald-400" />
-        <span className="ml-2 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-          Unit 3 · Linear Models and Systems
-        </span>
-      </div>
-
       <table className="w-full text-left">
         <thead>
-          <tr className="border-b border-slate-100 dark:border-slate-800">
-            <th className="py-2 pl-3 sm:pl-4 pr-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Student
-            </th>
+          <tr className="border-b border-slate-200 dark:border-slate-800">
+            <th className="py-2.5 pl-4 pr-2 text-[11px] font-semibold text-slate-500">Student</th>
             {COLUMNS.map((c) => (
-              <th
-                key={c}
-                className="py-2 px-1 text-center text-[11px] font-semibold text-slate-500 dark:text-slate-400 tabular-nums"
-              >
-                {c}
+              <th key={c.head} className="py-2.5 px-2 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                {c.head}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {STUDENTS.map((s, rowIndex) => (
-            <tr
-              key={s.name}
-              className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"
-            >
-              <td className="py-2 pl-3 sm:pl-4 pr-2">
-                <span className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="w-5 h-5 shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 text-[9px] font-bold text-slate-500 dark:text-slate-400 flex items-center justify-center">
+            <tr key={s.name} className="border-b border-slate-100 dark:border-slate-800/60 last:border-0">
+              <td className="py-2.5 pl-4 pr-2">
+                <span className="flex items-center gap-2">
+                  <span className="w-6 h-6 shrink-0 rounded-full bg-primary text-[9px] font-semibold text-white flex items-center justify-center">
                     {s.initials}
                   </span>
-                  <span className="hidden sm:inline text-[12px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  <span className="hidden sm:inline text-[12px] font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">
                     {s.name}
                   </span>
                 </span>
               </td>
-              {s.row.map((status, i) => (
-                <td key={i} className="py-2 px-1">
-                  <span className="flex justify-center">
-                    {/* Fills in on a diagonal, so the grid reads as a class
-                        working through the unit rather than a static table. */}
-                    <span
-                      className={cn(
-                        "chip-in w-6 sm:w-11 h-5 rounded-md border flex items-center justify-center",
-                        STATUS_CHIP[status]
-                      )}
-                      style={{ "--i": rowIndex + i } as React.CSSProperties}
-                    >
-                      {status === "help" ? (
-                        <HelpCircle className="w-3 h-3" />
-                      ) : status === "complete" ? (
-                        <Check className="w-3 h-3" />
-                      ) : (
-                        <span className={cn("w-1.5 h-1.5 rounded-full", STATUS_DOT[status])} />
-                      )}
+              {s.cells.map((cell, i) => (
+                <td key={i} className="py-2.5 px-2 text-center">
+                  <span className="chip-in block" style={{ "--i": rowIndex + i } as React.CSSProperties}>
+                    {cell.mark !== null && (
+                      <span className="block text-[12px] font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                        {cell.mark} / {COLUMNS[i].total}
+                      </span>
+                    )}
+                    <span className={cn("block text-[10px] leading-tight", WORDS[cell.word].tone)}>
+                      {WORDS[cell.word].label}
                     </span>
                   </span>
                 </td>
@@ -94,78 +78,44 @@ export function GridMock() {
           ))}
         </tbody>
       </table>
-
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 sm:px-4 py-2.5 border-t border-slate-100 dark:border-slate-800">
-        {(["complete", "in-progress", "review", "help", "not-started"] as const).map((k) => (
-          <span key={k} className="inline-flex items-center gap-1.5">
-            <span className={cn("w-1.5 h-1.5 rounded-full", STATUS_DOT[k])} />
-            <span className="text-[10px] text-slate-400 capitalize">
-              {k === "in-progress" ? "Active" : k === "not-started" ? "Not started" : k}
-            </span>
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
 
-/** One subunit, split by resource rather than by lesson. */
-export function TracksMock() {
-  const tracks = [
-    { label: "Textbook", ref: "Ch 3.3", learn: true, practice: true, tone: "indigo" },
-    { label: "AP Classroom", ref: "Topic 2.7", learn: true, practice: false, tone: "violet" },
-    { label: "Guided Notes", ref: "Unit 3.3", learn: false, practice: false, tone: "teal" },
+/** Where lessons stand in Google Classroom, with nothing to press. */
+export function PostMock() {
+  const lessons = [
+    { title: "3.1 Slope & Recursive Formulas", when: "Posted", done: true },
+    { title: "3.2 Linear Equations as Models", when: "Posted", done: true },
+    { title: "3.3 Line of Best Fit", when: "Oct 14, 7:00 AM", done: false },
+    { title: "Quiz 3A", when: "Oct 15, 7:00 AM", done: false },
   ];
-
   return (
-    <div className="divide-y divide-slate-200 dark:divide-slate-800" aria-hidden="true">
-      <div className="flex items-baseline gap-2 pb-3">
-        <span className="font-mono text-xs text-slate-400">3.3</span>
-        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Line of Best Fit
-        </span>
-        <span className="ml-auto text-[10px] text-slate-400">due 10/14</span>
-      </div>
-
-      {tracks.map((t) => (
-        <div key={t.label} className="py-3 flex items-center gap-3">
-          <span
-            className={cn(
-              "w-1 self-stretch rounded-full",
-              t.tone === "indigo" && "bg-indigo-400",
-              t.tone === "violet" && "bg-violet-400",
-              t.tone === "teal" && "bg-teal-400"
-            )}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[12px] font-medium text-slate-700 dark:text-slate-200">
-              {t.label}
+    <div className="card overflow-hidden" aria-hidden="true">
+      <ul className="divide-y divide-slate-100 dark:divide-slate-800/70">
+        {lessons.map((l, i) => (
+          <li
+            key={l.title}
+            className="chip-in flex items-center justify-between gap-3 px-4 py-2.5"
+            style={{ "--i": i } as React.CSSProperties}
+          >
+            <span className="min-w-0 truncate text-[13px] text-slate-800 dark:text-slate-100">{l.title}</span>
+            <span
+              className={cn(
+                "shrink-0 text-[11px]",
+                l.done ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"
+              )}
+            >
+              {l.when}
             </span>
-            <span className="block text-[10px] text-slate-400">{t.ref}</span>
-          </span>
-          <span className="flex gap-1 shrink-0">
-            <Pill done={t.learn}>Learn</Pill>
-            <Pill done={t.practice}>Practice</Pill>
-          </span>
-        </div>
-      ))}
+          </li>
+        ))}
+      </ul>
+      <p className="flex items-center gap-2 border-t border-slate-200 dark:border-slate-800 px-4 py-2.5 text-[12px] text-emerald-700 dark:text-emerald-400">
+        <Check className="w-3.5 h-3.5" />
+        Up to date
+      </p>
     </div>
-  );
-}
-
-function Pill({ done, children }: { done: boolean; children: React.ReactNode }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 h-5 px-1.5 rounded-md border text-[10px] font-medium",
-        done
-          ? "border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400"
-          : "border-slate-200 dark:border-slate-700 text-slate-400"
-      )}
-    >
-      {done && <Check className="w-2.5 h-2.5" />}
-      {children}
-    </span>
   );
 }
 
@@ -184,7 +134,7 @@ export function DiffMock() {
           Curriculum
         </span>
         <span className="text-[10px] font-medium px-2 py-0.5 rounded-lg border border-primary/30 text-primary dark:text-primary-glow">
-          2 suggestions
+          2 changes
         </span>
       </div>
 
@@ -230,12 +180,12 @@ export function DiffMock() {
       </div>
 
       <div className="flex items-center gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
-        <span className="flex-1 text-[10px] text-slate-400">1 of 2 approved</span>
+        <span className="flex-1 text-[10px] text-slate-400">2 changes to check</span>
         <span className="btn btn-sm btn-secondary pointer-events-none !h-6 !text-[10px] !px-2">
-          Deny all
+          Reject all
         </span>
         <span className="btn btn-sm btn-primary pointer-events-none !h-6 !text-[10px] !px-2">
-          Apply 1
+          Accept all
         </span>
       </div>
     </div>

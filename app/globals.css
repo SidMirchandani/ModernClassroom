@@ -334,10 +334,10 @@
   @media (prefers-reduced-motion: no-preference) {
     .reveal {
       opacity: 0;
-      transform: translateY(18px);
+      transform: translateY(28px);
       transition:
-        opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
-        transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+        opacity 1s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 1s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .reveal.is-in {
@@ -1029,5 +1029,124 @@ a.slash-right:focus-visible {
 @keyframes card-sweep {
   to {
     transform: translateX(100%);
+  }
+}
+
+/* The smooth-scroll library does the gliding on the landing page, so the
+   browser's own smooth scrolling has to step aside there. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+html.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+/* The soft panel behind the "plans change" scene: a tint of the page's own
+   colour, not a contrast. */
+.scene-panel {
+  background: linear-gradient(135deg, rgb(var(--primary-50)), rgb(var(--primary-light)) 55%, rgb(var(--primary-50)));
+}
+.dark .scene-panel {
+  background: linear-gradient(135deg, #0f172a, rgb(var(--primary) / 0.12) 55%, #0f172a);
+}
+.scene-orb {
+  position: absolute;
+  width: 34rem;
+  height: 34rem;
+  border-radius: 9999px;
+  background: rgb(var(--primary) / 0.1);
+  filter: blur(70px);
+  pointer-events: none;
+}
+.scene-orb-a {
+  top: -14rem;
+  right: -8rem;
+}
+.scene-orb-b {
+  bottom: -18rem;
+  left: -8rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The headline arrives; the pictures behind it drift. */
+  .hero-rise {
+    animation: hero-rise 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-drift {
+    animation: hero-drift 18s ease-in-out infinite alternate;
+    transform-origin: 50% 20%;
+  }
+  .scene-orb-a {
+    animation: orb-a 16s ease-in-out infinite alternate;
+  }
+  .scene-orb-b {
+    animation: orb-b 20s ease-in-out infinite alternate;
+  }
+  .flow-on {
+    animation: flow-on 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+  .flow-back {
+    animation: flow-back 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+}
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes hero-drift {
+  from {
+    transform: scale(1.02);
+  }
+  to {
+    transform: scale(1.1);
+  }
+}
+@keyframes orb-a {
+  to {
+    transform: translate(-7rem, 5rem);
+  }
+}
+@keyframes orb-b {
+  to {
+    transform: translate(9rem, -5rem);
+  }
+}
+@keyframes flow-on {
+  from {
+    left: 0;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  to {
+    left: calc(100% - 7px);
+    opacity: 0;
+  }
+}
+@keyframes flow-back {
+  from {
+    left: calc(100% - 7px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  to {
+    left: 0;
+    opacity: 0;
   }
 }

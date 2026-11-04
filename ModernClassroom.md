@@ -999,34 +999,32 @@ querying as each role rather than by reading the policies.
 
 `/` is two pages at one address. With `?auth=login` or `?auth=signup` it is the
 sign-in card and nothing else — a returning user came here to get in, not to
-read a pitch. Without it, `/` is the marketing page: what the thing is, the
-resource-track idea, the import, and what makes it safe to put a class in. **A
+read a pitch. Without it, `/` is the marketing page. **A
 signed-out visit to any dashboard route redirects to `/`**, the marketing page —
 not to `/?auth=login` as it once did. (`ClassPageClient`, `DashboardClient`,
 `SubunitEditor`, the teacher view and the new-class page all do `router.replace("/")`.
 Only the Google sign-in's failure page still links *Back to sign in* to
 `/?auth=login`.)
 
-The pitch leads with how a class starts — attach your materials and the AI
-drafts the curriculum (there are no ready-made courses on offer) — and shows
-the product rather than describing it, in Supabase's language, minus the
-boxes: one flat page colour, the brand blue used only for the primary
-action and the second line of the hero, 1px borders instead of shadows,
-medium-weight two-tone headings (the claim in ink, its tail in grey), and
-almost no frames: the product miniatures sit on the page with hairlines between
-rows, the feature vignettes stand on a grey plotting grid that fades into the
-page, the steps are bare numbers, and the FAQ is rows split by rules. Only the
-hero's grid keeps a window frame, because it is a picture of a window. Sections
-rise a few pixels as they come into view, the grid mock fills in on a diagonal,
-and two tiles loop between real states (offline → saved, active → done).
-Nothing else moves.
+The pitch runs from big to small, in a layout and motion modelled on doorman.school
+(the words and pictures are ours). `HeroStage` is a panel pinned under the header
+while the rest of the page, one opaque sheet, slides up over it; it eases back as it
+goes, and real screens with sample data (`public/hero-*.jpg`) crossfade slowly behind
+the headline. Then a soft panel with one statement and three numbers that count down
+as they appear (`CountTo`), the steps beside a list that stays put (`StepList`), one
+scene of a plan changing (`ChangeScene`: pinned on wide screens with the words
+stepping as you scroll, stepping by itself on phones), four feature cards, the FAQ and
+a closing panel. `SmoothScroll` (the `lenis` package) glides the wheel on this page
+only. It has no testimonials or press, because there are none to show, and nothing
+on it is made up.
 
 > ⚠️ **Colour was tried and taken out.** An earlier pass on 2026-10-06 put a
 > drifting colour field behind every screen, frosted cards, light beams, a
 > gradient headline and cursor-following glows. It read as busy and generic, and
 > was reverted the same day in favour of the flat system above. The lesson for
 > next time: in this app restraint is the brand — reach for a border before a
-> shadow, and grey before a second colour.
+> shadow, and grey before a second colour. The landing page's motion and soft
+> tints are the exception, at the owner's request; the app itself stays flat.
 
 > ⚠️ **Motion is opt-in at the CSS layer, not the JS layer.** Every rule that
 > hides or moves anything lives inside `@media (prefers-reduced-motion:
@@ -1040,11 +1038,10 @@ Nothing else moves.
 > that forces it visible. Any future JS-driven reveal needs the same.
 
 The pitch shows the product rather than describing it. `components/landing/Mocks.tsx`
-draws three miniatures — the teacher's grid, one subunit split by resource, and
-the import's review — out of the app's own tokens, importing the real
-`STATUS_CHIP` / `STATUS_DOT` vocabulary so the colours on the landing page can
-never drift from the colours in the app. They are `aria-hidden` and nothing in
-them is clickable; the prose beside each carries the meaning.
+draws four miniatures out of the app's own tokens: the files going in, the review,
+lessons posting, and the turn-in grid. When those screens change, these and
+the `hero-*.jpg` screens need updating by hand. They are `aria-hidden` and nothing in them
+is clickable; the words beside each carry the meaning.
 
 `/privacy` and `/terms` are real documents written against what the code
 actually does, not a template. Both are worth re-reading whenever behaviour
