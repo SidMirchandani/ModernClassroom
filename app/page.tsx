@@ -12,6 +12,7 @@ import { Reveal } from "@/components/landing/Reveal";
 import { SmoothScroll } from "@/components/landing/SmoothScroll";
 import { StepList } from "@/components/landing/StepList";
 import { SITE } from "@/lib/site";
+import { cn } from "@/lib/utils";
 import {
   ArrowRight,
   ChevronDown,
@@ -28,8 +29,9 @@ import {
  * else: a returning user came here to get in, and should not have to scroll past
  * a pitch to do it. Without it, it is the pitch.
  *
- * The pitch runs from big to small: a pinned panel with one line on it, which the
- * rest of the page slides up over, a statement with three plain facts, the steps
+ * The pitch runs from big to small: a panel that opens full screen, zooms into its
+ * frame, and stays pinned with the product acted out behind one line while the
+ * rest of the page slides up over it, a statement with three plain facts, the steps
  * beside a list that stays put, then one scene of a plan changing. Every picture
  * is the product itself, either the real screen or a miniature built from its
  * parts.
@@ -76,7 +78,7 @@ export default async function Home({
   if (auth) return <AuthView initialMode={auth} />;
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col overflow-x-clip">
       {/* `.reveal` hides itself and waits for an observer to say it is visible.
           Without JS that observer never runs, so everything below the hero
           would stay invisible — this hands those readers the finished page. */}
@@ -85,27 +87,27 @@ export default async function Home({
       </noscript>
 
       <SmoothScroll />
-      <SiteHeader />
+      <SiteHeader entrance />
 
       {/* ── Hero: one panel, one line. Pinned; the rest slides up over it. ── */}
       <HeroStage>
-        <h1 className="hero-rise text-[2.5rem] sm:text-6xl lg:text-7xl font-medium tracking-[-0.04em] leading-[1.05] text-white">
+        <h1 className="hero-rise hero-rise-1 text-[2.5rem] sm:text-5xl lg:text-6xl font-medium tracking-[-0.04em] leading-[1.05] text-slate-950 dark:text-white">
           A class where nobody waits for the middle.
         </h1>
-        <p className="hero-rise [animation-delay:120ms] mt-5 text-[15px] sm:text-xl text-white/90">
+        <p className="hero-rise hero-rise-2 mt-5 text-[15px] sm:text-xl text-slate-950 dark:text-white">
           Attach your materials. We build the class.
         </p>
-        <div className="hero-rise [animation-delay:240ms] mt-7 flex flex-wrap items-center justify-center gap-3">
+        <div className="hero-rise hero-rise-3 mt-7 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/?auth=signup"
-            className="group inline-flex items-center gap-2 h-12 px-7 rounded-full bg-white text-slate-950 text-[15px] font-medium transition-colors hover:bg-white/90"
+            className="group inline-flex items-center gap-2 h-12 px-7 rounded-full bg-slate-950 text-white dark:bg-white dark:text-slate-950 text-[15px] font-medium transition-opacity hover:opacity-85"
           >
             Start a class
             <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
           </Link>
           <Link
             href="/demo"
-            className="inline-flex items-center gap-2 h-12 px-7 rounded-full bg-white/15 text-white text-[15px] font-medium backdrop-blur transition-colors hover:bg-white/25"
+            className="inline-flex items-center gap-2 h-12 px-7 rounded-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-950 dark:text-white text-[15px] font-medium transition-colors hover:border-slate-950 dark:hover:border-white"
           >
             <Play className="w-4 h-4" />
             Watch a demo
@@ -260,22 +262,22 @@ export default async function Home({
 
       {/* ── One more panel, to close ─────────────────────────────────────── */}
       <section className="px-3 sm:px-6 pb-6">
-        <div className="rounded-3xl bg-slate-950 dark:border dark:border-slate-800 px-5 py-20 sm:py-32 text-center">
-          <h2 className="text-[2rem] sm:text-6xl font-medium tracking-[-0.04em] leading-[1.08] text-white">
+        <div className="scene-panel rounded-3xl px-5 py-20 sm:py-32 text-center">
+          <h2 className="text-[2rem] sm:text-6xl font-medium tracking-[-0.04em] leading-[1.08] text-slate-950 dark:text-white">
             See it in a minute.
           </h2>
-          <p className="mt-4 text-[15px] sm:text-xl text-white/80">No sign-up.</p>
+          <p className="mt-4 text-[15px] sm:text-xl text-slate-700 dark:text-slate-300">No sign-up.</p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/demo"
-              className="inline-flex items-center gap-2 h-12 px-7 rounded-full bg-white text-slate-950 text-[15px] font-medium transition-colors hover:bg-white/90"
+              className="inline-flex items-center gap-2 h-12 px-7 rounded-full bg-slate-950 text-white dark:bg-white dark:text-slate-950 text-[15px] font-medium transition-opacity hover:opacity-85"
             >
               <Play className="w-4 h-4" />
               Watch a demo
             </Link>
             <Link
               href="/?auth=signup"
-              className="inline-flex items-center h-12 px-7 rounded-full bg-white/15 text-white text-[15px] font-medium transition-colors hover:bg-white/25"
+              className="inline-flex items-center h-12 px-7 rounded-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-950 dark:text-white text-[15px] font-medium transition-colors hover:border-slate-950 dark:hover:border-white"
             >
               Create an account
             </Link>
@@ -291,9 +293,15 @@ export default async function Home({
 
 /* ── pieces ─────────────────────────────────────────────────────────────── */
 
-function SiteHeader() {
+function SiteHeader({ entrance = false }: { entrance?: boolean }) {
   return (
-    <header className="h-[4.5rem] shrink-0 bg-white dark:bg-slate-950 px-5 sm:px-6 sticky top-0 z-20">
+    <header
+      className={cn(
+        "h-[4.5rem] shrink-0 bg-white dark:bg-slate-950 px-5 sm:px-6 sticky top-0 z-20",
+        // Arrives after the opening zoom has made room for it.
+        entrance && "hero-header-in"
+      )}
+    >
       <div className="h-full flex items-center justify-between gap-4">
         <div className="flex items-center gap-4 sm:gap-8 min-w-0">
           <Logo href="/" textClassName="text-base hidden sm:inline" />
@@ -369,7 +377,7 @@ function Fact({ text, children }: { text: string; children: React.ReactNode }) {
 
 function FeatureCard({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
   return (
-    <div className="group h-full rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-7 sm:p-8 sm:min-h-[16rem] transition-[transform,border-color,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1 hover:border-primary/40 hover:shadow-z2">
+    <div className="group h-full rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-7 sm:p-8 sm:min-h-[16rem] transition-[transform,border-color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1 hover:border-primary/40">
       <span className="w-11 h-11 rounded-xl inline-flex items-center justify-center bg-primary/10 text-primary dark:text-primary-glow transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-110">
         <Icon className="w-5 h-5" aria-hidden />
       </span>

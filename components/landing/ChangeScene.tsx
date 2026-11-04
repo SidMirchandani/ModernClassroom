@@ -61,7 +61,7 @@ function Row({
       className={cn(
         "flex items-center gap-3 rounded-xl px-3 py-2.5 min-h-[3.25rem]",
         EASE,
-        on && "scale-[1.02] shadow-z2",
+        on && "scale-[1.02]",
         on && (tone === "emerald" ? "bg-emerald-50 dark:bg-emerald-950/40" : "bg-primary-light/70 dark:bg-primary/15"),
         dim && !on && "opacity-55"
       )}
@@ -75,7 +75,7 @@ function Row({
 /** A piece of a curriculum, showing whichever thing is happening to it. */
 function ChangeMock({ step }: { step: number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-z3" aria-hidden>
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-5" aria-hidden>
       <Flow step={step} />
 
       <div className="mt-4 space-y-1.5">

@@ -1,30 +1,45 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
-
-const PICTURES = ["/hero-dashboard.jpg", "/hero-screen.jpg", "/hero-curriculum.jpg"];
-const HOLD_MS = 5000;
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { HeroScene } from "./HeroScene";
 
 /**
- * The opening panel. It stays pinned while the rest of the page slides up over
- * it like a sheet, easing back a little as it goes, and the real screens crossfade
- * slowly behind the headline. Everything moves by transform and opacity, so it
- * stays smooth, and it stops working once it is fully covered.
+ * The opening panel. On arrival the logo stands alone in the middle of the screen
+ * with the name under it. The name fades, then the logo flies to its place in the
+ * scene as everything else arrives (`.hero-intro`, in CSS, so nothing can flash).
+ * After that the panel stays pinned while the rest of the page slides up over it,
+ * easing back a little as it goes. It stops painting once it is fully covered.
  */
 export function HeroStage({ children }: { children: ReactNode }) {
   const section = useRef<HTMLElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
-  const [showing, setShowing] = useState(0);
+  const intro = useRef<HTMLDivElement>(null);
+
+  // Where the logo lands depends on the screen, so measure it before the flight.
+  useLayoutEffect(() => {
+    const cover = intro.current;
+    const mark = cover?.querySelector<HTMLElement>(".hero-intro-mark");
+    if (!cover || !mark) return;
+
+    // Arriving part way down the page, the logo has nowhere sensible to be.
+    if (window.scrollY > 0 || window.location.hash) {
+      cover.style.display = "none";
+      return;
+    }
+
+    const hub = [...(panel.current?.querySelectorAll("[data-hero-hub]") ?? [])]
+      .map((node) => node.getBoundingClientRect())
+      .find((box) => box.width > 0);
+    if (!hub) return;
+
+    cover.style.setProperty("--hub-x", `${hub.left + hub.width / 2 - cover.clientWidth / 2}px`);
+    cover.style.setProperty("--hub-y", `${hub.top + hub.height / 2 - cover.clientHeight / 2}px`);
+    cover.style.setProperty("--hub-size", String(hub.width / mark.offsetWidth));
+  }, []);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    const timer = window.setInterval(() => {
-      if (!document.hidden) setShowing((i) => (i + 1) % PICTURES.length);
-    }, HOLD_MS);
 
     let frame = 0;
     const paint = () => {
@@ -47,7 +62,6 @@ export function HeroStage({ children }: { children: ReactNode }) {
     paint();
 
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("scroll", onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
@@ -55,25 +69,26 @@ export function HeroStage({ children }: { children: ReactNode }) {
 
   return (
     <section ref={section} className="sticky top-[4.5rem] z-0 px-3 sm:px-6 pb-3">
-      <div
-        ref={panel}
-        className="relative overflow-hidden rounded-3xl bg-slate-950 dark:border dark:border-slate-800 h-[calc(100svh-5.25rem)] min-h-[32rem] flex items-end justify-center px-5 pb-10 sm:pb-16 text-center origin-top will-change-transform"
-      >
-        {PICTURES.map((src, i) => (
-          <div
-            key={src}
-            aria-hidden
-            className={cn(
-              "absolute inset-0 transition-opacity duration-[1800ms] ease-in-out",
-              i === showing ? "opacity-70" : "opacity-0"
-            )}
-          >
-            <Image src={src} alt="" fill priority={i === 0} sizes="100vw" className="hero-drift object-cover object-top" />
+      <div ref={intro} aria-hidden className="hero-intro">
+        <span className="hero-intro-ring" />
+        <span className="hero-intro-ring hero-intro-ring-late" />
+        {/* Native img, as in Logo.tsx: it must keep its transparency and be there at once. */}
+        <img src="/Logo.png" alt="" className="hero-intro-mark" />
+        <p className="hero-intro-name">Modern Classroom</p>
+      </div>
+      <div ref={panel} className="origin-top will-change-transform">
+        <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 h-[calc(100svh-5.25rem)] min-h-[32rem] flex items-end justify-center px-5 pb-10 sm:pb-12 text-center">
+          {/* There from the first moment, behind the logo as well. */}
+          <div aria-hidden className="absolute inset-0 pointer-events-none">
+            <span className="hs-glow hs-glow-blue" />
+            <span className="hs-glow hs-glow-sky" />
+            <span className="hs-glow hs-glow-emerald" />
+            <span className="hs-glow hs-glow-amber" />
           </div>
-        ))}
-        <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/10" />
-        <div ref={words} className="relative max-w-4xl will-change-transform">
-          {children}
+          <HeroScene />
+          <div ref={words} className="relative max-w-2xl will-change-transform">
+            {children}
+          </div>
         </div>
       </div>
     </section>

@@ -1007,10 +1007,13 @@ Only the Google sign-in's failure page still links *Back to sign in* to
 `/?auth=login`.)
 
 The pitch runs from big to small, in a layout and motion modelled on doorman.school
-(the words and pictures are ours). `HeroStage` is a panel pinned under the header
-while the rest of the page, one opaque sheet, slides up over it; it eases back as it
-goes, and real screens with sample data (`public/hero-*.jpg`) crossfade slowly behind
-the headline. Then a soft panel with one statement and three numbers that count down
+(the words and pictures are ours). `HeroStage` opens with the logo large in the middle of
+the screen and the name fading out under it. The logo then flies to its place in the
+scene as the header and headline arrive, and the panel stays pinned while the rest of
+the page, one opaque sheet, slides up over it. Behind the headline soft colour
+gradients drift, the pieces of a class float up the panel, and `HeroScene`, moved only
+by CSS, acts out the product: a pacing guide is read, lessons travel through Modern
+Classroom into Google Classroom, students turn work in, and marks fill a grid. Then a soft panel with one statement and three numbers that count down
 as they appear (`CountTo`), the steps beside a list that stays put (`StepList`), one
 scene of a plan changing (`ChangeScene`: pinned on wide screens with the words
 stepping as you scroll, stepping by itself on phones), four feature cards, the FAQ and
@@ -1039,8 +1042,8 @@ on it is made up.
 
 The pitch shows the product rather than describing it. `components/landing/Mocks.tsx`
 draws four miniatures out of the app's own tokens: the files going in, the review,
-lessons posting, and the turn-in grid. When those screens change, these and
-the `hero-*.jpg` screens need updating by hand. They are `aria-hidden` and nothing in them
+lessons posting, and the turn-in grid. When those screens change, these need
+updating by hand. **The landing page uses no shadows anywhere.** They are `aria-hidden` and nothing in them
 is clickable; the words beside each carry the meaning.
 
 `/privacy` and `/terms` are real documents written against what the code
