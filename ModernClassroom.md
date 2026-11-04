@@ -10,7 +10,7 @@ A classroom dashboard built around one teacher's actual way of running a course:
 
 A real class now lives in **Google Classroom**. The teacher uploads her year plan, reviews it row by row, and the app posts it into the Classroom class she already has — each unit a topic, each resource's practice an assignment, scheduled on its date — then reads her students' turn-ins back into a grid of who has done what. Students never sign in here; they keep using Classroom. See *The Google Classroom connection* below, and [`docs/Classroom-Connect.md`](docs/Classroom-Connect.md) for the plan and the reasoning.
 
-The self-paced student experience this app began as is still in the code, behind the **Enrolled** tab: students open a section and see one button per resource, each expanding into its own learning targets, **Learn** material and **Practice** deliverable with its own status.
+The self-paced student experience this app began as is still in the code, but the **Enrolled** tab that led to it shows *Coming Soon* and can't be opened (`DashboardShell`), and the dashboard stays on Teaching whatever `?tab=` says. A class can still be opened as a student by direct address (`?as=student`). In it, students open a section and see one button per resource, each expanding into its own learning targets, **Learn** material and **Practice** deliverable with its own status.
 
 The pitch on the landing page: *"Your classroom, modernized."*
 
@@ -117,10 +117,9 @@ renders. An expired session still has the cookie, so the pages' own
 `getCurrentUser()` check catches that, and it answers `null` rather than throwing
 if Supabase isn't configured.
 
-Roles are per-class, so the **Teaching** tab opens each class as the teacher and
-**Enrolled** opens the same class as a student (`?as=student`). No persona
-switcher — the tabs are the switch. The back link carries `?tab=` so you return
-to the side you came from.
+Roles are per-class, so the **Teaching** tab opens each class as the teacher.
+**Enrolled**, which opened the same class as a student (`?as=student`), is
+*Coming Soon* for now.
 
 > ⚠️ Anything reading a class for the student must pass `"student"` to
 > `getClassDetail`. A teacher enrolled in their own class otherwise gets the

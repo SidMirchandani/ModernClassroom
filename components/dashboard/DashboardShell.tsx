@@ -31,7 +31,9 @@ export function DashboardShell({ mode, onModeChange, children }: DashboardShellP
               {
                 id: "enrolled",
                 label: "Enrolled",
-                onClick: () => onModeChange("enrolled"),
+                // Students are in Google Classroom for now. To bring this back,
+                // use onClick here and let DashboardClient open this side.
+                comingSoon: true,
               },
             ]}
             activeId={mode}

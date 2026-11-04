@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { DashboardShell, type DashboardMode } from "./DashboardShell";
 import { getCurrentUser } from "@/lib/auth-client";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -25,15 +25,8 @@ import {
 
 export function DashboardClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  // `?tab=` is how a class page sends you back to the side you came from.
-  const requestedTab =
-    searchParams.get("tab") === "enrolled"
-      ? "enrolled"
-      : searchParams.get("tab") === "teaching"
-        ? "teaching"
-        : null;
-  const [mode, setMode] = useState<DashboardMode>(requestedTab ?? "teaching");
+  // Always Teaching while the Enrolled tab is Coming Soon, whatever `?tab=` says.
+  const [mode, setMode] = useState<DashboardMode>("teaching");
   usePageTitle(mode === "teaching" ? "Teaching" : "Enrolled");
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -84,22 +77,12 @@ export function DashboardClient() {
         )
       );
 
-      // With no explicit tab, land on the side the user actually has classes
-      // on — a student opening "Teaching" to an empty state reads as a broken
-      // account.
-      if (
-        !requestedTab &&
-        !summaries.some((c) => c.role === "teacher") &&
-        summaries.some((c) => c.role === "student")
-      ) {
-        setMode("enrolled");
-      }
       setLoading(false);
     })();
     return () => {
       alive = false;
     };
-  }, [router, requestedTab]);
+  }, [router]);
 
   const filteredClasses = classes.filter((cls) =>
     mode === "teaching" ? cls.role === "teacher" : cls.role === "student"

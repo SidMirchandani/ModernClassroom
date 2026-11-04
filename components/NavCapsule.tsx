@@ -10,6 +10,8 @@ export interface NavCapsuleTab {
   href?: string;
   onClick?: () => void;
   notify?: boolean;
+  /** Shown but not usable yet, marked as coming soon. */
+  comingSoon?: boolean;
 }
 
 interface NavCapsuleProps {
@@ -40,6 +42,23 @@ export function NavCapsule({ tabs, activeId, className }: NavCapsuleProps) {
       )}
       {tabs.map((tab) => {
         const isActive = tab.id === activeId;
+        if (tab.comingSoon) {
+          return (
+            <span
+              key={tab.id}
+              aria-disabled="true"
+              title="Coming soon"
+              className="relative z-[1] px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap cursor-default text-slate-400 dark:text-slate-500"
+            >
+              {tab.label}
+              <span className="ml-1.5 text-[10px] font-normal">
+                {/* The whole phrase doesn't fit beside the phone navbar's buttons. */}
+                <span className="sm:hidden">Soon</span>
+                <span className="hidden sm:inline">Coming Soon</span>
+              </span>
+            </span>
+          );
+        }
         const content = (
           <>
             <span>{tab.label}</span>
