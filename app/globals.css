@@ -1186,7 +1186,7 @@ html.lenis.lenis-smooth {
 /* The landing page's opening: full screen, a beat, then into its frame. */
 @media (prefers-reduced-motion: no-preference) {
   /* The logo alone in the middle of the screen, with the name fading from under
-     it, before it flies to its place in the scene (--hub-*, set by HeroStage). */
+     it, before it flies to its place in the scene. */
   .hero-intro {
     --mark: clamp(8rem, 30vmin, 15rem);
     display: block;
@@ -1194,9 +1194,42 @@ html.lenis.lenis-smooth {
     inset: 0;
     z-index: 60;
     pointer-events: none;
+    container-type: size;
     animation: hero-intro-end 0.01s linear 2.25s forwards;
   }
-  .hero-intro-mark,
+  /* Where it lands comes from the screen's size alone, with no measuring, so it
+     is right however long the page's script takes to arrive. These numbers follow
+     the panel in HeroStage and the Hub in HeroScene: the logo on a phone, in a
+     390-wide drawing no wider than 28rem, is 37.2 across and 190 down. */
+  .hero-intro-mark {
+    --panel-width: calc(100cqw - 1.5rem - 2px);
+    --unit: calc(min(var(--panel-width), 28rem) / 390);
+    --land-size: calc(37.2 * var(--unit));
+    --land-y: calc(4.5rem + 1px + 190 * var(--unit) - 50cqh);
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--mark);
+    height: auto;
+    aspect-ratio: 1;
+    max-width: none;
+    object-fit: contain;
+    animation: hero-intro-fly 2.2s both;
+  }
+  @media (min-width: 640px) {
+    .hero-intro-mark {
+      --panel-width: calc(100cqw - 3rem - 2px);
+    }
+  }
+  /* Wide, the drawing is 1400 by 780, fitted inside the panel. */
+  @media (min-width: 768px) {
+    .hero-intro-mark {
+      --panel-height: calc(max(100svh - 5.25rem, 32rem) - 2px);
+      --unit: min(var(--panel-width) / 1400, var(--panel-height) / 780);
+      --land-size: calc(69.44 * var(--unit));
+      --land-y: calc(4.5rem + 1px + 150 * var(--unit) - 50cqh);
+    }
+  }
   .hero-intro-ring {
     position: absolute;
     left: 50%;
@@ -1204,13 +1237,6 @@ html.lenis.lenis-smooth {
     width: var(--mark);
     height: var(--mark);
     margin: calc(var(--mark) / -2) 0 0 calc(var(--mark) / -2);
-  }
-  .hero-intro-mark {
-    max-width: none;
-    object-fit: contain;
-    animation: hero-intro-fly 2.2s both;
-  }
-  .hero-intro-ring {
     border-radius: 9999px;
     border: 2px solid rgb(var(--primary) / 0.3);
     animation: hero-intro-ring 1.25s ease-out 0.3s both;
@@ -1315,21 +1341,23 @@ html.lenis.lenis-smooth {
 @keyframes hero-intro-fly {
   0% {
     opacity: 0;
-    transform: scale(0.82);
+    transform: translate(-50%, -50%) scale(0.82);
     animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   }
   18% {
     opacity: 1;
-    transform: scale(1);
+    transform: translate(-50%, -50%) scale(1);
   }
   55% {
     opacity: 1;
-    transform: scale(1);
+    width: var(--mark);
+    transform: translate(-50%, -50%) scale(1);
     animation-timing-function: cubic-bezier(0.65, 0, 0.15, 1);
   }
   100% {
     opacity: 1;
-    transform: translate(var(--hub-x, 0), var(--hub-y, -30vh)) scale(var(--hub-size, 0.3));
+    width: var(--land-size);
+    transform: translate(-50%, calc(-50% + var(--land-y))) scale(1);
   }
 }
 @keyframes hero-intro-ring {

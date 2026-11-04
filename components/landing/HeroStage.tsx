@@ -16,26 +16,11 @@ export function HeroStage({ children }: { children: ReactNode }) {
   const words = useRef<HTMLDivElement>(null);
   const intro = useRef<HTMLDivElement>(null);
 
-  // Where the logo lands depends on the screen, so measure it before the flight.
+  // Arriving part way down the page, the logo has nowhere sensible to be.
   useLayoutEffect(() => {
-    const cover = intro.current;
-    const mark = cover?.querySelector<HTMLElement>(".hero-intro-mark");
-    if (!cover || !mark) return;
-
-    // Arriving part way down the page, the logo has nowhere sensible to be.
-    if (window.scrollY > 0 || window.location.hash) {
-      cover.style.display = "none";
-      return;
+    if ((window.scrollY > 0 || window.location.hash) && intro.current) {
+      intro.current.style.display = "none";
     }
-
-    const hub = [...(panel.current?.querySelectorAll("[data-hero-hub]") ?? [])]
-      .map((node) => node.getBoundingClientRect())
-      .find((box) => box.width > 0);
-    if (!hub) return;
-
-    cover.style.setProperty("--hub-x", `${hub.left + hub.width / 2 - cover.clientWidth / 2}px`);
-    cover.style.setProperty("--hub-y", `${hub.top + hub.height / 2 - cover.clientHeight / 2}px`);
-    cover.style.setProperty("--hub-size", String(hub.width / mark.offsetWidth));
   }, []);
 
   useEffect(() => {

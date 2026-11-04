@@ -204,6 +204,7 @@ function Students({ x, y, gap, r = 24 }: { x: number; y: number; gap: number; r?
   );
 }
 
+/** The opening logo lands here: `.hero-intro-mark` must match this place and size. */
 function Hub({ cx, cy, r }: { cx: number; cy: number; r: number }) {
   const orbit = r * 1.42;
   return (
@@ -216,7 +217,7 @@ function Hub({ cx, cy, r }: { cx: number; cy: number; r: number }) {
         <circle cx={cx - orbit * 0.5} cy={cy - orbit * 0.866} r={r * 0.07} className="fill-primary/40" />
       </g>
       <circle cx={cx} cy={cy} r={r} className="fill-white stroke-slate-200 dark:fill-slate-900 dark:stroke-slate-700" strokeWidth={1.5} />
-      <image data-hero-hub href="/Logo.png" x={cx - r * 0.62} y={cy - r * 0.62} width={r * 1.24} height={r * 1.24} />
+      <image href="/Logo.png" x={cx - r * 0.62} y={cy - r * 0.62} width={r * 1.24} height={r * 1.24} />
     </g>
   );
 }
@@ -322,7 +323,7 @@ export function HeroScene() {
       </svg>
 
       {/* Phones: the same journey, top down, above the headline. */}
-      <svg viewBox="0 0 390 400" preserveAspectRatio="xMidYMin meet" className="md:hidden absolute inset-x-0 top-0 w-full">
+      <svg viewBox="0 0 390 400" preserveAspectRatio="xMidYMin meet" className="md:hidden absolute inset-x-0 top-0 mx-auto w-full max-w-[28rem]">
         <Wire d={phoneIn} />
         <Wire d={phoneOut} />
         {[0.2, 1.1, 2.0].map((d) => (
