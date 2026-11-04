@@ -5,6 +5,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const updated = new Date();
   return [
     { url: base, lastModified: updated, priority: 1 },
+    { url: `${base}/demo`, lastModified: updated, priority: 0.7 },
     { url: `${base}/privacy`, lastModified: updated, priority: 0.3 },
     { url: `${base}/terms`, lastModified: updated, priority: 0.3 },
   ];

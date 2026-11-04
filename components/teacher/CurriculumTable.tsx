@@ -1,6 +1,5 @@
 "use client";
 
-import { CalendarDays } from "lucide-react";
 import type { CurriculumUnit } from "@/lib/db/types";
 import type { Checkpoint, CheckpointKind, Section } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -67,17 +66,12 @@ export function CurriculumTable({ units }: CurriculumTableProps) {
             <span
               key={entry.checkpoint.id}
               className={cn(
-                "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-sm",
+                "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border",
                 CHECKPOINT_CHIP[entry.checkpoint.kind]
               )}
             >
               {entry.checkpoint.title}
-              {entry.checkpoint.date && (
-                <span className="inline-flex items-center gap-0.5 text-[10px] opacity-75">
-                  <CalendarDays className="w-3 h-3" />
-                  {entry.checkpoint.date}
-                </span>
-              )}
+              {entry.checkpoint.date && <span className="text-[10px] opacity-75">{entry.checkpoint.date}</span>}
             </span>
           )
         )}

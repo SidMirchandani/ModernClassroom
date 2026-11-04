@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CloudUpload, Loader2, RotateCcw, X } from "lucide-react";
 import type { CurriculumUnit } from "@/lib/db/types";
 import type { CurriculumImporter } from "@/lib/use-curriculum-import";
+import { ActionCard } from "./ActionCard";
 import { CurriculumReview } from "./CurriculumReview";
 import { CurriculumTable } from "./CurriculumTable";
 
@@ -40,36 +41,26 @@ export function CurriculumPanel({ units, importer }: CurriculumPanelProps) {
   return (
     <div className="space-y-5">
       {/* The one place a file comes in: big, worded, never missed. */}
-      <section className="card px-5 py-5 cq-sm:px-6 flex flex-col cq-sm:flex-row cq-sm:items-center gap-4">
-        <CloudUpload className="w-10 h-10 shrink-0 text-primary dark:text-primary-glow" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">
-            {empty ? "Build your curriculum from a file" : "Update your curriculum from a file"}
-          </h3>
-          <p className="mt-1 text-[15px] leading-relaxed text-slate-600 dark:text-slate-300">
-            {empty
-              ? "Upload your pacing guide, calendar or syllabus and we'll set up your units and subunits. You'll check everything before it's saved."
-              : "Have a new pacing guide or calendar? Upload it and we'll show you what's different. Nothing changes until you say yes."}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => importer.setDialogOpen(true)}
-          className="btn btn-lg btn-primary shrink-0"
-        >
-          {importer.running ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Reading your file…
-            </>
-          ) : (
-            <>
-              <CloudUpload className="w-5 h-5" />
-              Upload a file
-            </>
-          )}
-        </button>
-      </section>
+      <ActionCard
+        icon={CloudUpload}
+        title={empty ? "Build your curriculum from a file" : "Update your curriculum from a file"}
+        action={
+          <button type="button" onClick={() => importer.setDialogOpen(true)} className="btn btn-lg btn-primary">
+            {importer.running ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Reading your file…
+              </>
+            ) : (
+              "Upload a file"
+            )}
+          </button>
+        }
+      >
+        {empty
+          ? "Upload your pacing guide, calendar or syllabus and we'll set up your units and subunits. You'll check everything before it's saved."
+          : "Have a new pacing guide or calendar? Upload it and we'll show you what's different. Nothing changes until you say yes."}
+      </ActionCard>
 
       {importer.undo && !undoHidden && (
         <div className="fade-in flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/20 px-4 py-3">

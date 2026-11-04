@@ -3,7 +3,7 @@
 import type { PublicUser } from "./db/types";
 import { randomAccent } from "./class-appearance";
 import { isDemoMode, exitDemoMode, leaveDemoOnFreshVisit } from "./demo-seed";
-import { supabase } from "./supabase/client";
+import { supabase, supabaseConfigured } from "./supabase/client";
 import { acceptInvites } from "./store/remote";
 import { store, syncedStoreIfActive } from "./store";
 
@@ -25,6 +25,9 @@ function describe(err: { message: string } | null, fallback: string): string {
 export async function getCurrentUser(): Promise<PublicUser | null> {
   // Before anything asks "who is this": a stale demo must not answer.
   leaveDemoOnFreshVisit();
+  // No Supabase settings means nobody can be signed in, which is an answer
+  // rather than an error: the pages asking this send the visitor to the landing.
+  if (!isDemoMode() && !supabaseConfigured()) return null;
   return store.getCurrentUser();
 }
 

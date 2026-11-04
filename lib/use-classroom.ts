@@ -9,10 +9,10 @@ import type { SyncResult } from "./classroom/sync";
  * The teacher view's side of the Google Classroom connection: where the class
  * stands, the choices that go with it, and posting.
  *
- * Posting happens two ways. The teacher presses "Post to Google Classroom" and
- * sees how it went. Or it happens on its own, after an approved curriculum, and
- * then it is quiet: a failure is retried a little later rather than shown
- * (ADR-008).
+ * Posting has no button, because a teacher would miss it. It runs by itself when
+ * the class opens, when a Classroom class or posting rule is chosen, and after a
+ * curriculum is approved. A failure is retried quietly a few times (ADR-008) and
+ * only then shown, with "Try again".
  */
 
 export type ClassroomStatus =
@@ -44,8 +44,8 @@ const MAX_RUNS = 12;
 
 export function useClassroom(classId: string, enabled: boolean) {
   const [status, setStatus] = useState<ClassroomStatus>({ state: enabled ? "loading" : "unavailable" });
-  const [posting, setPosting] = useState(false);
-  const [lastPost, setLastPost] = useState<PostSummary | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncFailed, setSyncFailed] = useState(false);
   const [error, setError] = useState("");
   const statusRef = useRef(status);
   statusRef.current = status;
@@ -74,20 +74,6 @@ export function useClassroom(classId: string, enabled: boolean) {
   useEffect(() => () => {
     if (retry.current) clearTimeout(retry.current);
   }, []);
-
-  const save = useCallback(
-    async (patch: { courseId?: string; postingRule?: PostingRule }) => {
-      setError("");
-      const res = await fetch("/api/classroom", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ classId, ...patch }),
-      });
-      if (!res.ok) setError((await res.json().catch(() => ({}))).error ?? "Could not save that");
-      await refresh();
-    },
-    [classId, refresh]
-  );
 
   /** Runs the sync until nothing is left. Throws when it cannot finish. */
   const runOnce = useCallback(async (): Promise<PostSummary> => {
@@ -126,39 +112,75 @@ export function useClassroom(classId: string, enabled: boolean) {
     return next;
   }, [runOnce]);
 
-  const post = useCallback(async () => {
-    setPosting(true);
-    setError("");
-    try {
-      setLastPost(await runAll());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not reach Google Classroom");
-    } finally {
-      setPosting(false);
-      await refresh();
-    }
-  }, [runAll, refresh]);
-
-  /** The quiet kind: only for a class already posting, and never an error on screen. */
-  const postQuietly = useCallback(
+  /** One sync, retried quietly; the teacher hears about it only if every try fails. */
+  const sync = useCallback(
     (attempt = 0) => {
-      const current = statusRef.current;
-      if (current.state !== "connected" || !current.courseId) return;
       if (retry.current) clearTimeout(retry.current);
+      setSyncing(true);
+      setSyncFailed(false);
+      const again = () => {
+        if (attempt + 1 < MAX_QUIET_RETRIES) {
+          retry.current = setTimeout(() => sync(attempt + 1), RETRY_MS);
+        } else {
+          setSyncing(inFlight.current !== null);
+          setSyncFailed(true);
+        }
+      };
       void runAll()
-        .then(() => refresh())
-        .catch(() => {
-          if (attempt + 1 < MAX_QUIET_RETRIES) {
-            retry.current = setTimeout(() => postQuietly(attempt + 1), RETRY_MS);
-          }
-        });
+        .then(async (summary) => {
+          if (summary.failed > 0) return again();
+          setSyncing(inFlight.current !== null);
+          await refresh();
+        })
+        .catch(again);
     },
     [runAll, refresh]
   );
 
+  /** After an approved curriculum: only for a class that has a Classroom class. */
+  const postQuietly = useCallback(() => {
+    const current = statusRef.current;
+    if (current.state === "connected" && current.courseId) sync();
+  }, [sync]);
+
+  // Opening the class catches up on anything an earlier run left unfinished.
+  // Once per class: the status re-reads after every sync.
+  const caughtUp = useRef<string | null>(null);
+  useEffect(() => {
+    if (status.state !== "connected" || !status.courseId || caughtUp.current === classId) return;
+    caughtUp.current = classId;
+    sync();
+  }, [status, classId, sync]);
+
+  const save = useCallback(
+    async (patch: { courseId?: string; postingRule?: PostingRule }) => {
+      setError("");
+      const res = await fetch("/api/classroom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ classId, ...patch }),
+      });
+      if (!res.ok) {
+        setError((await res.json().catch(() => ({}))).error ?? "Could not save that");
+        await refresh();
+        return;
+      }
+      // Set first: the refresh below would otherwise start a second sync.
+      caughtUp.current = classId;
+      await refresh();
+      sync();
+    },
+    [classId, refresh, sync]
+  );
+
+  const retrySync = useCallback(() => sync(), [sync]);
+
   const disconnect = useCallback(async () => {
     await fetch("/api/google/disconnect", { method: "POST" });
-    setLastPost(null);
+    if (retry.current) clearTimeout(retry.current);
+    setSyncing(false);
+    setSyncFailed(false);
+    caughtUp.current = null;
     await refresh();
   }, [refresh]);
 
@@ -167,7 +189,7 @@ export function useClassroom(classId: string, enabled: boolean) {
     return `/api/google/connect?returnTo=${encodeURIComponent(here)}`;
   }, []);
 
-  return { status, posting, lastPost, error, refresh, save, post, postQuietly, disconnect, connectHref };
+  return { status, syncing, syncFailed, error, refresh, save, retrySync, postQuietly, disconnect, connectHref };
 }
 
 export type ClassroomConnection = ReturnType<typeof useClassroom>;

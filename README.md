@@ -4,7 +4,7 @@ A modern, self-paced learning dashboard for students and teachers. Built with Ne
 
 Students work through unit sections at their own pace. Each section is split by **resource** — the textbook, AP Classroom, a guided-notes series — because the three cover the same objectives in different orders. Each resource is its own button that opens onto its own Learn material and Practice deliverable, with its own status. Teachers get a live progress grid showing which resource each student is stuck on, a draggable progress gate to control how far the class can move, and review workflows for submitted screenshots.
 
-**Demo** — open `/demo` and the app seeds itself with a teacher, eight students and three real courses (Algebra II, AP Precalculus, AP Statistics), then drops you into the product. A "Viewing as" switcher lets you look at the same classroom as the teacher or any student. Everything is stored in the browser via `localStorage`.
+**Demo** — open `/demo` for a one-minute video, filmed with a sample class.
 
 ## Features
 
@@ -50,8 +50,8 @@ cp .env.example .env.local   # fill in your Supabase URL and publishable key
 npm run dev
 ```
 
-The demo at `/demo` runs with no configuration at all — it never touches the
-network. The env file is only needed for real accounts.
+The env file is needed for accounts, so without it you can only see the public
+pages.
 
 Open [http://localhost:5000](http://localhost:5000).
 

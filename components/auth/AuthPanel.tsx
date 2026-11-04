@@ -217,7 +217,7 @@ export function AuthPanel({ initialMode = "login", onSuccess }: AuthPanelProps) 
           href="/demo"
           className="text-primary dark:text-primary-glow hover:underline font-medium"
         >
-          Open the Demo Classroom
+          Watch a demo
         </Link>
       </p>
     </div>

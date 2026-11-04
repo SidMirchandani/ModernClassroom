@@ -93,11 +93,6 @@ export default function PrivacyPage() {
           you can see, so the app keeps working when your connection drops; that
           copy lives only on that device and is cleared when you sign out.
         </p>
-        <p>
-          The <strong>demo</strong> is a special case: it runs entirely inside
-          your browser, with no account and no network. Nothing you do in the
-          demo is ever sent anywhere, and it is discarded when you leave it.
-        </p>
       </Section>
 
       <Section id="documents" heading="How your documents are read">

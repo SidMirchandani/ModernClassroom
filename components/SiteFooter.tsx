@@ -25,7 +25,7 @@ export function SiteFooter() {
               in a line instead. */}
           <nav className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-7 text-sm">
             <FooterGroup title="Product">
-              <FooterLink href="/demo">Try the demo</FooterLink>
+              <FooterLink href="/demo">Watch a demo</FooterLink>
               <FooterLink href="/?auth=signup">Create an account</FooterLink>
               <FooterLink href="/?auth=login">Log in</FooterLink>
             </FooterGroup>

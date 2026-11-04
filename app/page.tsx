@@ -9,7 +9,7 @@ import { CreateMock, DiffMock, GridMock, TracksMock } from "@/components/landing
 import { Reveal } from "@/components/landing/Reveal";
 import { SITE } from "@/lib/site";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Check, ChevronDown } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Play } from "lucide-react";
 
 /**
  * Two pages at one address. With `?auth=` this is the sign-in card and nothing
@@ -63,7 +63,8 @@ export default async function Home({
                 <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
               </Link>
               <Link href="/demo" className="btn btn-md btn-secondary">
-                Try the demo
+                <Play className="w-3.5 h-3.5" />
+                Watch a demo
               </Link>
             </div>
           </div>
@@ -183,13 +184,13 @@ export default async function Home({
       <section className="px-5 sm:px-6 py-16 sm:py-28">
         <Reveal className="max-w-3xl mx-auto sm:text-center">
           <h2 className="text-[2rem] sm:text-5xl font-medium tracking-[-0.04em] leading-[1.08]">
-            <span className="block ink">See it with a real class.</span>
+            <span className="block ink">See it in a minute.</span>
             <span className="block muted-ink">No sign-up.</span>
           </h2>
           <div className="mt-7 flex flex-wrap items-center sm:justify-center gap-2">
-            <Link href="/demo" className="group btn btn-md btn-primary">
-              Open the demo
-              <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+            <Link href="/demo" className="btn btn-md btn-primary">
+              <Play className="w-3.5 h-3.5" />
+              Watch a demo
             </Link>
             <Link href="/?auth=signup" className="btn btn-md btn-secondary">
               Create an account

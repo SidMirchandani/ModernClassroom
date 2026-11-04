@@ -115,14 +115,26 @@ The heart of the app; every rule lives here and nowhere else.
 
 **Stack:** Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS 3 · lucide-react · **EB Garamond** (`next/font/google`, wired to `font-sans` so the whole app is set in it). Auth primitives via `bcryptjs` + `jose`. No test framework, no CI.
 
-### One app, one demo
+### The demo is a video
 
-There is no separate demo build any more. `/demo` seeds the **real** store with
-one account — named simply **Demo** — that *teaches* three courses and is also
-*enrolled* in them, eight classmates filling each roster, and their progress.
-It signs in and drops you on `/dashboard`, so the demo exercises the product
-itself and cannot drift out of sync with it. `/student` and `/teacher` redirect
-to `/demo`.
+`/demo` plays `public/demo.mp4`: one minute from choosing a Google Classroom
+class, through uploading a pacing guide and approving it, to the turn-in grid.
+"Watch a demo" on the landing page, footer and sign-in card all go there, and
+`/student` and `/teacher` redirect to it. It was filmed from the real screens
+with a sample class and students, and Google's responses simulated; the page says
+so. When those screens change noticeably, it needs filming again.
+
+Visitors can no longer enter a clickable demo: an empty class had little to show.
+**The demo-mode code below is unreachable and due for removal** — `seedDemo()`,
+which the old `/demo` called, has no caller now. Until then, everything in this
+doc about the demo store, the old progress table and the guided tour describes
+that dormant code.
+
+**Signed-out visitors never see the dashboard.** `proxy.ts` sends any
+`/dashboard/*` request without a `sb-…-auth-token` cookie to `/` before it
+renders. An expired session still has the cookie, so the pages' own
+`getCurrentUser()` check catches that, and it answers `null` rather than throwing
+if Supabase isn't configured.
 
 Because roles are per-class and the demo account holds both, the **Teaching**
 tab opens each class as the teacher and **Enrolled** opens the same class as a
@@ -729,7 +741,7 @@ A class posts into **one** Classroom course for good: its links point there, so 
 
 #### On screen
 
-- **Curriculum tab — `ClassroomPanel`** (hidden while a draft is under review). *Not connected*: one large **Connect Google Classroom** button. *Connected*: who it is connected as, a **Disconnect** link, **Which Google Classroom class is this?** (a `Select`, chosen once), **When should students see each lesson?** — the two posting rules, *On the lesson day* and *When the unit starts* — and a large **Post to Google Classroom** (**Update Google Classroom** once anything is posted) beside a one-line summary (*n posted · n scheduled*, or after a run *Done — n added, n updated…*, or *Everything is already in Google Classroom.*). It renders nothing when the status route is unreachable. Written like the upload card beside it: sentences and large labelled buttons.
+- **Curriculum tab — `ClassroomPanel`** (hidden while a draft is under review). *Not connected*: one large **Connect Google Classroom** button. *Connected*: who it is connected as, a **Disconnect** link, **Which Google Classroom class is this?** (a `Select`, chosen once), **When should students see each lesson?** — the two posting rules, *On the lesson day* and *When the unit starts* — and a status line (*Updating Google Classroom…* or *Up to date · n posted · n scheduled*). **There is no post button**, because a teacher would miss it: `useClassroom` syncs when the class opens, when a class or rule is chosen, and after an approved curriculum. Failures retry quietly three times, then show *Some lessons haven't reached Google Classroom yet* with **Try again**. Syncing moves new items, dates and states; it does **not** yet push a changed title, description or due date to an item already there, remove one dropped from the curriculum, or bring edits made in Classroom back. It renders nothing when the status route is unreachable. Built on `ActionCard` (`components/teacher/ActionCard.tsx`) like the upload card beside it: every such card has the same icon tile (`IconTile`), and the icon appears once, never repeated on its button.
 - **Classroom tab — `ClassroomGrid`**, for any real class (see *The grid*).
 - **New class** — the page's first choice (see *Starting a class*).
 
@@ -793,7 +805,7 @@ app/
   page.tsx                    Landing + AuthPanel
   dashboard/                  The app — class list, class view (the subunit editor is by direct address only)
     new/                      Start a class: new or from Google Classroom, name, from my plan (→ AI draft) or blank
-  demo/                       Asks tour-or-no-tour, seeds the store, then enters
+  demo/                       Plays the demo video (public/demo.mp4)
   auth/callback/page.tsx      Where "Continue with Google" lands: finish signing in, then /dashboard
   api/
     curriculum/import/        ⭐ reads files in (Gemini key lives here)
@@ -1153,10 +1165,11 @@ Then open http://localhost:5000. Scripts: `dev`, `build`, `start`, `lint` (broke
 | `GEMINI_API_KEY` | **Server only.** The curriculum import route. Never `NEXT_PUBLIC_` |
 | `GEMINI_MODEL` | Optional, and best left unset. When set it is tried *before* the measured order (`PREFERRED_MODELS`), so pinning a busy model makes every import start on it — `gemini-3.8-flash` here was part of why imports failed on 2026-10-08. A retired name degrades to "used a different model", not to a broken import |
 
-`.env.local` is gitignored; `.env.example` is the template. **`/demo` needs none
-of them** — it is entirely local, which is also what makes it the fallback when
-Supabase is not configured. (`GEMINI_HEDGE=1`, described under the import route,
-is the one other optional switch and is not in `.env.example`.)
+`.env.local` is gitignored; `.env.example` is the template. **The live site needs
+them set in Vercel too, followed by a redeploy.** The `GOOGLE_` pair must be the
+Web client's, not the `SPIKE_` Desktop client's: the wrong one fails with
+`redirect_uri_mismatch`. (`GEMINI_HEDGE=1`, described under the import route, is
+the one other optional switch and is not in `.env.example`.)
 
 **Verified 2026-10-04** (v4.3): `npm run build` and `npm test` (18 specs) pass.
 Supabase was found **paused** and restored — see known issue 1. Against the
@@ -1256,7 +1269,7 @@ changes, because they make specific claims:
 - access is enforced by row-level security, not by the interface.
 
 `lib/site.ts` holds the contact address, product name and policy date so prose
-never hard-codes them. `app/robots.ts` keeps `/dashboard` and `/demo` out of
+never hard-codes them. `app/robots.ts` keeps `/dashboard` out of
 search results (tidiness, not security — RLS is the security), and
 `app/sitemap.ts` lists the three public routes. Both read
 `NEXT_PUBLIC_SITE_URL`, which should be set in production.

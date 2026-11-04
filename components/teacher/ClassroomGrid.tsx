@@ -9,6 +9,7 @@ import type { ClassroomConnection } from "@/lib/use-classroom";
 import { useClassroomGrid } from "@/lib/use-classroom-grid";
 import { UserAvatar } from "@/components/UserAvatar";
 import { cn } from "@/lib/utils";
+import { ActionCard } from "./ActionCard";
 
 const CELL_CLASS: Record<CellStatus, string> = {
   scheduled: "text-slate-400 dark:text-slate-500",
@@ -21,11 +22,9 @@ const CELL_CLASS: Record<CellStatus, string> = {
 
 function Notice({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="card px-5 py-5 cq-sm:px-6 flex flex-col cq-sm:flex-row cq-sm:items-center gap-4">
-      <GraduationCap className="w-10 h-10 shrink-0 text-primary dark:text-primary-glow" aria-hidden />
-      <p className="min-w-0 flex-1 text-[15px] leading-relaxed text-slate-600 dark:text-slate-300">{children}</p>
-      {action}
-    </section>
+    <ActionCard icon={GraduationCap} action={action}>
+      {children}
+    </ActionCard>
   );
 }
 
@@ -76,7 +75,6 @@ export function ClassroomGrid({
       <Notice
         action={
           <a href={classroom.connectHref()} className="btn btn-lg btn-primary shrink-0">
-            <GraduationCap className="w-5 h-5" />
             {status.state === "disconnected" ? "Connect Google Classroom" : "Reconnect Google Classroom"}
           </a>
         }

@@ -7,6 +7,7 @@ import { AppNavbar } from "@/components/AppNavbar";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
+import { IconTile } from "@/components/teacher/ActionCard";
 import { FileDrop, MAX_UPLOAD_MB, totalMegabytes } from "@/components/teacher/FileDrop";
 import { getCurrentUser } from "@/lib/auth-client";
 import { isDemoMode } from "@/lib/demo-seed";
@@ -62,7 +63,7 @@ function Choice({
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        "text-left rounded-2xl p-5 transition-colors",
+        "flex flex-col items-start text-left rounded-2xl p-5 transition-colors",
         selected
           ? "border-2 border-primary bg-primary/5 dark:bg-primary/10"
           : "border-2 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
@@ -245,14 +246,14 @@ export default function NewClassPage() {
               <Choice
                 selected={source === "new"}
                 onClick={() => setSource("new")}
-                icon={<Plus className="w-8 h-8 text-slate-500 dark:text-slate-400" />}
+                icon={<IconTile icon={Plus} />}
                 title="Create a new class"
                 body="Start a class from scratch in Modern Classroom. You can connect it to Google Classroom later."
               />
               <Choice
                 selected={source === "google"}
                 onClick={() => setSource("google")}
-                icon={<GraduationCap className="w-8 h-8 text-primary dark:text-primary-glow" />}
+                icon={<IconTile icon={GraduationCap} />}
                 title="Use my Google Classroom class"
                 body="Pick a class you already have in Google Classroom. Your lessons will be posted there for you."
               />
@@ -280,7 +281,6 @@ export default function NewClassPage() {
                   Connect your Google account once, and we&apos;ll show you the classes you teach in Google Classroom.
                 </p>
                 <a href={connectHref} className="btn btn-lg btn-primary">
-                  <GraduationCap className="w-5 h-5" />
                   Connect Google Classroom
                 </a>
               </div>
@@ -354,14 +354,14 @@ export default function NewClassPage() {
                 <Choice
                   selected={start === "plan"}
                   onClick={() => setStart("plan")}
-                  icon={<FileUp className="w-8 h-8 text-primary dark:text-primary-glow" />}
+                  icon={<IconTile icon={FileUp} />}
                   title="From my plan"
                   body="Upload your pacing guide or calendar and we'll set the class up for you. You'll check it before anything is saved."
                 />
                 <Choice
                   selected={start === "blank"}
                   onClick={() => setStart("blank")}
-                  icon={<PencilLine className="w-8 h-8 text-slate-500 dark:text-slate-400" />}
+                  icon={<IconTile icon={PencilLine} />}
                   title="Start blank"
                   body="Create the class now, and upload your plan on its Curriculum tab when you're ready."
                 />
