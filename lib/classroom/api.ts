@@ -1,4 +1,4 @@
-import type { OwnWork, PlannedTopic, PlannedWork } from "./plan";
+import { dueInstant, type OwnWork, type PlannedTopic, type PlannedWork, type WorkField } from "./plan";
 
 /**
  * The handful of Google Classroom REST calls the sync makes. Thin on purpose:
@@ -71,7 +71,7 @@ export async function createWork(
   courseId: string,
   topicId: string | undefined,
   work: PlannedWork
-): Promise<string> {
+): Promise<WireItem> {
   const body: Record<string, unknown> = {
     title: work.title,
     description: work.description || undefined,
@@ -87,37 +87,116 @@ export async function createWork(
       body.dueTime = work.due.time;
     }
   }
-  const created = await call<{ id: string }>(token, "POST", path(courseId, work), body);
-  return created.id;
+  return call<WireItem>(token, "POST", path(courseId, work), body);
 }
 
 /**
- * Move an existing draft to its new state or date. Publishing clears the
- * schedule.
+ * Send what changed about an existing item. Publishing clears the schedule, and
+ * a due date left out of the body with its fields in the mask is cleared.
+ * Returns the item as Classroom now has it, so that what Classroom does to the
+ * text on the way in isn't later mistaken for a teacher's edit.
  */
-export async function updateWorkState(
+export async function updateWork(
   token: string,
   courseId: string,
   classroomId: string,
-  work: PlannedWork
-): Promise<void> {
-  const fields = stateFields(work);
-  const mask = work.target.state === "PUBLISHED" ? "state" : "state,scheduledTime";
-  await call(
-    token,
-    "PATCH",
-    `${path(courseId, work)}/${classroomId}?updateMask=${mask}`,
-    fields
-  );
+  work: PlannedWork,
+  fields: WorkField[]
+): Promise<WireItem> {
+  const body: Record<string, unknown> = {};
+  const mask: string[] = [];
+  if (fields.includes("title")) {
+    mask.push("title");
+    body.title = work.title;
+  }
+  if (fields.includes("description")) {
+    mask.push("description");
+    body.description = work.description;
+  }
+  if (fields.includes("due") && work.kind === "assignment") {
+    mask.push("dueDate", "dueTime");
+    if (work.due) {
+      body.dueDate = work.due.date;
+      body.dueTime = work.due.time;
+    }
+  }
+  if (fields.includes("state")) {
+    // Google refuses `state` in the mask unless it is publishing: an item that
+    // stays a draft only has its schedule changed. In the mask and absent from
+    // the body, the schedule is cleared.
+    if (work.target.state === "PUBLISHED") {
+      mask.push("state");
+      body.state = "PUBLISHED";
+    } else {
+      mask.push("scheduledTime");
+      if (work.target.state === "SCHEDULED") body.scheduledTime = work.target.at;
+    }
+  }
+  return call<WireItem>(token, "PATCH", `${path(courseId, work)}/${classroomId}?updateMask=${mask.join(",")}`, body);
+}
+
+export async function renameTopic(token: string, courseId: string, topicId: string, name: string): Promise<void> {
+  await call(token, "PATCH", `/courses/${courseId}/topics/${topicId}?updateMask=name`, { name: name.slice(0, 100) });
+}
+
+export async function deleteTopic(token: string, courseId: string, topicId: string): Promise<void> {
+  await call(token, "DELETE", `/courses/${courseId}/topics/${topicId}`);
+}
+
+export async function listTopics(token: string, courseId: string): Promise<{ id: string; name: string }[]> {
+  const topics: { id: string; name: string }[] = [];
+  let pageToken: string | undefined;
+  do {
+    const query = new URLSearchParams({ pageSize: "100" });
+    if (pageToken) query.set("pageToken", pageToken);
+    const page = await call<{ topic?: { topicId: string; name?: string }[]; nextPageToken?: string }>(
+      token,
+      "GET",
+      `/courses/${courseId}/topics?${query}`
+    );
+    for (const t of page.topic ?? []) topics.push({ id: t.topicId, name: t.name ?? "" });
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return topics;
+}
+
+/** An item as Classroom sends it. */
+export interface WireItem {
+  id: string;
+  title?: string;
+  description?: string;
+  topicId?: string;
+  state?: string;
+  scheduledTime?: string;
+  dueDate?: { year: number; month: number; day: number };
+  dueTime?: { hours?: number; minutes?: number };
+  associatedWithDeveloper?: boolean;
+}
+
+export function wireState(row: WireItem): OwnWork["state"] {
+  return row.state === "PUBLISHED" ? "PUBLISHED" : row.scheduledTime ? "SCHEDULED" : "DRAFT";
+}
+
+export function wireDue(row: WireItem): string | null {
+  if (!row.dueDate) return null;
+  return dueInstant({
+    date: row.dueDate,
+    time: { hours: row.dueTime?.hours ?? 0, minutes: row.dueTime?.minutes ?? 0 },
+  });
+}
+
+export interface ClassroomWork extends OwnWork {
+  /** This app made it, so this app may change it. */
+  own: boolean;
 }
 
 /**
- * Every draft, scheduled and posted item in the course that this app made
- * (`associatedWithDeveloper`) — what the clean-up compares against the links.
- * Items the teacher made by hand are left out: the app never touches those.
+ * Every draft, scheduled and posted item in the course. Those this app made
+ * (`associatedWithDeveloper`) are what the links are squared against. The rest
+ * the teacher made by hand: the grid reads them, and the app never changes them.
  */
-export async function listOwnWork(token: string, courseId: string): Promise<OwnWork[]> {
-  const own: OwnWork[] = [];
+export async function listWork(token: string, courseId: string): Promise<ClassroomWork[]> {
+  const own: ClassroomWork[] = [];
   const kinds = [
     { kind: "assignment" as const, path: "courseWork", list: "courseWork", states: "courseWorkStates" },
     { kind: "material" as const, path: "courseWorkMaterials", list: "courseWorkMaterial", states: "courseWorkMaterialStates" },
@@ -130,23 +209,18 @@ export async function listOwnWork(token: string, courseId: string): Promise<OwnW
       query.append(k.states, "DRAFT");
       if (pageToken) query.set("pageToken", pageToken);
       const page = await call<Record<string, unknown>>(token, "GET", `/courses/${courseId}/${k.path}?${query}`);
-      const rows = (page[k.list] ?? []) as {
-        id: string;
-        title?: string;
-        topicId?: string;
-        state?: string;
-        scheduledTime?: string;
-        associatedWithDeveloper?: boolean;
-      }[];
+      const rows = (page[k.list] ?? []) as WireItem[];
       for (const row of rows) {
-        if (!row.associatedWithDeveloper) continue;
         own.push({
           id: row.id,
           kind: k.kind,
           title: row.title ?? "",
           topicId: row.topicId,
-          state: row.state === "PUBLISHED" ? "PUBLISHED" : row.scheduledTime ? "SCHEDULED" : "DRAFT",
+          state: wireState(row),
           scheduledFor: row.scheduledTime ?? null,
+          description: row.description ?? "",
+          due: wireDue(row),
+          own: Boolean(row.associatedWithDeveloper),
         });
       }
       pageToken = page.nextPageToken as string | undefined;
@@ -155,7 +229,11 @@ export async function listOwnWork(token: string, courseId: string): Promise<OwnW
   return own;
 }
 
-export async function deleteWork(token: string, courseId: string, item: OwnWork): Promise<void> {
+export async function deleteWork(
+  token: string,
+  courseId: string,
+  item: { id: string; kind: "material" | "assignment" }
+): Promise<void> {
   const path = item.kind === "material" ? "courseWorkMaterials" : "courseWork";
   await call(token, "DELETE", `/courses/${courseId}/${path}/${item.id}`);
 }

@@ -25,7 +25,7 @@ export type ClassroomStatus =
       courses: Course[];
       courseId: string | null;
       postingRule: PostingRule;
-      counts: { posted: number; scheduled: number; drafts: number };
+      counts: { posted: number; scheduled: number; drafts: number; kept?: number };
     };
 
 export interface PostSummary {
@@ -46,6 +46,8 @@ export function useClassroom(classId: string, enabled: boolean) {
   const [status, setStatus] = useState<ClassroomStatus>({ state: enabled ? "loading" : "unavailable" });
   const [syncing, setSyncing] = useState(false);
   const [syncFailed, setSyncFailed] = useState(false);
+  // Counts finished syncs, for anything showing what a sync may have changed.
+  const [syncCount, setSyncCount] = useState(0);
   const [error, setError] = useState("");
   const statusRef = useRef(status);
   statusRef.current = status;
@@ -130,6 +132,7 @@ export function useClassroom(classId: string, enabled: boolean) {
         .then(async (summary) => {
           if (summary.failed > 0) return again();
           setSyncing(inFlight.current !== null);
+          setSyncCount((n) => n + 1);
           await refresh();
         })
         .catch(again);
@@ -189,7 +192,7 @@ export function useClassroom(classId: string, enabled: boolean) {
     return `/api/google/connect?returnTo=${encodeURIComponent(here)}`;
   }, []);
 
-  return { status, syncing, syncFailed, error, refresh, save, retrySync, postQuietly, disconnect, connectHref };
+  return { status, syncing, syncFailed, syncCount, error, refresh, save, retrySync, postQuietly, disconnect, connectHref };
 }
 
 export type ClassroomConnection = ReturnType<typeof useClassroom>;

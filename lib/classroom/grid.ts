@@ -1,5 +1,13 @@
 import type { CurriculumUnit } from "../db/types";
-import { checkpointKey, lessonKey, parseCurriculumDate, trackKey, type LinkState } from "./plan";
+import {
+  checkpointKey,
+  lessonKey,
+  parseCurriculumDate,
+  trackKey,
+  type ClassroomLink,
+  type ItemFields,
+  type LinkState,
+} from "./plan";
 
 /**
  * The progress grid for a class that lives in Google Classroom: one column per
@@ -64,8 +72,11 @@ export interface CachedSubmission {
 
 export interface GridLink {
   itemKey: string;
+  kind?: ClassroomLink["kind"];
   state: LinkState;
   scheduledFor: string | null;
+  sent?: ItemFields | null;
+  classroom?: ItemFields | null;
 }
 
 export type CellStatus = "scheduled" | "returned" | "turned-in" | "late" | "missing" | "not-yet";
@@ -81,7 +92,7 @@ export const CELL_LABEL: Record<CellStatus, string> = {
 
 function isPosted(link: GridLink | undefined, now: Date): boolean {
   if (!link || link.state === "DRAFT" || link.state === "GONE") return false;
-  if (link.state === "PUBLISHED") return true;
+  if (link.state === "PUBLISHED" || link.state === "KEPT") return true;
   // Classroom published it on its date; our record only says it was scheduled.
   return link.scheduledFor !== null && new Date(link.scheduledFor).getTime() <= now.getTime();
 }

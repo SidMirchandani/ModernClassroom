@@ -4,9 +4,19 @@ import { useMemo } from "react";
 import { GraduationCap, Loader2, RefreshCw } from "lucide-react";
 import type { CurriculumUnit } from "@/lib/db/types";
 import { getInitialsFromName } from "@/lib/avatar";
-import { CELL_LABEL, cellStatus, gridColumns, studentOverall, type CellStatus } from "@/lib/classroom/grid";
+import { externalColumns, visibleColumns } from "@/lib/classroom/edits";
+import {
+  CELL_LABEL,
+  cellStatus,
+  gridColumns,
+  studentOverall,
+  type CachedSubmission,
+  type CellStatus,
+  type GridColumn,
+  type GridLink,
+} from "@/lib/classroom/grid";
 import type { ClassroomConnection } from "@/lib/use-classroom";
-import { useClassroomGrid } from "@/lib/use-classroom-grid";
+import { useClassroomGrid, type GridStudent } from "@/lib/use-classroom-grid";
 import { UserAvatar } from "@/components/UserAvatar";
 import { cn } from "@/lib/utils";
 import { ActionCard } from "./ActionCard";
@@ -46,8 +56,9 @@ export function ClassroomGrid({
 }) {
   const { status } = classroom;
   const linked = status.state === "connected" && status.courseId !== null;
-  const grid = useClassroomGrid(classId, linked);
-  const columns = useMemo(() => (unit ? gridColumns(unit) : []), [unit]);
+  const grid = useClassroomGrid(classId, linked, classroom.syncCount);
+  const columns = useMemo(() => (unit ? visibleColumns(gridColumns(unit), grid.links) : []), [unit, grid.links]);
+  const byHand = useMemo(() => externalColumns(grid.links), [grid.links]);
 
   if (status.state === "loading") {
     return (
@@ -99,10 +110,6 @@ export function ClassroomGrid({
     );
   }
 
-  const linkFor = new Map(grid.links.map((l) => [l.itemKey, l]));
-  const workFor = new Map(grid.submissions.map((s) => [`${s.userId} ${s.itemKey}`, s]));
-  const now = new Date();
-
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -141,62 +148,99 @@ export function ClassroomGrid({
             : "Looking for your students…"}
         </div>
       ) : (
-        <div data-tour="progress-table" className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800">
-                  <th className="text-left px-4 py-3 font-semibold text-slate-500 min-w-[12rem] sticky left-0 z-10 float-pane-sticky">
-                    Student
-                  </th>
-                  {columns.map((column) => (
-                    <th key={column.key} className="min-w-[7rem] px-2 py-3 text-center align-bottom font-semibold text-slate-500">
-                      <div className={cn(column.kind === "checkpoint" && "text-slate-900 dark:text-slate-100")}>
-                        {column.head}
-                      </div>
-                      {column.detail && (
-                        <div className="mt-0.5 text-xs font-normal leading-snug text-slate-500 dark:text-slate-400">
-                          {column.detail}
-                        </div>
-                      )}
-                      {column.date && (
-                        <div className="mt-0.5 text-xs font-normal text-slate-400 dark:text-slate-500">{column.date}</div>
-                      )}
-                    </th>
-                  ))}
-                  <th className="min-w-[5rem] px-3 py-3 text-center font-semibold text-slate-500">Overall</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grid.students.map((student) => {
-                  const statuses = columns.map((column) =>
-                    cellStatus(column, linkFor.get(column.key), workFor.get(`${student.userId} ${column.key}`), now)
-                  );
-                  const overall = studentOverall(statuses);
-                  return (
-                    <tr key={student.userId} className="border-b border-slate-100 dark:border-slate-800/50 last:border-0">
-                      <td className="px-4 py-3 sticky left-0 z-10 float-pane-sticky">
-                        <div className="flex items-center gap-2">
-                          <UserAvatar initials={getInitialsFromName(student.name)} size="sm" />
-                          <span className="font-medium whitespace-nowrap">{student.name}</span>
-                        </div>
-                      </td>
-                      {columns.map((column, i) => (
-                        <td key={column.key} className={cn("px-2 py-3 text-center text-xs", CELL_CLASS[statuses[i]])}>
-                          {CELL_LABEL[statuses[i]]}
-                        </td>
-                      ))}
-                      <td className="px-3 py-3 text-center text-xs font-semibold">
-                        {overall === null ? "—" : `${overall}%`}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <>
+          <div data-tour="progress-table">
+            <WorkTable columns={columns} students={grid.students} links={grid.links} submissions={grid.submissions} />
           </div>
-        </div>
+          {byHand.length > 0 && (
+            <div className="space-y-3 pt-5">
+              <div>
+                <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">
+                  Also in Google Classroom
+                </h3>
+                <p className="mt-0.5 text-[15px] text-slate-600 dark:text-slate-300">
+                  Assignments you posted there yourself. To change them, use Google Classroom.
+                </p>
+              </div>
+              <WorkTable columns={byHand} students={grid.students} links={grid.links} submissions={grid.submissions} />
+            </div>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+function WorkTable({
+  columns,
+  students,
+  links,
+  submissions,
+}: {
+  columns: GridColumn[];
+  students: GridStudent[];
+  links: GridLink[];
+  submissions: CachedSubmission[];
+}) {
+  const linkFor = new Map(links.map((l) => [l.itemKey, l]));
+  const workFor = new Map(submissions.map((s) => [`${s.userId} ${s.itemKey}`, s]));
+  const now = new Date();
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 dark:border-slate-800">
+              <th className="text-left px-4 py-3 font-semibold text-slate-500 min-w-[12rem] sticky left-0 z-10 float-pane-sticky">
+                Student
+              </th>
+              {columns.map((column) => (
+                <th key={column.key} className="min-w-[7rem] px-2 py-3 text-center align-bottom font-semibold text-slate-500">
+                  <div className={cn(column.kind === "checkpoint" && "text-slate-900 dark:text-slate-100")}>
+                    {column.head}
+                  </div>
+                  {column.detail && (
+                    <div className="mt-0.5 text-xs font-normal leading-snug text-slate-500 dark:text-slate-400">
+                      {column.detail}
+                    </div>
+                  )}
+                  {column.date && (
+                    <div className="mt-0.5 text-xs font-normal text-slate-400 dark:text-slate-500">{column.date}</div>
+                  )}
+                </th>
+              ))}
+              <th className="min-w-[5rem] px-3 py-3 text-center font-semibold text-slate-500">Overall</th>
+            </tr>
+          </thead>
+          <tbody>
+            {students.map((student) => {
+              const statuses = columns.map((column) =>
+                cellStatus(column, linkFor.get(column.key), workFor.get(`${student.userId} ${column.key}`), now)
+              );
+              const overall = studentOverall(statuses);
+              return (
+                <tr key={student.userId} className="border-b border-slate-100 dark:border-slate-800/50 last:border-0">
+                  <td className="px-4 py-3 sticky left-0 z-10 float-pane-sticky">
+                    <div className="flex items-center gap-2">
+                      <UserAvatar initials={getInitialsFromName(student.name)} size="sm" />
+                      <span className="font-medium whitespace-nowrap">{student.name}</span>
+                    </div>
+                  </td>
+                  {columns.map((column, i) => (
+                    <td key={column.key} className={cn("px-2 py-3 text-center text-xs", CELL_CLASS[statuses[i]])}>
+                      {CELL_LABEL[statuses[i]]}
+                    </td>
+                  ))}
+                  <td className="px-3 py-3 text-center text-xs font-semibold">
+                    {overall === null ? "—" : `${overall}%`}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

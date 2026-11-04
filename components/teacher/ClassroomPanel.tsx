@@ -56,7 +56,7 @@ export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }
   }
 
   const course = status.courses.find((c) => c.id === status.courseId);
-  const { posted, scheduled } = status.counts;
+  const { posted, scheduled, kept = 0 } = status.counts;
 
   return (
     <ActionCard
@@ -168,6 +168,14 @@ export function ClassroomPanel({ classroom }: { classroom: ClassroomConnection }
                 </span>
               )}
             </div>
+          )}
+
+          {kept > 0 && (
+            <p className="text-[15px] text-slate-600 dark:text-slate-300">
+              {kept === 1 ? "1 item" : `${kept} items`} you took out of your curriculum stayed in Google Classroom,
+              because students have work on {kept === 1 ? "it" : "them"}. You can delete {kept === 1 ? "it" : "them"} there
+              if you want to.
+            </p>
           )}
 
           {error && <p className="text-[15px] text-red-700 dark:text-red-400">{error}</p>}

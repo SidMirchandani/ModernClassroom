@@ -2,12 +2,20 @@ import { describe, expect, it } from "vitest";
 import type { CurriculumUnit } from "../db/types";
 import type { ResourceTrack } from "../types";
 import {
+  absorb,
+  baselines,
   parseCurriculumDate,
+  plannedFields,
+  rekeys,
+  removals,
+  sentAfter,
   planSync,
   plannedItems,
   tidy,
   zonedInstant,
   type ClassroomLink,
+  type ItemFields,
+  type OwnWork,
   type PlannedWork,
   type PostingRule,
 } from "./plan";
@@ -285,4 +293,258 @@ describe("tidy: squaring Classroom with the links", () => {
     const result = tidy([own("z", "Something else", "t3")], [], planned(), topics);
     expect(result).toEqual({ adopt: [], remove: [] });
   });
+});
+
+describe("two-way sync", () => {
+
+  /** Every planned item, linked and in step, as a settled class would be. */
+  function settled(): ClassroomLink[] {
+    return plan().map((item) => ({
+      itemKey: item.key,
+      kind: item.kind,
+      classroomId: `id-${item.key}`,
+      state: item.kind === "topic" || item.target.state === "PUBLISHED" ? "PUBLISHED" : "SCHEDULED",
+      scheduledFor: item.kind !== "topic" && item.target.state === "SCHEDULED" ? item.target.at : null,
+      sent: plannedFields(item),
+    }));
+  }
+  const input = (links: ClassroomLink[], rule: PostingRule = "lesson_day") => ({
+    units: units(),
+    rule,
+    links,
+    now: NOW,
+    timeZone: TZ,
+  });
+  const edit = (links: ClassroomLink[], key: string, sent: Partial<ItemFields>) =>
+    links.map((l) => (l.itemKey === key ? { ...l, sent: { ...l.sent!, ...sent } } : l));
+
+  it("has nothing to do when the curriculum has not changed", () => {
+    expect(planSync(input(settled()))).toEqual([]);
+  });
+
+  it("sends a changed title, even to something already posted", () => {
+    const ops = planSync(input(edit(settled(), "practice:3.1::textbook", { title: "old" })));
+    expect(ops).toHaveLength(1);
+    expect(ops[0]).toMatchObject({ type: "update", fields: ["title"] });
+  });
+
+  it("sends a changed due date", () => {
+    const ops = planSync(input(edit(settled(), "checkpoint:q3a", { due: "2026-10-30T03:59:00.000Z" })));
+    expect(ops[0]).toMatchObject({ type: "update", fields: ["due"] });
+  });
+
+  it("does not treat a due date passing as an edit", () => {
+    const links = edit(settled(), "practice:3.1::textbook", { due: "2026-09-29T03:59:00.000Z" });
+    expect(planSync(input(links))).toEqual([]);
+  });
+
+  it("clears a due date still ahead when the curriculum no longer has one", () => {
+    const links = edit(settled(), "practice:3.1::textbook", { due: "2026-12-01T03:59:00.000Z" });
+    expect(planSync(input(links))[0]).toMatchObject({ type: "update", fields: ["due"] });
+  });
+
+  it("moves a scheduled item when its date changes, but never a posted one", () => {
+    const scheduled = planSync(input(edit(settled(), "practice:3.2::textbook", { postAt: "2026-11-01T11:00:00.000Z" })));
+    expect(scheduled[0]).toMatchObject({ type: "update", fields: ["state"] });
+
+    const posted = planSync(input(edit(settled(), "practice:3.1::textbook", { postAt: "2026-11-01T11:00:00.000Z" })));
+    expect(posted).toEqual([]);
+  });
+
+  it("leaves a teacher's reschedule in Classroom alone", () => {
+    const links = settled().map((l) =>
+      l.itemKey === "practice:3.2::textbook" ? { ...l, scheduledFor: "2026-12-25T12:00:00.000Z" } : l
+    );
+    expect(planSync(input(links))).toEqual([]);
+  });
+
+  it("leaves a teacher's edit in Classroom alone until the curriculum changes it", () => {
+    const edited = settled().map((l) =>
+      l.itemKey === "checkpoint:q3a" ? { ...l, classroom: { title: "Pop quiz" } } : l
+    );
+    expect(planSync(input(edited))).toEqual([]);
+
+    const fileChanged = edit(edited, "checkpoint:q3a", { title: "older" });
+    expect(planSync(input(fileChanged))[0]).toMatchObject({ type: "update", fields: ["title"] });
+  });
+
+  it("renames a topic when the unit's title changes", () => {
+    const ops = planSync(input(edit(settled(), "unit:u3", { title: "old" })));
+    expect(ops[0]).toMatchObject({ type: "rename", item: { name: "Unit 3: Linear Functions" } });
+  });
+
+  it("never recreates what was deleted in Classroom", () => {
+    const links = settled().map((l) => (l.itemKey === "checkpoint:q3a" ? { ...l, state: "GONE" as const } : l));
+    expect(planSync(input(links))).toEqual([]);
+  });
+
+  it("starts counting edits from now for links made before this existed", () => {
+    const old = settled().map((l) => ({ ...l, sent: null }));
+    const recorded = baselines(plan(), old);
+    expect(recorded).toHaveLength(old.length);
+    expect(planSync(input(old.map((l) => recorded.find((r) => r.itemKey === l.itemKey)!)))).toEqual([]);
+  });
+
+  describe("absorb", () => {
+    const keys = new Set(plan().map((p) => p.key));
+    const asOwn = (links: ClassroomLink[]): OwnWork[] =>
+      links
+        .filter((l) => l.kind !== "topic")
+        .map((l) => ({
+          id: l.classroomId,
+          kind: l.kind as "material" | "assignment",
+          title: l.sent!.title,
+          state: l.state as OwnWork["state"],
+          scheduledFor: l.scheduledFor,
+          description: l.sent!.description,
+          due: l.sent!.due,
+        }));
+    const topics = (links: ClassroomLink[]) =>
+      links.filter((l) => l.kind === "topic").map((l) => ({ id: l.classroomId, name: l.sent!.title }));
+
+    it("changes nothing when both sides agree, however dates and keys are written", () => {
+      const links = settled().map((l) => ({ ...l, classroom: l.sent }));
+      const first = absorb(links, asOwn(links), topics(links), keys);
+      const inPostgres = links.map((l) => {
+        const now = first.find((c) => c.itemKey === l.itemKey) ?? l;
+        const c = now.classroom!;
+        return {
+          ...now,
+          scheduledFor: now.scheduledFor ? now.scheduledFor.replace(".000Z", "+00:00") : null,
+          classroom: { due: c.due, title: c.title, postAt: c.postAt, description: c.description },
+        };
+      });
+      expect(absorb(inPostgres, asOwn(links), topics(links), keys)).toEqual([]);
+    });
+
+    it("marks what is no longer in Classroom as gone", () => {
+      const links = settled();
+      const own = asOwn(links).filter((o) => o.id !== "id-checkpoint:q3a");
+      const changed = absorb(links, own, topics(links), keys);
+      expect(changed.find((l) => l.itemKey === "checkpoint:q3a")).toMatchObject({ state: "GONE" });
+    });
+
+    it("does not believe an empty answer", () => {
+      const links = settled();
+      expect(absorb(links, [], [], keys).filter((l) => l.state === "GONE")).toEqual([]);
+    });
+
+    it("records an edit and a publish made in Classroom", () => {
+      const links = settled();
+      const own = asOwn(links).map((o) =>
+        o.id === "id-practice:3.2::textbook"
+          ? { ...o, title: "Renamed", state: "PUBLISHED" as const, scheduledFor: null }
+          : o
+      );
+      const changed = absorb(links, own, topics(links), keys).find((l) => l.itemKey === "practice:3.2::textbook");
+      expect(changed).toMatchObject({ state: "PUBLISHED", scheduledFor: null, classroom: { title: "Renamed" } });
+    });
+
+    it("ignores work posted by hand", () => {
+      const links: ClassroomLink[] = [
+        ...settled(),
+        { itemKey: "external:9", kind: "external", classroomId: "9", state: "PUBLISHED", scheduledFor: null },
+      ];
+      const changed = absorb(links, asOwn(settled()), topics(settled()), keys);
+      expect(changed.some((l) => l.itemKey === "external:9")).toBe(false);
+    });
+
+    it("brings a kept item back when the curriculum has it again", () => {
+      const links = settled().map((l) =>
+        l.itemKey === "checkpoint:q3a" ? { ...l, state: "KEPT" as const } : l
+      );
+      const own = asOwn(settled());
+      const back = absorb(links, own, topics(links), keys).find((l) => l.itemKey === "checkpoint:q3a");
+      expect(back?.state).not.toBe("KEPT");
+
+      const without = new Set([...keys].filter((k) => k !== "checkpoint:q3a"));
+      const stays = absorb(links, own, topics(links), without).find((l) => l.itemKey === "checkpoint:q3a");
+      expect(stays?.state).toBe("KEPT");
+    });
+  });
+
+  it("keeps the due date on record when an update did not touch it", () => {
+    const item = work("practice:3.1::textbook");
+    const link = settled().find((l) => l.itemKey === item.key)!;
+    const past = { ...link, sent: { ...link.sent!, due: "2026-09-29T03:59:00.000Z" } };
+    expect(sentAfter(item, past, ["title"]).due).toBe("2026-09-29T03:59:00.000Z");
+    expect(sentAfter(item, past, ["due"]).due).toBeNull();
+  });
+
+  it("doesn't record a past due date as a teacher's edit on older links", () => {
+    const item = work("practice:3.1::textbook");
+    const link = settled().find((l) => l.itemKey === item.key)!;
+    const older = { ...link, sent: null, classroom: { title: item.title, due: "2026-09-29T03:59:00.000Z" } };
+    expect(baselines([item], [older])[0].sent?.due).toBe("2026-09-29T03:59:00.000Z");
+  });
+
+  describe("removals", () => {
+    const extra = (over: Partial<ClassroomLink>): ClassroomLink => ({
+      itemKey: "practice:old",
+      kind: "assignment",
+      classroomId: "old",
+      state: "PUBLISHED",
+      scheduledFor: null,
+      sent: { title: "9.9 Old" },
+      ...over,
+    });
+
+    it("finds what the curriculum dropped", () => {
+      const links = [...settled(), extra({}), extra({ itemKey: "unit:old", kind: "topic" })];
+      const gone = removals(links, plan());
+      expect(gone.work.map((l) => l.itemKey)).toEqual(["practice:old"]);
+      expect(gone.topics.map((l) => l.itemKey)).toEqual(["unit:old"]);
+    });
+
+    it("removes nothing if the plan is empty", () => {
+      expect(removals([extra({})], []).work).toEqual([]);
+    });
+
+    it("leaves kept and hand-posted items, and forgets deleted ones", () => {
+      const gone = removals(
+        [
+          extra({ state: "KEPT" }),
+          extra({ itemKey: "external:1", kind: "external" }),
+          extra({ itemKey: "practice:deleted", state: "GONE" }),
+        ],
+        plan()
+      );
+      expect(gone.work).toEqual([]);
+      expect(gone.forget.map((l) => l.itemKey)).toEqual(["practice:deleted"]);
+    });
+  });
+
+  describe("rekeys", () => {
+    it("keeps a renumbered lesson's Classroom item", () => {
+      const item = work("practice:3.2::textbook");
+      const links = settled()
+        .filter((l) => l.itemKey !== item.key)
+        .concat({
+          itemKey: "practice:3.9::textbook",
+          kind: "assignment",
+          classroomId: "kept",
+          state: "PUBLISHED",
+          scheduledFor: null,
+          sent: { title: item.title.replace("3.2", "3.9") },
+        });
+      expect(rekeys(links, plan())).toEqual([{ from: "practice:3.9::textbook", to: item.key }]);
+    });
+
+    it("does not guess between two candidates", () => {
+      const item = work("practice:3.2::textbook");
+      const twin = (key: string): ClassroomLink => ({
+        itemKey: key,
+        kind: "assignment",
+        classroomId: key,
+        state: "PUBLISHED",
+        scheduledFor: null,
+        sent: { title: item.title.replace("3.2", key.includes("a") ? "3.8" : "3.9") },
+      });
+      const links = settled()
+        .filter((l) => l.itemKey !== item.key)
+        .concat(twin("practice:a"), twin("practice:b"));
+      expect(rekeys(links, plan())).toEqual([]);
+    });
+  });
+
 });

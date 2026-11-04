@@ -20,6 +20,12 @@ import type { Checkpoint, ResourceTrack, Section, TrackStep } from "../types";
  * when its unit starts — and Classroom itself publishes a scheduled draft on
  * its date (proven in M1), so nothing of ours has to be running then. To
  * change when something appears, the teacher changes its date.
+ *
+ * Sync runs both ways (ADR-012). A link remembers what the curriculum said when
+ * it last reached Classroom (`sent`) and what Classroom last said (`classroom`).
+ * The curriculum differing from `sent` is an edit here, and is sent. Classroom
+ * differing is an edit there, and is left alone, so a teacher's change in
+ * Classroom survives until the curriculum changes that same thing.
  */
 
 export type PostingRule = "lesson_day" | "unit_start";
@@ -34,14 +40,26 @@ export type Target =
   | { state: "SCHEDULED"; at: string }
   | { state: "DRAFT" };
 
-export type LinkState = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "GONE";
+/** KEPT: dropped from the curriculum, but students have work on it, so it stays. */
+export type LinkState = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "GONE" | "KEPT";
+
+/** The parts of an item either side can change. Times are ISO instants. */
+export interface ItemFields {
+  title: string;
+  description?: string;
+  due?: string | null;
+  postAt?: string | null;
+}
 
 export interface ClassroomLink {
   itemKey: string;
-  kind: ItemKind;
+  /** "external" is work the teacher posted by hand: read, never touched. */
+  kind: ItemKind | "external";
   classroomId: string;
   state: LinkState;
   scheduledFor: string | null;
+  sent?: ItemFields | null;
+  classroom?: ItemFields | null;
 }
 
 export interface ClassroomDue {
@@ -65,13 +83,18 @@ export interface PlannedWork {
   maxPoints?: number;
   due?: ClassroomDue;
   target: Target;
+  /** When it is meant to appear, whether or not that has passed. */
+  postAt: string | null;
 }
 
 export type PlannedItem = PlannedTopic | PlannedWork;
 
+export type WorkField = "title" | "description" | "due" | "state";
+
 export type SyncOp =
   | { type: "create"; item: PlannedItem }
-  | { type: "update"; item: PlannedWork; link: ClassroomLink };
+  | { type: "update"; item: PlannedWork; link: ClassroomLink; fields: WorkField[] }
+  | { type: "rename"; item: PlannedTopic; link: ClassroomLink };
 
 export interface PlanInput {
   units: CurriculumUnit[];
@@ -159,6 +182,13 @@ export function zonedInstant(
   return new Date(second);
 }
 
+/** A Classroom due date as one instant, the form both sides are compared in. */
+export function dueInstant(due: ClassroomDue | undefined): string | null {
+  if (!due) return null;
+  const { date, time } = due;
+  return new Date(Date.UTC(date.year, date.month - 1, date.day, time.hours, time.minutes)).toISOString();
+}
+
 /** Classroom takes a due date and time as separate UTC fields. */
 export function toClassroomDue(instant: Date): ClassroomDue {
   return {
@@ -205,6 +235,8 @@ export function plannedItems(input: Omit<PlanInput, "links">): PlannedItem[] {
     const at = zonedInstant(postDay, POST_AT, timeZone);
     return at.getTime() <= now.getTime() ? { state: "PUBLISHED" } : { state: "SCHEDULED", at: at.toISOString() };
   };
+  const postAt = (postDay: CalendarDay | null): string | null =>
+    postDay ? zonedInstant(postDay, POST_AT, timeZone).toISOString() : null;
 
   // Only a due date still ahead: Classroom has no use for one already past.
   const due = (day: CalendarDay | null): ClassroomDue | undefined => {
@@ -238,6 +270,7 @@ export function plannedItems(input: Omit<PlanInput, "links">): PlannedItem[] {
           links: [],
           due: due(day),
           target: target(postDay),
+          postAt: postAt(postDay),
         });
 
       if (tracks.length === 0) {
@@ -263,6 +296,7 @@ export function plannedItems(input: Omit<PlanInput, "links">): PlannedItem[] {
             links,
             due: step === "practice" ? due(day) : undefined,
             target: target(postDay),
+            postAt: postAt(postDay),
           });
         }
       }
@@ -280,6 +314,7 @@ export function plannedItems(input: Omit<PlanInput, "links">): PlannedItem[] {
         maxPoints: checkpoint.maxPoints ?? 100,
         due: due(day),
         target: target(rule === "unit_start" ? unitStart : day),
+        postAt: postAt(rule === "unit_start" ? unitStart : day),
       });
     };
 
@@ -308,12 +343,41 @@ function sameTarget(link: ClassroomLink, target: Target): boolean {
   return link.state === target.state;
 }
 
+/** What the curriculum currently says about an item. */
+export function plannedFields(item: PlannedItem): ItemFields {
+  if (item.kind === "topic") return { title: item.name };
+  return { title: item.title, description: item.description.trim(), due: dueInstant(item.due), postAt: item.postAt };
+}
+
+/** What an existing work item needs sent, judged against what was last sent. */
+function workChanges(item: PlannedWork, link: ClassroomLink, now: Date): WorkField[] {
+  const sent = link.sent;
+  // Made before links remembered this: only its state and schedule can be judged.
+  if (!sent) return !sameTarget(link, item.target) && link.state !== "PUBLISHED" ? ["state"] : [];
+
+  const fields: WorkField[] = [];
+  const wanted = plannedFields(item);
+  if (wanted.title !== sent.title) fields.push("title");
+  if (wanted.description !== (sent.description ?? "")) fields.push("description");
+
+  // A due date already past is simply not sent, which isn't a change. It only
+  // needs clearing if the one Classroom has is still ahead.
+  const sentDue = sent.due ?? null;
+  if (wanted.due ? wanted.due !== sentDue : sentDue !== null && new Date(sentDue).getTime() > now.getTime()) {
+    fields.push("due");
+  }
+
+  // Classroom cannot un-publish. Otherwise only a changed date moves it, so a
+  // teacher's own reschedule in Classroom stays where they put it.
+  if (link.state !== "PUBLISHED" && (wanted.postAt ?? null) !== (sent.postAt ?? null)) fields.push("state");
+  return fields;
+}
+
 /**
- * The calls to make. New items are created. An item already in Classroom is
- * only ever moved forward: a draft or scheduled post gets its new state or
- * date (the rule changed, or its time has come). A published item is left alone —
- * Classroom cannot un-publish — and one the teacher deleted in Classroom
- * (GONE) is never recreated, because Classroom wins (ADR-008).
+ * The calls to make. New items are created, and an edit to the curriculum is
+ * sent to the item it changed. One the teacher deleted in Classroom (GONE) is
+ * never recreated, and one left over from the curriculum is `removals`' to
+ * deal with, because Classroom wins (ADR-008).
  */
 export function planSync(input: PlanInput): SyncOp[] {
   const links = new Map(input.links.map((l) => [l.itemKey, l]));
@@ -324,11 +388,183 @@ export function planSync(input: PlanInput): SyncOp[] {
       ops.push({ type: "create", item });
       continue;
     }
-    if (item.kind === "topic") continue;
-    if (link.state === "PUBLISHED" || link.state === "GONE") continue;
-    if (!sameTarget(link, item.target)) ops.push({ type: "update", item, link });
+    if (link.state === "GONE") continue;
+    if (item.kind === "topic") {
+      if (link.sent && link.sent.title !== item.name) ops.push({ type: "rename", item, link });
+      continue;
+    }
+    const fields = workChanges(item, link, input.now);
+    if (fields.length) ops.push({ type: "update", item, link, fields });
   }
   return ops;
+}
+
+/**
+ * What to remember as sent after an update. A due date that wasn't part of it
+ * stays as it was: the plan stops mentioning one once it has passed, and a
+ * teacher may have moved it in Classroom, and neither should look like a change.
+ */
+export function sentAfter(item: PlannedItem, link: ClassroomLink, fields: WorkField[]): ItemFields {
+  const wanted = plannedFields(item);
+  return fields.includes("due") || !link.sent ? wanted : { ...wanted, due: link.sent.due ?? null };
+}
+
+/**
+ * Links from before `sent` existed, and what to record so edits count from here
+ * on. A due date the plan no longer mentions has passed, so what Classroom has
+ * is the same date rather than an edit.
+ */
+export function baselines(planned: PlannedItem[], links: ClassroomLink[]): ClassroomLink[] {
+  const byKey = new Map(links.map((l) => [l.itemKey, l]));
+  const out: ClassroomLink[] = [];
+  for (const item of planned) {
+    const link = byKey.get(item.key);
+    if (!link || link.sent) continue;
+    const sent = plannedFields(item);
+    if (item.kind !== "topic" && !sent.due && link.classroom?.due) sent.due = link.classroom.due;
+    out.push({ ...link, sent });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Coming back: what Classroom says now
+// ---------------------------------------------------------------------------
+
+/** The same moment, however it was written: Postgres and Google spell them differently. */
+function sameInstant(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return (a ?? null) === (b ?? null);
+  return new Date(a).getTime() === new Date(b).getTime();
+}
+
+function sameFields(a: ItemFields | null | undefined, b: ItemFields | null | undefined): boolean {
+  if (!a || !b) return (a ?? null) === (b ?? null);
+  return (
+    a.title === b.title &&
+    (a.description ?? "") === (b.description ?? "") &&
+    sameInstant(a.due, b.due) &&
+    sameInstant(a.postAt, b.postAt)
+  );
+}
+
+function sameLink(a: ClassroomLink, b: ClassroomLink): boolean {
+  return a.state === b.state && sameInstant(a.scheduledFor, b.scheduledFor) && sameFields(a.classroom, b.classroom);
+}
+
+/**
+ * Squares the links with Classroom: a teacher's edit is recorded, what was
+ * published or moved takes its new state, and what is no longer there is GONE.
+ * Returns only the links that changed.
+ *
+ * An empty answer for a class with items is not believed. A whole class being
+ * deleted is far less likely than a wrong answer, and believing it would stop
+ * the class syncing.
+ */
+export function absorb(
+  links: ClassroomLink[],
+  own: OwnWork[],
+  topics: { id: string; name: string }[],
+  plannedKeys: Set<string>
+): ClassroomLink[] {
+  const work = new Map(own.map((o) => [o.id, o]));
+  const topicById = new Map(topics.map((t) => [t.id, t]));
+  const believeWork = own.length > 0;
+  const believeTopics = topics.length > 0;
+
+  const changed: ClassroomLink[] = [];
+  for (const link of links) {
+    if (link.kind === "external") continue;
+    let next: ClassroomLink = link;
+    if (link.kind === "topic") {
+      const topic = topicById.get(link.classroomId);
+      if (topic) next = { ...link, state: "PUBLISHED", classroom: { title: topic.name } };
+      else if (believeTopics) next = { ...link, state: "GONE" };
+    } else {
+      const found = work.get(link.classroomId);
+      if (found) {
+        next = {
+          ...link,
+          state: link.state === "KEPT" && !plannedKeys.has(link.itemKey) ? "KEPT" : found.state,
+          scheduledFor: found.scheduledFor,
+          classroom: {
+            title: found.title,
+            description: (found.description ?? "").trim(),
+            due: found.due ?? null,
+            postAt: found.scheduledFor,
+          },
+        };
+      } else if (believeWork) {
+        next = { ...link, state: "GONE", scheduledFor: null };
+      }
+    }
+    if (!sameLink(next, link)) changed.push(next);
+  }
+  return changed;
+}
+
+/** "3.2 Slope · Textbook (Learn)" and "3.3 Slope · Textbook (Learn)" are one lesson renumbered. */
+function withoutNumber(title: string): string {
+  return title.replace(/^\d+(\.\d+)*\s+/, "").trim();
+}
+
+/**
+ * Lessons renumbered in an upload get new keys. Without this they would look
+ * removed and re-added, and a student's work would stay on the old copy. Only
+ * an unambiguous match moves: one left-over link, one new item, same words.
+ */
+export function rekeys(links: ClassroomLink[], planned: PlannedItem[]): { from: string; to: string }[] {
+  const plannedKeys = new Set(planned.map((p) => p.key));
+  const linkKeys = new Set(links.map((l) => l.itemKey));
+  const group = <T,>(items: T[], keyOf: (item: T) => string) => {
+    const map = new Map<string, T[]>();
+    for (const item of items) map.set(keyOf(item), [...(map.get(keyOf(item)) ?? []), item]);
+    return map;
+  };
+  const leftOver = group(
+    links.filter(
+      (l) =>
+        !plannedKeys.has(l.itemKey) &&
+        (l.kind === "assignment" || l.kind === "material") &&
+        l.state !== "GONE" &&
+        l.sent
+    ),
+    (l) => `${l.kind} ${withoutNumber(l.sent!.title)}`
+  );
+  const incoming = group(
+    planned.filter((p): p is PlannedWork => p.kind !== "topic" && !linkKeys.has(p.key)),
+    (p) => `${p.kind} ${withoutNumber(p.title)}`
+  );
+  const moves: { from: string; to: string }[] = [];
+  for (const [key, from] of leftOver) {
+    const to = incoming.get(key);
+    if (from.length === 1 && to?.length === 1) moves.push({ from: from[0].itemKey, to: to[0].key });
+  }
+  return moves;
+}
+
+export interface Removals {
+  /** In Classroom but dropped from the curriculum. */
+  work: ClassroomLink[];
+  topics: ClassroomLink[];
+  /** Records of things already gone. */
+  forget: ClassroomLink[];
+}
+
+/**
+ * What the curriculum no longer has. An empty plan removes nothing: a class
+ * with no units at all is more likely a mistake than a decision.
+ */
+export function removals(links: ClassroomLink[], planned: PlannedItem[]): Removals {
+  const result: Removals = { work: [], topics: [], forget: [] };
+  if (planned.length === 0) return result;
+  const keys = new Set(planned.map((p) => p.key));
+  for (const link of links) {
+    if (keys.has(link.itemKey) || link.kind === "external") continue;
+    if (link.state === "GONE") result.forget.push(link);
+    else if (link.kind === "topic") result.topics.push(link);
+    else if (link.state !== "KEPT") result.work.push(link);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +579,8 @@ export interface OwnWork {
   topicId?: string;
   state: "PUBLISHED" | "SCHEDULED" | "DRAFT";
   scheduledFor: string | null;
+  description?: string;
+  due?: string | null;
 }
 
 export interface Tidy {

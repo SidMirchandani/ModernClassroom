@@ -26,13 +26,14 @@ export async function GET(request: Request) {
 
   const [courses, links] = await Promise.all([
     listTeacherCourses(token),
-    db.from("classroom_links").select("state").eq("class_id", cls.id),
+    db.from("classroom_links").select("state").eq("class_id", cls.id).neq("kind", "external"),
   ]);
-  const counts = { posted: 0, scheduled: 0, drafts: 0 };
+  const counts = { posted: 0, scheduled: 0, drafts: 0, kept: 0 };
   for (const row of links.data ?? []) {
     if (row.state === "PUBLISHED") counts.posted++;
     else if (row.state === "SCHEDULED") counts.scheduled++;
     else if (row.state === "DRAFT") counts.drafts++;
+    else if (row.state === "KEPT") counts.kept++;
   }
 
   return NextResponse.json({

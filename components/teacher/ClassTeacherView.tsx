@@ -35,6 +35,7 @@ import { ClassCustomize } from "./ClassCustomize";
 import { ClassroomPanel } from "./ClassroomPanel";
 import { ClassroomGrid } from "./ClassroomGrid";
 import { useClassroom } from "@/lib/use-classroom";
+import { useClassroomLinks } from "@/lib/use-classroom-links";
 import { supabaseConfigured } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
@@ -341,6 +342,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
   useEffect(() => setClassroomEnabled(!isDemoMode() && supabaseConfigured()), []);
   const classroom = useClassroom(classId, classroomEnabled);
   const { postQuietly } = classroom;
+  const { links: classroomLinks } = useClassroomLinks(classId, classroomEnabled, classroom.syncCount);
 
   const saveClass = useCallback(
     async (patch: Partial<DbClass>) => {
@@ -1079,7 +1081,7 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
         {activeView === "curriculum" && (
           <div key="curriculum" data-tour="curriculum" className="page-in space-y-5">
           {!importer.review && <ClassroomPanel classroom={classroom} />}
-          <CurriculumPanel units={cls.units} importer={importer} />
+          <CurriculumPanel units={cls.units} links={classroomLinks} importer={importer} />
           </div>
         )}
 

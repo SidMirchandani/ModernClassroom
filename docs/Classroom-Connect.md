@@ -96,7 +96,8 @@ What she hires it for:
 **Sync**
 - Turn-ins are pulled when the grid opens, plus a refresh button. The grid then updates live on her other devices.
 - If Google is down or rate-limited, the app retries silently.
-- If she edits or deletes an app-made item directly in Classroom, **Classroom wins** and the app adopts the change.
+- Sync runs both ways, with no button ([ADR-012](adapt/decisions/ADR-012-two-way-sync.md)). A change to her curriculum reaches Classroom by itself. If she edits or deletes an app-made item directly in Classroom, **Classroom wins**: it shows here on next open or refresh, and stays until her curriculum changes that same thing.
+- A lesson removed from her curriculum is deleted from Classroom only if no student has touched it.
 
 **Sign-in.** She keeps her Modern Classroom email/password account and adds a one-time **Connect Google Classroom** step. Students never sign in; their roster, turn-ins and grades come through her Google permission.
 
@@ -137,6 +138,7 @@ Full records are in [`docs/adapt/decisions/`](adapt/decisions/).
 | 011 | Grades live in Classroom, one per resource, drafts until returned | Students exist only in Classroom |
 | 009 | Student data is a cache, wiped on delete | Students only exist in Classroom |
 | 010 | Sections with parallel resource tracks | Her three resources cover the same material in different orders |
+| 012 | Two-way sync: remember what each side last said | The only way to tell which side changed |
 
 ## Risks and what's proven
 
@@ -150,7 +152,7 @@ Full records are in [`docs/adapt/decisions/`](adapt/decisions/).
 | She'll stop posting in Classroom by hand | Builder is ~99% sure |
 | "Classroom wins" won't surprise her | ⏳ M6 |
 
-**Known limit:** the API can only edit Classroom items that this app created. Anything she has posted by hand stays hers.
+**Known limit:** the API can only edit Classroom items that this app created. Anything she has posted by hand stays hers, and shows read-only in the grid.
 
 ## Milestones
 
@@ -160,7 +162,7 @@ Full records are in [`docs/adapt/decisions/`](adapt/decisions/).
 | M2 | Post the approved curriculum | Approving a real syllabus creates every topic and assignment, scheduled on their dates, with no duplicates | ✅ Done (2026-11-03) |
 | M3 | Roster and turn-ins from Classroom | The grid lists the Classroom class's students; a test student's turn-in shows after opening or refreshing; the cache is wiped on delete or disconnect | Built, not yet verified with a real student |
 | M4 | Grades for every item | See *Grading* below: a mark typed in the grid is a draft in Classroom, "Return grades" releases a column, and a mark changed in Classroom shows in the grid | Next, after M3 is verified |
-| M5 | Push plan updates | A changed syllabus works as it does today: changes are suggested, approved or declined, and approved ones reach Classroom | |
+| M5 | Push plan updates | A changed syllabus works as it does today: changes are suggested, approved or declined, and approved ones reach Classroom; edits made in Classroom come back | Built; calls checked on real Google, full flow not yet verified |
 | M6 | Demo to Ms. Gomes | The 5-minute demo runs clean on personal-Gmail accounts, she says yes, and the request is with school IT | |
 
 ## Taking it to Ms. Gomes

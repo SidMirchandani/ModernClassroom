@@ -24,6 +24,7 @@ export async function POST() {
   if (classIds.length) {
     await db.from("classroom_submissions").delete().in("class_id", classIds);
     await db.from("classroom_roster").delete().in("class_id", classIds);
+    await db.from("classroom_links").delete().in("class_id", classIds).eq("kind", "external");
   }
 
   const connection = await loadConnection(user.id);

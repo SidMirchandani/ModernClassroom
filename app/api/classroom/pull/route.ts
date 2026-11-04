@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ClassroomError, listStudents, listSubmissions } from "@/lib/classroom/api";
+import { ClassroomError, listStudents, listSubmissions, listWork } from "@/lib/classroom/api";
 import { diffRows } from "@/lib/classroom/grid";
 import { bad, teacherClass, teacherToken } from "@/lib/classroom/server";
 
@@ -8,8 +8,9 @@ export const maxDuration = 60;
 
 /**
  * Bring the class's roster and turn-ins over from Google Classroom into the
- * cache the grid reads. Called when the grid opens and from its Refresh
- * button (ADR-008); only what changed is written.
+ * cache the grid reads, along with assignments the teacher posted there by hand.
+ * Called when the grid opens and from its Refresh button (ADR-008); only what
+ * changed is written. Edits to what this app posted are the sync's to find.
  *
  * Body: {classId}. A connection made before the app asked for the roster gets
  * `needsReconnect`, so the teacher is asked once rather than shown an error.
@@ -25,10 +26,11 @@ export async function POST(request: Request) {
   if (!token) return NextResponse.json({ needsReconnect: true }, { status: 403 });
 
   try {
-    const [students, submissions, links, oldRoster, oldSubmissions] = await Promise.all([
+    const [students, submissions, work_, links, oldRoster, oldSubmissions] = await Promise.all([
       listStudents(token, cls.classroom_course_id),
       listSubmissions(token, cls.classroom_course_id),
-      db.from("classroom_links").select("item_key, classroom_id").eq("class_id", cls.id),
+      listWork(token, cls.classroom_course_id),
+      db.from("classroom_links").select("item_key, classroom_id, kind, classroom").eq("class_id", cls.id),
       db.from("classroom_roster").select("user_id, name").eq("class_id", cls.id),
       db
         .from("classroom_submissions")
@@ -43,8 +45,54 @@ export async function POST(request: Request) {
       (r) => r.user_id
     );
 
-    // Work the teacher posted by hand has no link and no column, so it stays out.
+    // Assignments the teacher posted by hand, once students can see them. A
+    // link to one is only ever read: Classroom won't let this app change it.
+    const byHand = diffRows(
+      (links.data ?? [])
+        .filter((l) => l.kind === "external")
+        .map((l) => ({
+          item_key: l.item_key as string,
+          classroom_id: l.classroom_id as string,
+          // Rebuilt in this order: Postgres hands JSON back with its keys reordered.
+          classroom: {
+            title: (l.classroom as { title: string }).title,
+            due: (l.classroom as { due: string | null }).due,
+          },
+        })),
+      work_
+        .filter((w) => !w.own && w.kind === "assignment" && w.state === "PUBLISHED")
+        .map((w) => ({
+          item_key: `external:${w.id}`,
+          classroom_id: w.id,
+          classroom: { title: w.title, due: w.due ?? null },
+        })),
+      (r) => r.item_key
+    );
+    if (byHand.upsert.length) {
+      const { error } = await db.from("classroom_links").upsert(
+        byHand.upsert.map((r) => ({
+          class_id: cls.id,
+          course_id: cls.classroom_course_id,
+          kind: "external",
+          state: "PUBLISHED",
+          ...r,
+        })),
+        { onConflict: "class_id,item_key" }
+      );
+      if (error) throw new Error(error.message);
+    }
+    if (byHand.remove.length) {
+      const { error } = await db
+        .from("classroom_links")
+        .delete()
+        .eq("class_id", cls.id)
+        .in("item_key", byHand.remove.map((r) => r.item_key));
+      if (error) throw new Error(error.message);
+    }
+
     const itemKeys = new Map((links.data ?? []).map((l) => [l.classroom_id as string, l.item_key as string]));
+    for (const r of byHand.upsert) itemKeys.set(r.classroom_id, r.item_key);
+    for (const r of byHand.remove) itemKeys.delete(r.classroom_id);
     const work = diffRows(
       (oldSubmissions.data ?? []).map((r) => ({
         user_id: r.user_id as string,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CloudUpload, Loader2, RotateCcw, X } from "lucide-react";
+import type { GridLink } from "@/lib/classroom/grid";
 import type { CurriculumUnit } from "@/lib/db/types";
 import type { CurriculumImporter } from "@/lib/use-curriculum-import";
 import { ActionCard } from "./ActionCard";
@@ -10,6 +11,7 @@ import { CurriculumTable } from "./CurriculumTable";
 
 interface CurriculumPanelProps {
   units: CurriculumUnit[];
+  links?: GridLink[];
   importer: CurriculumImporter;
 }
 
@@ -25,7 +27,7 @@ interface CurriculumPanelProps {
  * Once a file's changes are saved, a banner offers Undo for as long as nothing
  * has changed since.
  */
-export function CurriculumPanel({ units, importer }: CurriculumPanelProps) {
+export function CurriculumPanel({ units, links, importer }: CurriculumPanelProps) {
   const { review } = importer;
   const [undoHidden, setUndoHidden] = useState(false);
 
@@ -93,7 +95,7 @@ export function CurriculumPanel({ units, importer }: CurriculumPanelProps) {
         </p>
       )}
 
-      {!empty && <CurriculumTable units={units} />}
+      {!empty && <CurriculumTable units={units} links={links} />}
     </div>
   );
 }

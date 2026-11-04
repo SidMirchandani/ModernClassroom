@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CachedSubmission, GridLink, SubmissionState } from "./classroom/grid";
+import type { CachedSubmission, SubmissionState } from "./classroom/grid";
 import { supabase } from "./supabase/client";
+import { useClassroomLinks } from "./use-classroom-links";
 
 /**
  * The grid's data. It draws at once from the cache, then asks Classroom for
@@ -15,10 +16,10 @@ export interface GridStudent {
   name: string;
 }
 
-export function useClassroomGrid(classId: string, enabled: boolean) {
+export function useClassroomGrid(classId: string, enabled: boolean, syncCount = 0) {
   const [students, setStudents] = useState<GridStudent[]>([]);
   const [submissions, setSubmissions] = useState<CachedSubmission[]>([]);
-  const [links, setLinks] = useState<GridLink[]>([]);
+  const { links, reload: reloadLinks } = useClassroomLinks(classId, enabled, syncCount);
   const [loaded, setLoaded] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [pulledAt, setPulledAt] = useState<Date | null>(null);
@@ -28,15 +29,14 @@ export function useClassroomGrid(classId: string, enabled: boolean) {
 
   const read = useCallback(async () => {
     const db = supabase();
-    const [roster, work, posted] = await Promise.all([
+    const [roster, work] = await Promise.all([
       db.from("classroom_roster").select("user_id, name").eq("class_id", classId).order("name"),
       db
         .from("classroom_submissions")
         .select("user_id, item_key, state, late, assigned_grade, draft_grade")
         .eq("class_id", classId),
-      db.from("classroom_links").select("item_key, state, scheduled_for").eq("class_id", classId),
     ]);
-    if (roster.error || work.error || posted.error) return;
+    if (roster.error || work.error) return;
     setStudents((roster.data ?? []).map((r) => ({ userId: r.user_id, name: r.name })));
     setSubmissions(
       (work.data ?? []).map((r) => ({
@@ -47,9 +47,6 @@ export function useClassroomGrid(classId: string, enabled: boolean) {
         assignedGrade: r.assigned_grade,
         draftGrade: r.draft_grade,
       }))
-    );
-    setLinks(
-      (posted.data ?? []).map((r) => ({ itemKey: r.item_key, state: r.state, scheduledFor: r.scheduled_for }))
     );
     setLoaded(true);
   }, [classId]);
@@ -73,14 +70,15 @@ export function useClassroomGrid(classId: string, enabled: boolean) {
       if (!res.ok) throw new Error(body.error ?? "Could not reach Google Classroom");
       setNeedsReconnect(false);
       setPulledAt(new Date());
-      await read();
+      // The pull can bring in assignments the teacher posted by hand.
+      await Promise.all([read(), reloadLinks()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not reach Google Classroom");
     } finally {
       pullingRef.current = false;
       setPulling(false);
     }
-  }, [classId, read]);
+  }, [classId, read, reloadLinks]);
 
   useEffect(() => {
     if (!enabled) return;
