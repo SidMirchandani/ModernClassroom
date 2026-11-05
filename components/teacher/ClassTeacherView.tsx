@@ -10,7 +10,9 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { classHasStarted, getCurrentUnitIndexByDate, getUnitPhase, type UnitPhase } from "@/lib/unit-phase";
 import { UnitPhaseBadge } from "./UnitPhaseBadge";
 import { CurriculumPanel } from "./CurriculumPanel";
-import { ImportDialog } from "./ImportDialog";
+import { checklist, ImportDialog } from "./ImportDialog";
+import { ClassSetupScreen } from "./ClassSetupScreen";
+import { peekPendingImport } from "@/lib/pending-import";
 import { useCurriculumImport } from "@/lib/use-curriculum-import";
 import { ClassCustomize } from "./ClassCustomize";
 import { ClassroomPanel } from "./ClassroomPanel";
@@ -182,6 +184,47 @@ export function ClassTeacherView({ classId }: ClassTeacherViewProps) {
     onApply: applyCurriculum,
     onDraft: () => selectView("curriculum"),
   });
+
+  // A class just created from a plan: the whole page stays on the setup screen
+  // until the read is done, then opens on the draft.
+  const [setup, setSetup] = useState(() => peekPendingImport(classId));
+  const setupResult = setup ? importer.current?.result : null;
+  const setupDone = setupResult?.status === "done";
+  useEffect(() => {
+    if (setupDone) setSetup(null);
+  }, [setupDone]);
+
+  if (setup) {
+    const stopped = setupResult?.status === "failed" || setupResult?.status === "stopped";
+    return (
+      <ClassSetupScreen
+        steps={[...setup.steps, ...checklist(setupResult?.steps ?? [], !stopped && !setupDone)]}
+        error={
+          stopped
+            ? setupResult?.status === "stopped"
+              ? "Stopped. Your Modern Classroom class is there, with nothing in it yet."
+              : (setupResult?.error ?? "Something went wrong — try again")
+            : undefined
+        }
+        actions={
+          stopped ? (
+            <>
+              <button type="button" onClick={() => setSetup(null)} className="btn btn-lg btn-secondary">
+                Go to my class
+              </button>
+              <button type="button" onClick={importer.retry} className="btn btn-lg btn-primary">
+                Try again
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={importer.stop} className="btn btn-md btn-ghost">
+              Stop
+            </button>
+          )
+        }
+      />
+    );
+  }
 
   if (loading || !cls) {
     return (

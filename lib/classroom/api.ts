@@ -178,6 +178,7 @@ export interface WireItem {
   dueTime?: { hours?: number; minutes?: number };
   maxPoints?: number;
   associatedWithDeveloper?: boolean;
+  creationTime?: string;
 }
 
 export function wireState(row: WireItem): OwnWork["state"] {
@@ -195,6 +196,7 @@ export function wireDue(row: WireItem): string | null {
 export interface ClassroomWork extends OwnWork {
   /** This app made it, so this app may change it. */
   own: boolean;
+  created?: string;
 }
 
 /**
@@ -229,6 +231,7 @@ export async function listWork(token: string, courseId: string): Promise<Classro
           due: wireDue(row),
           maxPoints: row.maxPoints,
           own: Boolean(row.associatedWithDeveloper),
+          created: row.creationTime,
         });
       }
       pageToken = page.nextPageToken as string | undefined;

@@ -32,7 +32,7 @@ interface Item {
  * come listed underneath, greyed — so the checklist shows how far there is
  * to go, not only how far it has got.
  */
-function checklist(steps: AgentStep[], running: boolean): Item[] {
+export function checklist(steps: AgentStep[], running: boolean): Item[] {
   const state = (s: AgentStep): ItemState => (s.status === "run" ? "run" : s.status === "fail" ? "fail" : "done");
   const items: Item[] = [];
   const seen = new Set<string>();
@@ -46,7 +46,10 @@ function checklist(steps: AgentStep[], running: boolean): Item[] {
       text = `Opened ${step.target}${step.detail ? ` (${step.detail})` : ""}`;
       seen.add("open");
     } else if (step.id === "curriculum") {
-      text = step.detail === "nothing yet" ? "Your class is empty — building it fresh" : `Looked at your current curriculum (${step.detail})`;
+      text =
+        step.detail === "nothing yet"
+          ? "Your Modern Classroom class is empty — building it fresh"
+          : `Looked at your current curriculum (${step.detail})`;
     } else if (step.id === "analyse") {
       text = done ? "Read your file" : step.status === "fail" ? "Couldn't finish reading your file" : "Reading your file";
       seen.add("read");

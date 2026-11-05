@@ -588,11 +588,12 @@ a write queued offline under `3.3` still lands after `3.3` became `3.4`.
 ### Starting a class — `app/dashboard/new/`, `lib/pending-import.ts`
 
 A class starts from what the teacher already has. The new-class page is
-numbered steps, and the first is where the class lives:
+numbered steps. Its wording always says which class it means: the one being made
+is the *Modern Classroom class*, the one it links to the *Google Classroom class*.
 
-1. **Where will this class live?** — two large cards: **Create a new class**
-   (from scratch; it can be connected to Google Classroom later) or **Use my
-   Google Classroom class**.
+1. **How do you want to start your Modern Classroom class?** — two large cards:
+   **Create a new Modern Classroom class** (from scratch; it can be linked to a
+   Google Classroom class later) or **Use my Google Classroom class**.
 2. *(Google path only)* **Choose your Google Classroom class.** The page asks
    `GET /api/google` for the teacher's Classroom classes; if Google is not
    connected yet it shows **Connect Google Classroom**, which goes out and comes
@@ -601,19 +602,55 @@ numbered steps, and the first is where the class lives:
    teacher's classes already posts into is listed but cannot be chosen — a
    Classroom class takes one app class, because its links point there. Choosing
    one fills in the class name from it, unless the teacher has typed their own.
-3. **Name your class** (one large field).
-4. **What should go in it?** — two large cards, **From my plan** (upload a
-   pacing guide or calendar and we set it up) or **Start blank**. *From my
-   plan* shows `FileDrop` and the optional *Anything we should know?*.
+3. **Name your Modern Classroom class** (one large field).
+4. *(New-class path only)* **What should go in your Modern Classroom class?** —
+   two large cards, **From my plan** (upload a pacing guide or calendar and we
+   set it up) or **Start blank**. *From my plan* shows `FileDrop` and the
+   optional *Anything we should know?*.
 
-The steps are numbered as they appear (`step()` in the page): the Google path
-has one more. One large button finishes it — **Create my class and read my plan** or **Create my
-class** — and while it cannot be pressed, the reason sits beside it (*Give your
-class a name first.*, *Choose how you'd like to start.*, *Choose your file to
-continue.*). There are no ready-made courses to pick from any more. On the
-Google path, creating the class then saves the chosen course with
-`POST /api/classroom`; if that call does not land, the Curriculum tab's Google
-card asks again.
+The steps are numbered as they appear (`step()` in the page): the new-class path
+has its name at step 2 and ends on step 3, the Google path has its name at step 3
+and ends there. One large button finishes it — **Create my Modern Classroom class
+and read my plan** or **Create my Modern Classroom class** — and while it cannot
+be pressed, the reason sits beside it (*Give your Modern Classroom class a name
+first.*, *Choose how you'd like to start.*, *Choose your file to continue.*).
+There are no ready-made courses to pick from any more.
+
+On the Google path there is no question of what goes in it, and **no AI**: the
+teacher already organised the class, so a model would only add a wait and a way to
+fail (a real 104-item class timed out on it). The button saves the chosen course
+(`POST /api/classroom`), builds the curriculum (`POST /api/classroom/import`,
+`classroomCurriculum` in `lib/classroom/curriculum.ts`), brings in the students
+(`/api/classroom/pull`) and saves it straight away, with nothing to approve, since
+every line is already the teacher's own. The rules: a topic is a unit; a quiz,
+test, exam or project assignment is a checkpoint, unless its title says it is a
+review or practice; anything else, drafts included, is a lesson; items numbered
+the same ("4.1 Notes", "4.1 Homework") are one lesson with a resource each. Numbers
+already there are kept, and the rest are given the next free ones. Work with no
+topic goes last, in a unit of its own. A lesson's date is when it is due, or else
+when it went up. Ids come from Classroom's, so a retry gives the same curriculum.
+It happens once: later changes in Classroom do not add lessons. A class with
+nothing posted just opens on its Classroom tab.
+
+**The setup screen** (`components/teacher/ClassSetupScreen.tsx`) takes the whole
+page, white, from the moment the button is pressed until the class is ready, on
+every path: icons turning over in a spinning ring, above the real list of what is
+happening. The new-class page shows it first. On a plan it hands its finished steps
+over in `setPendingImport`, and the class page carries the same list on with the
+import's own steps (`checklist` from `ImportDialog`) instead of opening the import
+dialog, ending on the draft in the Curriculum tab. A failure says why, with **Try
+again** and **Go to my class**; trying again on the new-class page carries on with
+the class already made.
+
+> ⚠️ **A curriculum built out of Classroom must never post back.** Saving a
+> curriculum makes the sync post every lesson, which would give students a second
+> copy of everything the teacher already had there. So `/api/classroom/import`
+> writes a link for every item (`adoptionLinks`) before the page saves anything:
+> `GONE`, which the sync never creates, updates or deletes, with
+> `sent.fromClassroom` so the curriculum does not call it deleted. A unit links to
+> the real topic it came from (its id is `CLASSROOM_TOPIC_UNIT` + the topic's), so a
+> lesson added to it later lands there. Lessons added afterwards have no link and
+> post as usual.
 
 The draft is made in the new class's own Curriculum tab, not on the new-class
 page: the import route only reads for a class that exists and that the caller
@@ -621,9 +658,8 @@ teaches, and the Curriculum tab is where every proposal is reviewed anyway. So
 the page creates the class **blank** (`createClassForTeacher(id, { name, blank:
 true })` — no units at all), parks the files in `setPendingImport(classId, …)`
 and moves to `?view=curriculum`, where `useCurriculumImport` takes them on
-arrival, opens the import dialog and starts the read. The
-teacher's first sight of their new class is the work happening; nothing
-reaches the class until they accept it.
+arrival and starts the read behind the setup screen. Nothing reaches the class
+until the teacher accepts it.
 
 > ⚠️ **A class address that is not a UUID is a missing class, not an error.** Postgres answers any other id (a typo, a truncated link) with *"invalid input syntax for type uuid"*, which the student view's background reload threw as a runtime crash. `remote.pullClass` now returns `null` for anything that is not a UUID without asking the server; the class page and subunit editor send any load failure back to the dashboard; and the class views' background reloads (every live nudge, every return to the tab) keep what is on screen when one fails, instead of throwing.
 
@@ -639,7 +675,7 @@ reaches the class until they accept it.
 > ⚠️ **The hand-off is module memory, on purpose.** `File` objects cannot go
 > into storage or survive a reload, and do not need to: it is a client-side
 > navigation of a second or two. `takePendingImport` reads and forgets, and the
-> panel checks once (a ref, so React's double-run of effects in development
+> hook checks once (a ref, so React's double-run of effects in development
 > cannot start two reads).
 
 `FileDrop` is the one way a file is chosen, on the new-class page and in the

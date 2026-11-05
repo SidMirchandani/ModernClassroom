@@ -598,16 +598,15 @@ export function useCurriculumImport({ classId, units, onApply, onDraft }: Option
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
-  // A class created from the teacher's materials arrives with them waiting:
-  // the import dialog opens and starts reading straight away. Checked once —
-  // the ref survives React's double-run of effects in development.
+  // A class created from the teacher's materials arrives with them waiting, and
+  // the read starts straight away behind the class page's setup screen. Checked
+  // once — the ref survives React's double-run of effects in development.
   const handoffChecked = useRef(false);
   useEffect(() => {
     if (!loaded || handoffChecked.current) return;
     handoffChecked.current = true;
     const handed = takePendingImport(classId);
     if (!handed) return;
-    setDialogOpen(true);
     void start(handed.files, handed.instructions);
   }, [loaded, classId, start]);
 

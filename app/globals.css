@@ -581,6 +581,109 @@
     }
   }
 
+  /* The new-class setup screen: icons turning over inside a spinning ring. One
+     still icon and a still ring without motion. */
+  .setup-stage {
+    position: relative;
+    width: 9rem;
+    height: 9rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .setup-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    border: 3px solid rgb(var(--primary) / 0.14);
+    border-top-color: rgb(var(--primary));
+  }
+
+  .setup-ring-slow {
+    inset: 0.875rem;
+    border-width: 2px;
+    border-color: rgb(var(--primary) / 0.1);
+    border-bottom-color: rgb(var(--primary) / 0.55);
+  }
+
+  .setup-orbit {
+    position: absolute;
+    inset: -0.75rem;
+  }
+
+  .setup-orbit-back {
+    inset: 1.75rem;
+  }
+
+  .setup-dot {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-left: -0.25rem;
+    border-radius: 9999px;
+    background: rgb(var(--primary) / 0.7);
+  }
+
+  .setup-glyph {
+    position: absolute;
+    width: 3rem;
+    height: 3rem;
+    opacity: 0;
+  }
+
+  .setup-glyph:first-of-type {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .setup-ring {
+      animation: setup-spin 1.4s linear infinite;
+    }
+
+    .setup-ring-slow {
+      animation: setup-spin 3.2s linear infinite reverse;
+    }
+
+    .setup-orbit {
+      animation: setup-spin 5s linear infinite;
+    }
+
+    .setup-orbit-back {
+      animation: setup-spin 3.6s linear infinite reverse;
+    }
+
+    /* Seven icons, 1.6s each: every one gets a seventh of the loop. */
+    .setup-glyph,
+    .setup-glyph:first-of-type {
+      opacity: 0;
+      animation: setup-glyph 11.2s ease-in-out infinite;
+      animation-delay: calc(var(--i) * 1.6s);
+    }
+  }
+
+  @keyframes setup-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes setup-glyph {
+    0% {
+      opacity: 0;
+      transform: rotate(-90deg) scale(0.4);
+    }
+    3%, 12% {
+      opacity: 1;
+      transform: none;
+    }
+    15%, 100% {
+      opacity: 0;
+      transform: rotate(90deg) scale(0.4);
+    }
+  }
+
   @keyframes scan {
     from { transform: translateX(-100%); }
     to { transform: translateX(250%); }

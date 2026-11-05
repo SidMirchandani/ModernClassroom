@@ -18,8 +18,13 @@ export function dayLabel(instant: string): string {
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
+/** GONE also means "read from Classroom, never posted" (`adoptionLinks`), which is not a deletion. */
+function deletedInClassroom(link: GridLink): boolean {
+  return link.state === "GONE" && !link.sent?.fromClassroom;
+}
+
 function changed(link: GridLink, field: "title" | "due"): boolean {
-  if (!link.sent || !link.classroom) return false;
+  if (!link.sent || !link.classroom || link.sent.fromClassroom) return false;
   return (link.classroom[field] ?? null) !== (link.sent[field] ?? null);
 }
 
@@ -85,7 +90,7 @@ export function curriculumView(units: CurriculumUnit[], links: GridLink[]): Curr
     const subunits = unit.subunits.map((section) => {
       const items = lessonLinks.get(section.id) ?? [];
       if (items.length && items.every((l) => l.state === "GONE")) {
-        gone.add(section.id);
+        if (items.every(deletedInClassroom)) gone.add(section.id);
         return section;
       }
       const live = items.filter((l) => l.state !== "GONE");
@@ -102,7 +107,7 @@ export function curriculumView(units: CurriculumUnit[], links: GridLink[]): Curr
       const link = byKey.get(checkpointKey(checkpoint));
       if (!link) return checkpoint;
       if (link.state === "GONE") {
-        gone.add(checkpoint.id);
+        if (deletedInClassroom(link)) gone.add(checkpoint.id);
         return checkpoint;
       }
       const title = changed(link, "title") ? link.classroom!.title : checkpoint.title;

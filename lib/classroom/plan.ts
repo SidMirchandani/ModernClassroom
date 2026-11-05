@@ -50,6 +50,8 @@ export interface ItemFields {
   due?: string | null;
   postAt?: string | null;
   maxPoints?: number;
+  /** Built from what Classroom already had, so there is no copy of ours to post (`adoptionLinks`). */
+  fromClassroom?: boolean;
 }
 
 export interface ClassroomLink {
@@ -439,6 +441,35 @@ export function baselines(planned: PlannedItem[], links: ClassroomLink[]): Class
     out.push({ ...link, sent });
   }
   return out;
+}
+
+/** A unit built from a Classroom topic has an id starting with this, then the topic's. */
+export const CLASSROOM_TOPIC_UNIT = "classroom-topic-";
+
+/**
+ * A curriculum built out of Classroom is already there, so posting it would hand
+ * students a second copy of everything. These links, saved before the curriculum
+ * is, tell the sync so: GONE is never created, updated or deleted. A unit links
+ * to the topic it came from, so a lesson added to it later lands under that
+ * topic; lessons added later have no link and post as usual.
+ */
+export function adoptionLinks(units: CurriculumUnit[], existingKeys: Set<string>, now: Date): ClassroomLink[] {
+  const unitKey = `unit:${CLASSROOM_TOPIC_UNIT}`;
+  return plannedItems({ units, rule: "lesson_day", now, timeZone: "UTC" })
+    .filter((item) => !existingKeys.has(item.key))
+    .map((item) => {
+      const fields = { ...plannedFields(item), fromClassroom: true };
+      const topicId = item.key.startsWith(unitKey) ? item.key.slice(unitKey.length) : undefined;
+      return {
+        itemKey: item.key,
+        kind: item.kind,
+        classroomId: topicId ?? `from-classroom:${item.key}`,
+        state: topicId ? "PUBLISHED" : "GONE",
+        scheduledFor: null,
+        sent: fields,
+        classroom: fields,
+      };
+    });
 }
 
 // ---------------------------------------------------------------------------
